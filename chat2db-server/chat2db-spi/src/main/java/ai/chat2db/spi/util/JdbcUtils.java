@@ -160,26 +160,26 @@ public class JdbcUtils {
             return "(CLOB " + clob.length() + ")";
         }
         if (obj instanceof Timestamp timestamp) {
-            return DateUtil.format(timestamp, DEFAULT_DATETIME_FORMAT);
+            return DateUtil.formatDateTime(timestamp);
         }
 
         String className = obj.getClass().getName();
         if ("oracle.sql.TIMESTAMP".equals(className) || "oracle.sql.TIMESTAMPTZ".equals(className)) {
-            return DateUtil.format(rs.getTimestamp(index), DEFAULT_DATETIME_TZ_FORMAT);
+            return DateUtil.formatDateTime(rs.getTimestamp(index));
         }
         if (className.startsWith("oracle.sql.DATE")) {
             String metaDataClassName = rs.getMetaData().getColumnClassName(index);
             if ("java.sql.Timestamp".equals(metaDataClassName) || "oracle.sql.TIMESTAMP".equals(metaDataClassName)) {
-                return DateUtil.format(rs.getTimestamp(index), DEFAULT_DATETIME_FORMAT);
+                return DateUtil.formatDateTime(rs.getTimestamp(index));
             } else {
-                return DateUtil.format(rs.getDate(index), DEFAULT_DATETIME_FORMAT);
+                return DateUtil.formatDate(rs.getDate(index));
             }
         }
         if (obj instanceof Date date) {
             if ("java.sql.Timestamp".equals(rs.getMetaData().getColumnClassName(index))) {
-                return DateUtil.format(rs.getDate(index), DEFAULT_DATETIME_FORMAT);
+                return DateUtil.formatDateTime(date);
             }
-            return DateUtil.format(date, DEFAULT_DATETIME_FORMAT);
+            return DateUtil.formatDate(date);
         }
         if (obj instanceof LocalDateTime localDateTime) {
             return localDateTime.toString();
