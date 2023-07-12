@@ -1,18 +1,16 @@
 
 package ai.chat2db.spi.jdbc;
 
-import java.lang.reflect.InvocationTargetException;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
 import ai.chat2db.spi.MetaData;
 import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.sql.SQLExecutor;
-import cn.hutool.json.JSON;
+import com.baomidou.mybatisplus.core.toolkit.BeanUtils;
 import com.google.common.collect.Lists;
-import org.apache.commons.beanutils.BeanUtils;
 import org.springframework.util.CollectionUtils;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * @author jipengfei
@@ -35,15 +33,15 @@ public class DefaultMetaService implements MetaData {
         if (CollectionUtils.isEmpty(maps)) {
             return Lists.newArrayList();
         }
-        return maps.stream().map(map -> map2Schema(map)).collect(Collectors.toList());
+        return maps.stream().map(this::map2Schema).collect(Collectors.toList());
 
     }
 
     private Schema map2Schema(Map<String, String> map) {
         Schema schema = new Schema();
         try {
-            BeanUtils.populate(schema, map);
-        } catch (Exception e) {
+            schema = BeanUtils.mapToBean(map, Schema.class);
+        } catch (Exception ignored) {
         }
         return schema;
     }
