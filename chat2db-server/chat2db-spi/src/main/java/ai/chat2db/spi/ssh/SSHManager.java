@@ -2,6 +2,7 @@
 package ai.chat2db.spi.ssh;
 
 import ai.chat2db.server.tools.common.exception.ConnectionException;
+import ai.chat2db.spi.enums.SSHAuthenticationTypeEnum;
 import ai.chat2db.spi.model.SSHInfo;
 import cn.hutool.core.net.NetUtil;
 import cn.hutool.extra.ssh.JschUtil;
@@ -19,10 +20,15 @@ public class SSHManager {
     public static Session getSSHSession(SSHInfo ssh) {
         Session session;
         try {
-            byte[] passphrase = StringUtils.isNotBlank(ssh.getPassphrase()) ? StringUtils.getBytes(ssh.getPassphrase(),
-                "UTF-8") : null;
-            session = JschUtil.getSession(ssh.getHostName(), Integer.parseInt(ssh.getPort()), ssh.getUserName(),
-                ssh.getKeyFile(), passphrase);
+            if (SSHAuthenticationTypeEnum.KEYFILE.name().equals(ssh.getAuthenticationType())) {
+                byte[] passphrase = StringUtils.isNotBlank(ssh.getPassphrase()) ? StringUtils.getBytes(ssh.getPassphrase(),
+                        "UTF-8") : null;
+                session = JschUtil.getSession(ssh.getHostName(), Integer.parseInt(ssh.getPort()), ssh.getUserName(),
+                        ssh.getKeyFile(), passphrase);
+            } else {
+                session = JschUtil.getSession(ssh.getHostName(), Integer.parseInt(ssh.getPort()), ssh.getUserName(),
+                        ssh.getPassphrase());
+            }
 
         } catch (Exception e) {
             throw new ConnectionException("connection.ssh.error", null, e);
