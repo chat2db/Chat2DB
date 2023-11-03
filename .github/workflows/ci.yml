@@ -20,4 +20,4 @@
          with:
            compose-file: "./docker/test/docker-compose.yml"
        - name: Test with Maven
-         run: mvn test -B -Dmaven.test.skip=false -pl ali-dbhub-server-test -am -f ali-dbhub-server/pom.xml
+         run: mvn test -B -Dmaven.test.skip=false -pl chat2db-server-test -am -f chat2db-server/pom.xml
