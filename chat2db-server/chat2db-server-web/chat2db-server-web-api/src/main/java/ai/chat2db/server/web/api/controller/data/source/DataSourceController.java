@@ -1,7 +1,5 @@
 package ai.chat2db.server.web.api.controller.data.source;
 
-import java.util.List;
-
 import ai.chat2db.server.domain.api.model.DataSource;
 import ai.chat2db.server.domain.api.param.ConsoleCloseParam;
 import ai.chat2db.server.domain.api.param.ConsoleConnectParam;
@@ -12,14 +10,12 @@ import ai.chat2db.server.domain.api.param.datasource.DataSourceSelector;
 import ai.chat2db.server.domain.api.param.datasource.DataSourceUpdateParam;
 import ai.chat2db.server.domain.api.service.ConsoleService;
 import ai.chat2db.server.domain.api.service.DataSourceService;
-import ai.chat2db.server.tools.common.exception.ConnectionException;
-import ai.chat2db.spi.model.Database;
-import ai.chat2db.spi.ssh.SSHManager;
 import ai.chat2db.server.tools.base.wrapper.result.ActionResult;
 import ai.chat2db.server.tools.base.wrapper.result.DataResult;
 import ai.chat2db.server.tools.base.wrapper.result.ListResult;
 import ai.chat2db.server.tools.base.wrapper.result.PageResult;
 import ai.chat2db.server.tools.base.wrapper.result.web.WebPageResult;
+import ai.chat2db.server.tools.common.exception.ConnectionException;
 import ai.chat2db.server.web.api.aspect.ConnectionInfoAspect;
 import ai.chat2db.server.web.api.controller.data.source.converter.DataSourceWebConverter;
 import ai.chat2db.server.web.api.controller.data.source.converter.SSHWebConverter;
@@ -35,6 +31,8 @@ import ai.chat2db.server.web.api.controller.data.source.request.DataSourceUpdate
 import ai.chat2db.server.web.api.controller.data.source.request.SSHTestRequest;
 import ai.chat2db.server.web.api.controller.data.source.vo.DataSourceVO;
 import ai.chat2db.server.web.api.controller.data.source.vo.DatabaseVO;
+import ai.chat2db.spi.model.Database;
+import ai.chat2db.spi.ssh.SSHManager;
 import com.jcraft.jsch.Session;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -49,6 +47,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 数据库连接类
@@ -172,7 +172,7 @@ public class DataSourceController {
     public WebPageResult<DataSourceVO> list(DataSourceQueryRequest request) {
         DataSourcePageQueryParam param = dataSourceWebConverter.queryReq2param(request);
         PageResult<DataSource> result = dataSourceService.queryPageWithPermission(param, DATA_SOURCE_SELECTOR);
-        List<DataSourceVO> dataSourceVOS = dataSourceWebConverter.dto2vo(result.getData());
+        List<DataSourceVO> dataSourceVOS = dataSourceWebConverter.dto2voAndRemoveSensitivity(result.getData());
         return WebPageResult.of(dataSourceVOS, result.getTotal(), result.getPageNo(), result.getPageSize());
     }
 

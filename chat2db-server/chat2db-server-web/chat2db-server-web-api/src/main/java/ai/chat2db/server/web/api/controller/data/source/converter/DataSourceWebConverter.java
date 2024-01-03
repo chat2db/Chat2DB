@@ -1,7 +1,5 @@
 package ai.chat2db.server.web.api.controller.data.source.converter;
 
-import java.util.List;
-
 import ai.chat2db.server.domain.api.enums.DataSourceKindEnum;
 import ai.chat2db.server.domain.api.model.DataSource;
 import ai.chat2db.server.domain.api.param.ConsoleCloseParam;
@@ -10,6 +8,8 @@ import ai.chat2db.server.domain.api.param.datasource.DataSourceCreateParam;
 import ai.chat2db.server.domain.api.param.datasource.DataSourcePageQueryParam;
 import ai.chat2db.server.domain.api.param.datasource.DataSourcePreConnectParam;
 import ai.chat2db.server.domain.api.param.datasource.DataSourceUpdateParam;
+import ai.chat2db.server.tools.common.model.LoginUser;
+import ai.chat2db.server.tools.common.util.ContextUtils;
 import ai.chat2db.server.web.api.controller.data.source.request.ConsoleCloseRequest;
 import ai.chat2db.server.web.api.controller.data.source.request.ConsoleConnectRequest;
 import ai.chat2db.server.web.api.controller.data.source.request.DataSourceCreateRequest;
@@ -23,7 +23,10 @@ import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Mappings;
 
+import java.util.List;
+
 /**
+ * @formatter:off
  * @author moji
  * @version DataSourceWebConverter.java, v 0.1 2022年09月23日 16:45 moji Exp $
  * @date 2022/09/23
@@ -120,4 +123,25 @@ public abstract class DataSourceWebConverter {
      * @return
      */
     public abstract ConsoleCloseParam request2closeParam(ConsoleCloseRequest request);
+
+    /**
+     * 移除敏感信息
+     *
+     * @param dataSources
+     * @return java.util.List<ai.chat2db.server.web.api.controller.data.source.vo.DataSourceVO>
+     * @author 敖癸
+     * @since 2023/12/28 - 23:34
+     */
+    public List<DataSourceVO> dto2voAndRemoveSensitivity(List<DataSource> dataSources) {
+        LoginUser loginUser = ContextUtils.getLoginUser();
+        List<DataSourceVO> vos = dto2vo(dataSources);
+        if (!loginUser.getAdmin()) {
+            vos.stream().filter(vo -> "SHARED".equals(vo.getKind()))
+                    .forEach(vo -> {
+                        vo.setUser(null);
+                        vo.setPassword(null);
+                    });
+        }
+        return vos;
+    }
 }
