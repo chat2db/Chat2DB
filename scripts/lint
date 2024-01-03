@@ -1,0 +1,26 @@
+#!/bin/bash
+
+##
+## 自动格式化
+##  - 代码
+##  - markdown文档
+## 使用:
+#    - ./scripts/lint           校验
+#    - ./scripts/lint --fix     格式化
+#    - bash ./scripts/lint
+## 参考链接：
+##   - https://eslint.org/docs/latest/use/getting-started
+##   - https://github.com/igorshubovych/markdownlint-cli
+##
+
+# 设置 PATH 环境变量，避免command not found问题
+export PATH="$(pnpm bin):$PATH"
+
+# 是否fix
+fixed=${1}
+
+# ESLint格式化代码
+echo "step1: umi lint $fixed"
+umi lint $fixed .
+
+
