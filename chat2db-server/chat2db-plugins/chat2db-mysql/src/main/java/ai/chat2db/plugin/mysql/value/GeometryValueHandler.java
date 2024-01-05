@@ -66,4 +66,9 @@ public class GeometryValueHandler implements ValueHandler {
             return rs.getString(index);
         }
     }
+
+    @Override
+    public Object getObject(ResultSet rs, int index, boolean limitSize) throws SQLException {
+        return null;
+    }
 }

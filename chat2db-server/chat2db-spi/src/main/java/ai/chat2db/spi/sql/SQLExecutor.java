@@ -1,33 +1,11 @@
 package ai.chat2db.spi.sql;
 
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
 import ai.chat2db.server.tools.base.constant.EasyToolsConstant;
 import ai.chat2db.server.tools.base.enums.DataSourceTypeEnum;
 import ai.chat2db.server.tools.common.util.I18nUtils;
 import ai.chat2db.spi.ValueHandler;
 import ai.chat2db.spi.jdbc.DefaultValueHandler;
-import ai.chat2db.spi.model.Database;
-import ai.chat2db.spi.model.ExecuteResult;
-import ai.chat2db.spi.model.Header;
-import ai.chat2db.spi.model.Procedure;
-import ai.chat2db.spi.model.Schema;
-import ai.chat2db.spi.model.Table;
-import ai.chat2db.spi.model.TableColumn;
-import ai.chat2db.spi.model.TableIndex;
-import ai.chat2db.spi.model.TableIndexColumn;
-import ai.chat2db.spi.model.Type;
+import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.util.JdbcUtils;
 import ai.chat2db.spi.util.ResultSetUtils;
 import cn.hutool.core.date.TimeInterval;
@@ -38,6 +16,14 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.springframework.util.Assert;
+
+import java.sql.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Dbhub 统一数据库连接管理
@@ -154,6 +140,49 @@ public class SQLExecutor {
             throw new RuntimeException(e);
         }
     }
+
+    public void executeSqlObject(Connection connection, String sql, Consumer<List<Header>> headerConsumer,
+                           Consumer<List<Object>> rowConsumer, boolean limitSize, ValueHandler valueHandler) {
+        Assert.notNull(sql, "SQL must not be null");
+        log.info("execute:{}", sql);
+        try (Statement stmt = connection.createStatement();) {
+            boolean query = stmt.execute(sql);
+            // 代表是查询
+            if (query) {
+                ResultSet rs = null;
+                try {
+                    rs = stmt.getResultSet();
+                    // 获取有几列
+                    ResultSetMetaData resultSetMetaData = rs.getMetaData();
+                    int col = resultSetMetaData.getColumnCount();
+
+                    // 获取header信息
+                    List<Header> headerList = Lists.newArrayListWithExpectedSize(col);
+                    for (int i = 1; i <= col; i++) {
+                        headerList.add(Header.builder()
+                                .dataType(JdbcUtils.resolveDataType(
+                                        resultSetMetaData.getColumnTypeName(i), resultSetMetaData.getColumnType(i)).getCode())
+                                .name(ResultSetUtils.getColumnName(resultSetMetaData, i))
+                                .build());
+                    }
+                    headerConsumer.accept(headerList);
+
+                    while (rs.next()) {
+                        List<Object> row = Lists.newArrayListWithExpectedSize(col);
+                        for (int i = 1; i <= col; i++) {
+                            row.add(valueHandler.getObject(rs, i, limitSize));
+                        }
+                        rowConsumer.accept(row);
+                    }
+                } finally {
+                    JdbcUtils.closeResultSet(rs);
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
 
     /**
      * 执行sql

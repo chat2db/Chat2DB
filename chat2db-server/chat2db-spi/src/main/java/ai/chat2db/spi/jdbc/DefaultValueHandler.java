@@ -3,13 +3,13 @@ package ai.chat2db.spi.jdbc;
 import ai.chat2db.server.tools.common.util.I18nUtils;
 import ai.chat2db.spi.ValueHandler;
 import cn.hutool.core.io.unit.DataSizeUtil;
+import com.alibaba.druid.sql.ast.SQLExpr;
+import com.alibaba.druid.sql.ast.expr.*;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
-import java.sql.Blob;
-import java.sql.Clob;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
+import java.time.LocalDateTime;
 
 @Slf4j
 public class DefaultValueHandler implements ValueHandler {
@@ -41,6 +41,40 @@ public class DefaultValueHandler implements ValueHandler {
             log.warn("解析数失败:{},{}", index, obj, e);
             return obj.toString();
         }
+    }
+
+    @Override
+    public Object getObject(ResultSet rs, int index, boolean limitSize) throws SQLException {
+        Object obj = rs.getObject(index);
+        if (obj == null) {
+            return null;
+        }
+        SQLExpr sqlObject = null;
+        if (obj instanceof String) {
+            sqlObject = new SQLCharExpr((String) obj);
+        } else if (obj instanceof Integer) {
+            sqlObject = new SQLIntegerExpr((Integer) obj);
+        } else if (obj instanceof Long) {
+            sqlObject = new SQLBigIntExpr((Long) obj);
+        } else if (obj instanceof Double) {
+            sqlObject = new SQLNumberExpr((Double) obj);
+        } else if (obj instanceof Boolean) {
+            sqlObject = new SQLBooleanExpr((Boolean) obj);
+        } else if (obj instanceof LocalDateTime) {
+            LocalDateTime localDateTime = (LocalDateTime) obj;
+            sqlObject = new SQLTimestampExpr(localDateTime.toString());
+        } else if (obj instanceof Date) {
+            sqlObject = new SQLDateExpr(((Date) obj).toString());
+        } else if (obj instanceof Time) {
+            sqlObject = new SQLTimeExpr(((Time) obj).toString());
+        } else if (obj instanceof Timestamp) {
+            sqlObject = new SQLTimestampExpr(((Timestamp) obj).toString());
+        } else if (obj instanceof BigDecimal) {
+            sqlObject = new SQLNumberExpr((BigDecimal) obj);
+        } else {
+            sqlObject = new SQLCharExpr(obj.toString());
+        }
+        return sqlObject;
     }
 
     private String largeStringBlob(Blob blob, boolean limitSize) throws SQLException {
