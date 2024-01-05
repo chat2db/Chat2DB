@@ -229,7 +229,8 @@ public class SQLExecutor {
                     // 获取header信息
                     List<Header> headerList = Lists.newArrayListWithExpectedSize(col);
                     executeResult.setHeaderList(headerList);
-                    int chat2dbAutoRowIdIndex = -1;// chat2db自动生成的行分页ID
+                    // chat2db自动生成的行分页ID
+                    int chat2dbAutoRowIdIndex = -1;
 
                     boolean isMongoMap = false;
                     for (int i = 1; i <= col; i++) {
@@ -417,7 +418,7 @@ public class SQLExecutor {
             ResultSet resultSet = metadata.getTables(databaseName, schemaName, tableName,
                 types);
             // 如果connection为mysql
-            if ("MySQL".equalsIgnoreCase(metadata.getDatabaseProductName())) {
+            if (DataSourceTypeEnum.MYSQL.getCode().equalsIgnoreCase(metadata.getDatabaseProductName())) {
                 // 获取mysql表的comment
                 List<Table> tables = ResultSetUtils.toObjectList(resultSet, Table.class);
                 if (CollectionUtils.isNotEmpty(tables)) {
