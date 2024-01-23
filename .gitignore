@@ -1,4 +1,4 @@
-### STS ###
+### STS
 .apt_generated
 .classpath
 .factorypath
@@ -6,26 +6,62 @@
 .settings
 .springBeans
 
-### IntelliJ IDEA ###
+### IntelliJ IDEA
 .idea
 *.iws
 *.iml
 *.ipr
 .out
 
-### Visual Studio Code ###
+### Visual Studio Code
 package-lock.json
 
 ### Mac
 .DS_Store
-/chat2db-server/ali-dbhub-server-start/src/main/resources/static/front/*
-/chat2db-server/ali-dbhub-server-start/src/main/resources/thymeleaf
 
 ### docker 数据不用上传
 /docker/redis/data/*
 /docker/test/reds/*
 /docker/test/mongodb/*
-/chat2db-server/ali-dbhub-server-domain/ali-dbhub-server-domain-support/src/main/resources/lib/*
-/chat2db-server/ali-dbhub-server-domain/ali-dbhub-server-domain-support/lib/*
 /lib
 /out/*
+
+## chat2db-client
+*/node_modules/*
+*/.env.local
+/.umirc.local.ts
+/config/config.local.ts
+*/.umi
+*/.umi-production
+*/.umi-test
+*/dist
+*.swc
+*/yarn-error.log
+
+
+/chat2db-client/release
+/chat2db-client/static
+/chat2db-client/versions
+
+
+## chat2db-server
+
+/chat2db-server/target/
+/chat2db-server/rebel.xml
+/chat2db-server/rebel-remote.xml
+/chat2db-server/.gradle
+/chat2db-server/.flattened-pom.xml
+
+### NetBeans
+/chat2db-server/nbproject/private/
+/chat2db-server/build/
+/chat2db-server/nbbuild/
+/chat2db-server/dist/
+/chat2db-server/nbdist/
+
+/chat2db-server/chat2db-server-start/src/main/resources/static/front/
+/chat2db-server/chat2db-server-start/src/main/resources/thymeleaf/
+/chat2db-server/ali-dbhub-server-start/src/main/resources/static/front/*
+/chat2db-server/ali-dbhub-server-start/src/main/resources/thymeleaf
+/chat2db-server/ali-dbhub-server-domain/ali-dbhub-server-domain-support/src/main/resources/lib/*
+/chat2db-server/ali-dbhub-server-domain/ali-dbhub-server-domain-support/lib/*
