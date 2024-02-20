@@ -5,14 +5,16 @@ import { StoreApi } from 'zustand';
 
 import { initCopyFocusedContent, ICopyFocusedContent } from './copyFocusedContent';
 import { initComponentsContent, IComponentsContent } from './components';
+import { initAppTitleBarConfig, IAppTitleBarConfig } from './appTitleBarConfig';
 
-export type IStore = ICopyFocusedContent & IComponentsContent;
+export type IStore = ICopyFocusedContent & IComponentsContent & IAppTitleBarConfig;
 
 export const useCommonStore: UseBoundStoreWithEqualityFn<StoreApi<IStore>> = createWithEqualityFn(
   devtools(
     () => ({
       ...initCopyFocusedContent,
       ...initComponentsContent,
+      ...initAppTitleBarConfig
     }),
   ),
   shallow

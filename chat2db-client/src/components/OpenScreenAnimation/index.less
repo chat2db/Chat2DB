@@ -1,0 +1,48 @@
+.openScreenAnimation {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  // animation: disNone 0.666s 0.666s forwards;
+  background-color: var(--color-bg-base);
+  z-index: 100000;
+
+  .textImg{
+    line-height: 40px;
+    font-size: 45px;
+    font-weight: bold;
+    width: 200px;
+    height: 40px;
+    text-align: right;
+  }
+
+  .brandName{
+    width: 0;
+    display: flex;
+    justify-content: flex-end;
+    overflow: hidden;
+    animation: textAnimation 0.666s 0.333s ease-in-out forwards;
+  }
+}
+
+@keyframes textAnimation {
+  0% {
+    width: 0;
+  }
+  100% {
+    width: 200px;
+  }
+}
+
+@keyframes disNone {
+  0% {
+    display: flex;
+  }
+  100% {
+    display: none;
+  }
+}

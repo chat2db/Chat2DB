@@ -100,10 +100,13 @@ jobs:
       - name: Build FE Static
         run: |
           cd chat2db-client
-          yarn install --frozen-lockfile
+          yarn
           yarn run build:web:prod --app_version=99.0.${{ github.run_id }} --app_port=10822
           cp -r dist ../chat2db-server/chat2db-server-start/src/main/resources/static/front
           cp -r dist/index.html ../chat2db-server/chat2db-server-start/src/main/resources/thymeleaf/
+          cd src/main
+          yarn
+          yarn run build
 
       # 打包后端工程 & 发送到前端
       - name: Build BE Static

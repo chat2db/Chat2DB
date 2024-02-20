@@ -26,7 +26,7 @@ public class MysqlDBManage extends DefaultDBManage implements DBManage {
     @Override
     public void dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = "DROP TABLE "+ format(tableName);
-        SQLExecutor.getInstance().executeSql(connection,sql, resultSet -> null);
+        SQLExecutor.getInstance().execute(connection,sql, resultSet -> null);
     }
 
     public static String format(String tableName) {

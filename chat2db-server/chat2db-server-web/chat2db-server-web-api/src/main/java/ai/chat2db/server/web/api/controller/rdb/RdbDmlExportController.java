@@ -126,7 +126,7 @@ public class RdbDmlExportController {
                 .charset(StandardCharsets.UTF_8)
                 .excelType(ExcelTypeEnum.CSV);
             excelWrapper.setExcelWriterBuilder(excelWriterBuilder);
-            SQLExecutor.getInstance().executeSql(Chat2DBContext.getConnection(), sql, headerList -> {
+            SQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), sql, headerList -> {
                 excelWriterBuilder.head(
                     EasyCollectionUtils.toList(headerList, header -> Lists.newArrayList(header.getName())));
                 excelWrapper.setExcelWriter(excelWriterBuilder.build());
@@ -151,7 +151,7 @@ public class RdbDmlExportController {
 
         try (PrintWriter printWriter = response.getWriter()) {
             InsertWrapper insertWrapper = new InsertWrapper();
-            SQLExecutor.getInstance().executeSql(Chat2DBContext.getConnection(), sql,
+            SQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), sql,
                 headerList -> insertWrapper.setHeaderList(
                     EasyCollectionUtils.toList(headerList, header -> new SQLIdentifierExpr(header.getName())))
                 , dataList -> {

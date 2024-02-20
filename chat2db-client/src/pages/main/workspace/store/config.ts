@@ -4,6 +4,7 @@ export interface IConfigStore {
     panelLeft: boolean;
     panelLeftWidth: number;
     panelRight: boolean;
+    panelRightWidth: number;
   };
 }
 
@@ -12,6 +13,7 @@ export const initConfigStore: IConfigStore = {
     panelLeft: true,
     panelRight: true,
     panelLeftWidth: 220,
+    panelRightWidth: 300,
   },
 }
 
@@ -29,6 +31,24 @@ export const togglePanelLeft = () => {
     layout: {
       ...state.layout,
       panelLeft: !state.layout.panelLeft,
+    },
+  }))
+}
+
+export const setPanelLeftWidth = (width: number) => { 
+  return useWorkspaceStore.setState((state) => ({
+    layout: {
+      ...state.layout,
+      panelLeftWidth: width,
+    },
+  }))
+}
+
+export const setPanelRightWidth = (width: number) => { 
+  return useWorkspaceStore.setState((state) => ({
+    layout: {
+      ...state.layout,
+      panelRightWidth: width,
     },
   }))
 }

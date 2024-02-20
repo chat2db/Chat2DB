@@ -1,8 +1,8 @@
 @font-face {
   font-family: "iconfont"; /* Project id 3633546 */
-  src: url('iconfont.woff2?t=1703676613329') format('woff2'),
-       url('iconfont.woff?t=1703676613329') format('woff'),
-       url('iconfont.ttf?t=1703676613329') format('truetype');
+  src: url('iconfont.woff2?t=1704794525154') format('woff2'),
+       url('iconfont.woff?t=1704794525154') format('woff'),
+       url('iconfont.ttf?t=1704794525154') format('truetype');
 }
 
 .iconfont {
@@ -11,6 +11,46 @@
   font-style: normal;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.icon-right_on_5:before {
+  content: "\e672";
+}
+
+.icon-right_off_5-01:before {
+  content: "\e673";
+}
+
+.icon-a-left_on_huaban11:before {
+  content: "\e674";
+}
+
+.icon-a-left_off_huaban1:before {
+  content: "\e670";
+}
+
+.icon-minimize21:before {
+  content: "\e671";
+}
+
+.icon-restore_button2:before {
+  content: "\e66b";
+}
+
+.icon-resize_button2:before {
+  content: "\e66e";
+}
+
+.icon-close_button2:before {
+  content: "\e66f";
+}
+
+.icon-shaixuan:before {
+  content: "\e66a";
+}
+
+.icon-a-44tubiao-122:before {
+  content: "\e69a";
 }
 
 .icon-xinxi-xianxingyuankuang:before {

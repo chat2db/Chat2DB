@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const { spawn } = require('child_process');
 const { JAVA_APP_NAME, JAVA_PATH } = require('./constants');
 const path = require('path');
-const { readVersion } = require('./utils');
+const { readVersion, isLinux, isWin, isMac } = require('./utils');
 
 contextBridge.exposeInMainWorld('electronApi', {
   startServerForSpawn: async () => {
@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('electronApi', {
     console.log('productName:', productName, isTest);
 
     const child = spawn(path.join(__dirname, '../..', `./static/${JAVA_PATH}`), [
-        '-noverify',
+      '-noverify',
       `-Dspring.profiles.active=${isTest ? 'test' : 'release'}`,
       '-Dserver.address=127.0.0.1',
       '-Dchat2db.mode=DESKTOP',
@@ -54,5 +54,27 @@ contextBridge.exposeInMainWorld('electronApi', {
   },
   registerAppMenu: (menuProps) => {
     ipcRenderer.send('register-app-menu', menuProps);
+  },
+  setMaximize: () => {
+    ipcRenderer.send('set-maximize');
+  },
+  // 获取当前窗口是否是最大化
+  isMaximized: () => {
+    ipcRenderer.send('is-maximized');
+  },
+  closeWindow: () => {
+    ipcRenderer.send('close-window');
+  },
+  // 最小化窗口
+  minimizeWindow: () => {
+    ipcRenderer.send('minimize-window');
+  },
+  // 获取环境是mac还是windows还是linux
+  getPlatform: () => {
+    return {
+      isLinux,
+      isWin,
+      isMac,
+    };
   },
 });

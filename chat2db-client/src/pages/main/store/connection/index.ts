@@ -8,7 +8,6 @@ import connectionService from '@/service/connection';
 
 import { setCurrentConnectionDetails } from '@/pages/main/workspace/store/common';
 import { useWorkspaceStore } from '@/pages/main/workspace/store';
-import { getOpenConsoleList } from '@/pages/main/workspace/store/console';
 
 export interface IConnectionStore {
   connectionList: IConnectionListItem[] | null;
@@ -46,8 +45,6 @@ export const getConnectionList: () => Promise<IConnectionListItem[]> = () => {
         const connectionList = res?.data || [];
         useConnectionStore.setState({ connectionList });
         resolve(connectionList);
-        // 连接删除后需要更新下 consoleList
-        getOpenConsoleList();
 
         // 如果连接列表为空，则设置当前连接为空
         if (connectionList.length === 0) {

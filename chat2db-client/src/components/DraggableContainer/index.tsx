@@ -7,12 +7,12 @@ interface IProps {
   children: any; //TODO: TS，约定接受一个数组
   min?: number;
   layout?: 'row' | 'column';
-  callback?: (data: any) => void;
+  onResize?: (data: number) => void;
   showLine?: boolean;
 }
 
 export default memo<IProps>((props: IProps) => {
-  const { children, showLine = true, callback, min, className, layout = 'row' } = props;
+  const { children, showLine = true, onResize, min, className, layout = 'row' } = props;
   const volatileRef = children[0]?.ref || children[1]?.ref;
 
   const dividerRef = useRef<HTMLDivElement | null>(null);
@@ -58,7 +58,7 @@ export default memo<IProps>((props: IProps) => {
     } else {
       leftDom.style.height = finalXY + 'px';
     }
-    callback && callback(finalXY);
+    onResize && onResize(finalXY);
   };
 
   return (

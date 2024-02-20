@@ -275,7 +275,6 @@ public class DataSourceServiceImpl implements DataSourceService {
     public ActionResult close(Long id) {
         DataSourceCloseParam closeParam = new DataSourceCloseParam();
         closeParam.setDataSourceId(id);
-        SQLExecutor.getInstance().close();
         return ActionResult.isSuccess();
     }
 

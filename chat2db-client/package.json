@@ -7,7 +7,7 @@
     "url": "https://github.com/chat2db/Chat2DB"
   },
   "author": "fjy, hexi",
-  "main": "src/main/index.js",
+  "main": "src/main/main.js",
   "scripts": {
     "build": "npm run build:web && npm run build:main",
     "build:desktop": "npm run build:web:desktop && npm run build:main:prod",
@@ -33,7 +33,6 @@
     "copy-to-clipboard": "^3.3.3",
     "echarts": "^5.4.2",
     "echarts-for-react": "^3.0.2",
-    "electron-log": "^4.4.8",
     "event-source-polyfill": "^1.0.31",
     "highlight.js": "^11.9.0",
     "lodash": "^4.17.21",
@@ -41,7 +40,6 @@
     "monaco-editor": "^0.44.0",
     "monaco-editor-esm-webpack-plugin": "^2.1.0",
     "monaco-editor-webpack-plugin": "^7.0.1",
-    "node-machine-id": "^1.1.12",
     "react-monaco-editor": "^0.54.0",
     "react-sortablejs": "^6.1.4",
     "sql-formatter": "^13.0.4",
@@ -65,7 +63,6 @@
     "electron": "^22.3.0",
     "electron-builder": "^23.6.0",
     "electron-debug": "^3.2.0",
-    "electron-reload": "^2.0.0-alpha.1",
     "eslint": "^8.49.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^9.0.0",
@@ -98,14 +95,11 @@
     "asar": false,
     "files": [
       "dist/**/*",
-      "static/",
       "src/main",
+      "static/",
       "versions/**/*",
       "package.json",
-      "!node_modules/**/*",
-      "node_modules/uuid",
-      "node_modules/electron-log",
-      "node_modules/node-machine-id"
+      "!node_modules/**/*"
     ],
     "nsis": {
       "oneClick": false,

@@ -32,7 +32,7 @@ public class MongodbManage extends DefaultDBManage implements DBManage {
     @Override
     public void dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = " db. " + tableName + ".drop();";
-        SQLExecutor.getInstance().executeSql(connection, sql, resultSet -> null);
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
 
 }

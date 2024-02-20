@@ -16,17 +16,13 @@ import ai.chat2db.server.web.api.controller.ai.chat2db.client.Chat2dbAIClient;
 import ai.chat2db.server.web.api.controller.rdb.converter.RdbWebConverter;
 import ai.chat2db.server.web.api.controller.rdb.request.DmlRequest;
 import ai.chat2db.server.web.api.controller.rdb.vo.ExecuteResultVO;
-import ai.chat2db.server.web.api.http.GatewayClientService;
-import ai.chat2db.server.web.api.http.request.SqlExecuteHistoryCreateRequest;
 import ai.chat2db.server.web.api.util.ApplicationContextUtil;
 import ai.chat2db.spi.config.DriverConfig;
 import ai.chat2db.spi.model.ExecuteResult;
-import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 import java.util.Objects;
@@ -53,26 +49,12 @@ public class WsService {
     @Autowired
     private DlTemplateService dlTemplateService;
 
-    @Autowired
-    private GatewayClientService gatewayClientService;
-
-
     public static ExecutorService executorService = Executors.newFixedThreadPool(10);
 
     public ListResult<ExecuteResultVO> execute(DmlRequest request) {
         DlExecuteParam param = rdbWebConverter.request2param(request);
         ListResult<ExecuteResult> resultDTOListResult = dlTemplateService.execute(param);
         List<ExecuteResultVO> resultVOS = rdbWebConverter.dto2vo(resultDTOListResult.getData());
-        String type = Chat2DBContext.getConnectInfo().getDbType();
-        String clientId = getApiKey();
-        String sqlContent = request.getSql();
-        executorService.submit(() -> {
-            try {
-                addOperationLog(clientId, type, sqlContent, resultDTOListResult.getErrorMessage(), resultDTOListResult.getSuccess(), resultVOS);
-            } catch (Exception e) {
-                // do nothing
-            }
-        });
         return ListResult.of(resultVOS);
     }
 
@@ -141,21 +123,6 @@ public class WsService {
             return null;
         }
         return keyConfig.getContent();
-    }
-
-    private void addOperationLog(String clientId, String sqlType, String sqlContent, String errorMessage, Boolean isSuccess, List<ExecuteResultVO> executeResultVOS) {
-        SqlExecuteHistoryCreateRequest createRequest = new SqlExecuteHistoryCreateRequest();
-        createRequest.setClientId(clientId);
-        createRequest.setErrorMessage(errorMessage);
-        createRequest.setDatabaseType(sqlType);
-        createRequest.setSqlContent(sqlContent);
-        createRequest.setExecuteStatus(isSuccess ? "success" : "fail");
-        executeResultVOS.forEach(executeResultVO -> {
-            createRequest.setSqlType(executeResultVO.getSqlType());
-            createRequest.setDuration(executeResultVO.getDuration());
-            createRequest.setTableName(executeResultVO.getTableName());
-            gatewayClientService.addOperationLog(createRequest);
-        });
     }
 
 

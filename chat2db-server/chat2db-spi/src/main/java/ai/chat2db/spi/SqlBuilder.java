@@ -1,9 +1,6 @@
 package ai.chat2db.spi;
 
-import ai.chat2db.spi.model.Database;
-import ai.chat2db.spi.model.OrderBy;
-import ai.chat2db.spi.model.Schema;
-import ai.chat2db.spi.model.Table;
+import ai.chat2db.spi.model.*;
 
 import java.util.List;
 
@@ -42,6 +39,7 @@ public interface SqlBuilder {
 
     /**
      * Generate create database sql
+     *
      * @param database
      * @return
      */
@@ -49,7 +47,6 @@ public interface SqlBuilder {
 
 
     /**
-     *
      * @param oldDatabase
      * @param newDatabase
      * @return
@@ -58,7 +55,6 @@ public interface SqlBuilder {
 
 
     /**
-     *
      * @param schemaName
      * @return
      */
@@ -66,7 +62,6 @@ public interface SqlBuilder {
 
 
     /**
-     *
      * @param oldSchemaName
      * @param newSchemaName
      * @return
@@ -74,10 +69,16 @@ public interface SqlBuilder {
     String buildModifySchemaSql(String oldSchemaName, String newSchemaName);
 
     /**
-     *
      * @param originSql
      * @param orderByList
      * @return
      */
     String buildOrderBySql(String originSql, List<OrderBy> orderByList);
+
+
+    /**
+     * generate sql based on results
+     */
+    String generateSqlBasedOnResults(String tableName, List<Header> headerList, List<ResultOperation> operations);
+
 }

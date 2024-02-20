@@ -17,16 +17,16 @@ jobs:
             build_arg: "--win --x64"
           - os: macos-latest
             arch: x86_64
-            file_name: "https://oss.sqlgpt.cn/test/99.0.${{ github.run_id }}/Chat2DB-Test-99.0.${{ github.run_id }}-Test.dmg"
+            file_name: "https://download.sqlgpt.cn/test/99.0.${{ github.run_id }}/Chat2DB-Test-99.0.${{ github.run_id }}-Test.dmg"
             file_extension: ".dmg"
             build_arg: "--mac --x64"
           - os: macos-latest
             arch: arm64
-            file_name: "https://oss.sqlgpt.cn/test/99.0.${{ github.run_id }}/Chat2DB-Test-99.0.${{ github.run_id }}-Test-arm64.dmg"
+            file_name: "https://download.sqlgpt.cn/test/99.0.${{ github.run_id }}/Chat2DB-Test-99.0.${{ github.run_id }}-Test-arm64.dmg"
             file_extension: ".dmg"
             build_arg: "--mac --arm64"
           - os: ubuntu-latest
-            file_name: "https://oss.sqlgpt.cn/test/99.0.${{ github.run_id }}/Chat2DB-Test-99.0.${{ github.run_id }}-Test.AppImage"
+            file_name: "https://download.sqlgpt.cn/test/99.0.${{ github.run_id }}/Chat2DB-Test-99.0.${{ github.run_id }}-Test.AppImage"
             file_extension: ".AppImage"
             build_arg: "--linux"
     runs-on: ${{ matrix.os }}
@@ -100,10 +100,14 @@ jobs:
       - name: Build FE Static
         run: |
           cd chat2db-client
-          yarn install --frozen-lockfile
+          yarn
           yarn run build:web:prod --app_version=99.0.${{ github.run_id }} --app_port=10822
           cp -r dist ../chat2db-server/chat2db-server-start/src/main/resources/static/front
           cp -r dist/index.html ../chat2db-server/chat2db-server-start/src/main/resources/thymeleaf/
+          cd src/main
+          yarn
+          yarn run build
+
 
       # 打包后端工程 & 发送到前端
       - name: Build BE Static
@@ -188,6 +192,22 @@ jobs:
         run: |
           ossutil cp -rf --acl=public-read ./oss_temp_file/ oss://chat2db-client/test/99.0.${{ github.run_id }}/
 
+      # 配置SSH 待上传到服务器
+      - name: Install ssh key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_DOWNLOAD_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -t rsa ${{ secrets.SERVER_DOWNLOAD_HOST }} >> ~/.ssh/known_hosts
+          eval `ssh-agent -s`
+          ssh-add ~/.ssh/id_rsa     
+      # 上传到服务器
+      - name: Upload package
+        run: |
+          ssh -t ${{ secrets.SERVER_DOWNLOAD_USERNAME }}@${{ secrets.SERVER_DOWNLOAD_HOST }} "mkdir -p ${{ secrets.SERVER_DOWNLOAD_PATH }}/test//99.0.${{ github.run_id }}" 
+          scp ./oss_temp_file/* ${{ secrets.SERVER_DOWNLOAD_USERNAME }}@${{ secrets.SERVER_DOWNLOAD_HOST }}:${{ secrets.SERVER_DOWNLOAD_PATH }}/test//99.0.${{ github.run_id }}/ 
+              
+
       # 发送到DingTalk
       - name: Send dingtalk message
         uses: ghostoy/dingtalk-action@master
@@ -197,7 +217,7 @@ jobs:
           content: |
             {
               "title": "${{ matrix.os }}-test-打包完成通知",
-              "text": "# ${{ matrix.os }}-test-打包完成通知\n ![bang](https://oss.sqlgpt.cn/static/bang100.gif)\n ###  任务id：[${{ github.run_id }}](https://github.com/chat2db/Chat2DB/actions/runs/${{ github.run_id }})\n ### 下载地址：[${{matrix.file_name}}](${{matrix.file_name}})"
+              "text": "# ${{ matrix.os }}-test-打包完成通知\n !\n ###  任务id：[${{ github.run_id }}](https://github.com/chat2db/Chat2DB/actions/runs/${{ github.run_id }})\n ### 下载地址：[${{matrix.file_name}}](${{matrix.file_name}})"
             }
 
       # 发送Jar包地址到DingTalk
@@ -210,5 +230,5 @@ jobs:
           content: |
             {
               "title": "Jar-test-构建完成通知",
-              "text": "### jar包下载地址：[https://oss.sqlgpt.cn/test/99.0.${{ github.run_id }}/chat2db-server-start.zip](https://oss.sqlgpt.cn/test/99.0.${{ github.run_id }}/chat2db-server-start.zip) "
+              "text": "### jar包下载地址：[https://download.sqlgpt.cn/test/99.0.${{ github.run_id }}/chat2db-server-start.zip](https://download.sqlgpt.cn/test/99.0.${{ github.run_id }}/chat2db-server-start.zip) "
             }

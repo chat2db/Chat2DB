@@ -215,14 +215,5 @@ public class GatewayClientService {
 //        return result;
     }
 
-    public ActionResult addOperationLog(SqlExecuteHistoryCreateRequest request) {
-        ActionResult result = Forest.post(chat2dbProperties.getGateway().getBaseUrl() + "/api/client/sql/execute/history")
-                .connectTimeout(Duration.ofMillis(5000))
-                .readTimeout(Duration.ofMillis(10000))
-                .contentType("application/json")
-                .addBody(request)
-                .execute(new TypeReference<>() {
-                });
-        return result;
-    }
+
 }

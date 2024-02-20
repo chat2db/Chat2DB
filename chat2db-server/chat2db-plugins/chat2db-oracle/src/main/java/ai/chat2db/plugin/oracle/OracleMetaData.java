@@ -37,7 +37,7 @@ public class OracleMetaData extends DefaultMetaService implements MetaData {
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = String.format(TABLE_DDL_SQL, tableName, schemaName);
-        return SQLExecutor.getInstance().executeSql(connection, sql, resultSet -> {
+        return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             try {
                 if (resultSet.next()) {
                     return resultSet.getString("sql");

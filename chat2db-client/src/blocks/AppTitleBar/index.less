@@ -1,0 +1,54 @@
+@import '../../styles/var.less';
+
+.appTitleBar {
+  background-color: var(--color-bg-subtle);
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 30px;
+  .appTitleBarGlobal{
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0px 10px;
+    height: 100%;
+    .appName {
+      flex: 1;
+      text-align: start;
+      font-weight: bold;
+      padding-left: 6px;
+    }
+    .rightSlot,.leftSlot{
+      height: 100%;
+      display: flex;
+      align-items: center;
+      -webkit-app-region: no-drag;
+    }
+  }
+  .spacer {
+    width: 126px;
+    flex-shrink: 0;
+  }
+  .windowsCloseBar {
+    display: flex;
+    height: 100%;
+    flex-shrink: 0;
+    width: 126px;
+    -webkit-app-region: no-drag;
+    .windowsCloseBarItem {
+      width: 42px;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      &:hover {
+        background-color: var(--color-hover-bg);
+      }
+    }
+  }
+}

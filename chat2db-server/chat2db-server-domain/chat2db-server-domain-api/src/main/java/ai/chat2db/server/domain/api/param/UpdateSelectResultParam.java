@@ -1,6 +1,7 @@
 package ai.chat2db.server.domain.api.param;
 
 import ai.chat2db.spi.model.Header;
+import ai.chat2db.spi.model.ResultOperation;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -44,7 +45,7 @@ public class UpdateSelectResultParam {
      * 修改后数据的列表
      */
     @NotEmpty
-    private List<SelectResultOperation> operations;
+    private List<ResultOperation> operations;
 
 
     /**

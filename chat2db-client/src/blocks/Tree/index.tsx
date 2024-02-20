@@ -9,7 +9,7 @@ import { treeConfig, switchIcon, ITreeConfigItem } from './treeConfig';
 import { useCommonStore } from '@/store/common';
 import { setCurrentWorkspaceGlobalExtend } from '@/pages/main/workspace/store/common';
 import LoadingGracile from '@/components/Loading/LoadingGracile';
-import { setFocusId, useTreeStore } from './treeStore';
+import { setFocusId, setFocusTreeNode, useTreeStore, clearTreeStore } from './treeStore';
 import { useGetRightClickMenu } from './hooks/useGetRightClickMenu';
 import MenuLabel from '@/components/MenuLabel';
 import LoadingContent from '@/components/Loading/LoadingContent';
@@ -123,6 +123,13 @@ const Tree = (props: IProps) => {
   }, [scrollTop]);
 
   const top = itemHeight * startIdx; // 第一个渲染的 item 到顶部距离
+
+  // 清空treeStore
+  useEffect(() => {
+    return () => {
+      clearTreeStore();
+    }
+  }, [searchValue]);
 
   useEffect(() => {
     setTreeData(outerTreeData);
@@ -336,6 +343,14 @@ const TreeNode = memo((props: TreeNodeIProps) => {
       });
     }
     setFocusId(treeNodeData.uuid || '');
+
+    setFocusTreeNode({
+      dataSourceId: treeNodeData.extraParams!.dataSourceId,
+      dataSourceName: treeNodeData.extraParams!.dataSourceName,
+      databaseType: treeNodeData.extraParams!.databaseType,
+      databaseName: treeNodeData.extraParams?.databaseName,
+      schemaName: treeNodeData.extraParams?.schemaName,
+    });
   };
 
   // 双击节点

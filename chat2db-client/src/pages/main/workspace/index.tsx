@@ -1,7 +1,8 @@
-import React, { memo, useEffect, useRef } from 'react';
+import React, { memo, useCallback, useEffect, useRef } from 'react';
 import classnames from 'classnames';
 
 import { useWorkspaceStore } from '@/pages/main/workspace/store';
+import { setPanelLeftWidth } from '@/pages/main/workspace/store/config';
 
 import DraggableContainer from '@/components/DraggableContainer';
 import WorkspaceLeft from './components/WorkspaceLeft';
@@ -23,15 +24,19 @@ const workspacePage = memo(() => {
 
   // 编辑器的主题
   useMonacoTheme();
-  // 快捷键
 
+  // 快捷键
   useEffect(() => {
     shortcutKeyCreateConsole();
   }, []);
 
+  const draggableContainerResize = useCallback((data: number) => {
+    setPanelLeftWidth(data);
+  }, []);
+
   return (
     <div className={styles.workspace}>
-      <DraggableContainer className={styles.workspaceMain}>
+      <DraggableContainer className={styles.workspaceMain} onResize={draggableContainerResize}>
         <div
           ref={draggableRef}
           style={{ '--panel-left-width': `${panelLeftWidth}px` } as any}

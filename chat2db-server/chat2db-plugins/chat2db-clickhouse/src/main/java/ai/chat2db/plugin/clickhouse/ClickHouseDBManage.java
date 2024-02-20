@@ -8,8 +8,6 @@ import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
 import org.apache.commons.lang3.StringUtils;
 
-import javax.net.ssl.HostnameVerifier;
-
 public class ClickHouseDBManage extends DefaultDBManage implements DBManage {
 
     @Override
@@ -41,7 +39,7 @@ public class ClickHouseDBManage extends DefaultDBManage implements DBManage {
     @Override
     public void dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = "DROP TABLE IF EXISTS " + databaseName + "." + tableName;
-        SQLExecutor.getInstance().executeSql(connection, sql, resultSet -> null);
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
 
 

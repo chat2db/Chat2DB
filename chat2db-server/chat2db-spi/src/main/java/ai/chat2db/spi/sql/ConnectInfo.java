@@ -522,4 +522,30 @@ public class ConnectInfo {
     public void setSchemaName(String schemaName) {
         this.schemaName = schemaName;
     }
+
+    public ConnectInfo copy(){
+        ConnectInfo copy = new ConnectInfo();
+        copy.setDbVersion(this.getDbVersion());
+        copy.setDbType(this.getDbType());
+        copy.setHost(this.getHost());
+        copy.setPort(this.getPort());
+        copy.setDatabaseName(this.getDatabaseName());
+        copy.setSchemaName(this.getSchemaName());
+        copy.setUser(this.getUser());
+        copy.setPassword(this.getPassword());
+        copy.setUrl(this.getUrl());
+        copy.setAlias(this.getAlias());
+        copy.setDataSourceId(this.getDataSourceId());
+        copy.setConsoleId(this.getConsoleId());
+        copy.setConsoleOwn(this.getConsoleOwn());
+        copy.setDriver(this.getDriver());
+        copy.setSsh(this.getSsh());
+        copy.setSsl(this.getSsl());
+        copy.setJdbc(this.getJdbc());
+        copy.setExtendInfo(this.getExtendInfo());
+        copy.setDriverConfig(this.getDriverConfig());
+        copy.setSid(this.getSid());
+        copy.setUrlWithOutDatabase(this.getUrlWithOutDatabase());
+        return copy;
+    }
 }

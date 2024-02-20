@@ -35,7 +35,7 @@ public class DMMetaData extends DefaultMetaService implements MetaData {
             "select dbms_metadata.get_ddl(%s, %s, %s) AS \"sql\" from dual",
             SqlUtils.formatSQLString("TABLE"), SqlUtils.formatSQLString(tableName),
             SqlUtils.formatSQLString(schemaName));
-        return SQLExecutor.getInstance().executeSql(connection, selectObjectDDLSQL, resultSet -> {
+        return SQLExecutor.getInstance().execute(connection, selectObjectDDLSQL, resultSet -> {
             try {
                 if (resultSet.next()) {
                     return resultSet.getString("sql");

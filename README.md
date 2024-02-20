@@ -28,7 +28,7 @@ Languages： English | [中文](README_CN.md)
 Official website：[Chat2DB](https://sqlgpt.cn/en)
 
 <div style="display: flex; align-items: center;">
-  If you find Chat2DB helpful, please help<a style="display: flex; align-items: center;margin:0px 6px" target="_blank" href='https://github.com/chat2db/Chat2db'><img src="https://img.shields.io/github/stars/chat2db/Chat2DB.svg?style=flat-square&label=Stars&logo=github" alt="github star"/></a>Click ⭐ Star and Fork in the top right corner, and your support is the biggest motivation for Chat2DB to get bette
+  If you find Chat2DB helpful, please help<a style="display: flex; align-items: center;margin:0px 6px" target="_blank" href='https://github.com/chat2db/Chat2db'><img src="https://img.shields.io/github/stars/chat2db/Chat2DB.svg?style=flat-square&label=Stars&logo=github" alt="github star"/></a>Click ⭐ Star and Fork in the top right corner, and your support is the biggest motivation for Chat2DB to get better
 </div>
 
 </div>

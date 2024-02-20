@@ -28,6 +28,15 @@ declare global {
       setBaseURL: (baseUrl: string) => void;
       registerAppMenu: (data: any) => void;
       setForceQuitCode: (code: boolean) => void;
+      setMaximize: () => void;
+      getPlatform: () => {
+        isLinux: boolean,
+        isWin: boolean,
+        isMac: boolean,
+      };
+      minimizeWindow: () => void;
+      closeWindow: () => void;
+      isMaximized: () => boolean;
     };
   }
   const __APP_VERSION__: string;

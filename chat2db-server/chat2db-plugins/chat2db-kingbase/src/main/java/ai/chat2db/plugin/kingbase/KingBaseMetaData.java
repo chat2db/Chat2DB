@@ -9,7 +9,6 @@ import ai.chat2db.spi.SqlBuilder;
 import ai.chat2db.spi.jdbc.DefaultMetaService;
 import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.sql.Chat2DBContext;
-import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
 import com.google.common.collect.Lists;
 import jakarta.validation.constraints.NotEmpty;
@@ -33,7 +32,7 @@ public class KingBaseMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public List<Database> databases(Connection connection) {
-        List<Database> list = SQLExecutor.getInstance().executeSql(connection, "SELECT datname FROM sys_database", resultSet -> {
+        List<Database> list = SQLExecutor.getInstance().execute(connection, "SELECT datname FROM sys_database", resultSet -> {
             List<Database> databases = new ArrayList<>();
             try {
                 while (resultSet.next()) {

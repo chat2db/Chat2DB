@@ -32,7 +32,7 @@ const useMultipleSelect = (props: {
       if (event.keyCode === 16) {
         isShiftDownRef.current = true;
       }
-      if (event.keyCode === 91) {
+      if (event.keyCode === 91 || event.keyCode === 17) {
         isCmdDownRef.current = true;
       }
     };

@@ -5,6 +5,8 @@
 /src/.umi
 /src/.umi-production
 /src/.umi-test
+/src/main/node_modules
+/src/main/dist
 /dist
 .swc
 ./yarn-error.log

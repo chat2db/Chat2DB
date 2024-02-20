@@ -6,31 +6,31 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import ai.chat2db.server.tools.base.constant.EasyToolsConstant;
 import ai.chat2db.server.tools.base.enums.DataSourceTypeEnum;
+import ai.chat2db.server.tools.base.excption.BusinessException;
+import ai.chat2db.server.tools.common.util.EasyCollectionUtils;
 import ai.chat2db.server.tools.common.util.I18nUtils;
+import ai.chat2db.spi.CommandExecutor;
 import ai.chat2db.spi.ValueHandler;
+import ai.chat2db.spi.enums.DataTypeEnum;
+import ai.chat2db.spi.enums.SqlTypeEnum;
 import ai.chat2db.spi.jdbc.DefaultValueHandler;
-import ai.chat2db.spi.model.Database;
-import ai.chat2db.spi.model.ExecuteResult;
-import ai.chat2db.spi.model.Header;
-import ai.chat2db.spi.model.Procedure;
-import ai.chat2db.spi.model.Schema;
-import ai.chat2db.spi.model.Table;
-import ai.chat2db.spi.model.TableColumn;
-import ai.chat2db.spi.model.TableIndex;
-import ai.chat2db.spi.model.TableIndexColumn;
-import ai.chat2db.spi.model.Type;
+import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.util.JdbcUtils;
 import ai.chat2db.spi.util.ResultSetUtils;
+import ai.chat2db.spi.util.SqlUtils;
 import cn.hutool.core.date.TimeInterval;
+import com.alibaba.druid.DbType;
+import com.alibaba.druid.sql.SQLUtils;
+import com.alibaba.druid.sql.ast.SQLStatement;
+import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
+import com.alibaba.druid.sql.parser.ParserException;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import lombok.extern.slf4j.Slf4j;
@@ -45,54 +45,22 @@ import org.springframework.util.Assert;
  * @author jipengfei
  */
 @Slf4j
-public class SQLExecutor {
+public class SQLExecutor implements CommandExecutor {
+
     /**
-     * 全局单例
+     * Singleton instance of SQLExecutor.
      */
     private static final SQLExecutor INSTANCE = new SQLExecutor();
 
-    private SQLExecutor() {
+    public SQLExecutor() {
     }
 
     public static SQLExecutor getInstance() {
         return INSTANCE;
     }
 
-    public void close() {
-    }
-
-    /**
-     * 执行sql
-     *
-     * @param connection
-     * @param sql
-     * @param function
-     * @return
-     */
-
-    public <R> R executeSql(Connection connection, String sql, Function<ResultSet, R> function) {
-        if (StringUtils.isBlank(sql)) {
-            return null;
-        }
-        log.info("execute:{}", sql);
-        try (Statement stmt = connection.createStatement();) {
-            boolean query = stmt.execute(sql);
-            // 代表是查询
-            if (query) {
-                try (ResultSet rs = stmt.getResultSet();) {
-                    return function.apply(rs);
-                }
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        return null;
-    }
 
     public <R> R execute(Connection connection, String sql, ResultSetFunction<R> function) {
-        if (StringUtils.isBlank(sql)) {
-            return null;
-        }
         log.info("execute:{}", sql);
         try (Statement stmt = connection.createStatement();) {
             boolean query = stmt.execute(sql);
@@ -108,13 +76,13 @@ public class SQLExecutor {
         return null;
     }
 
-    public void executeSql(Connection connection, String sql, Consumer<List<Header>> headerConsumer,
-        Consumer<List<String>> rowConsumer, ValueHandler valueHandler) {
-        executeSql(connection, sql, headerConsumer, rowConsumer, true, valueHandler);
+    public void execute(Connection connection, String sql, Consumer<List<Header>> headerConsumer,
+                        Consumer<List<String>> rowConsumer, ValueHandler valueHandler) {
+        execute(connection, sql, headerConsumer, rowConsumer, true, valueHandler);
     }
 
-    public void executeSql(Connection connection, String sql, Consumer<List<Header>> headerConsumer,
-        Consumer<List<String>> rowConsumer, boolean limitSize, ValueHandler valueHandler) {
+    public void execute(Connection connection, String sql, Consumer<List<Header>> headerConsumer,
+                        Consumer<List<String>> rowConsumer, boolean limitSize, ValueHandler valueHandler) {
         Assert.notNull(sql, "SQL must not be null");
         log.info("execute:{}", sql);
         try (Statement stmt = connection.createStatement();) {
@@ -167,7 +135,8 @@ public class SQLExecutor {
         return execute(sql, connection, true, null, null, valueHandler);
     }
 
-    public ExecuteResult executeUpdate(final String sql, Connection connection, int n)
+    @Override
+    public ExecuteResult executeUpdate(String sql, Connection connection, int n)
         throws SQLException {
         Assert.notNull(sql, "SQL must not be null");
         log.info("execute:{}", sql);
@@ -186,16 +155,17 @@ public class SQLExecutor {
         return executeResult;
     }
 
+
     /**
-     * 执行sql
-     *
-     * @param sql
-     * @param connection
-     * @param limitRowSize
-     * @param offset
-     * @param count
-     * @return
-     * @throws SQLException
+     * Executes the given SQL query using the provided connection.
+     * @param sql The SQL query to be executed.
+     * @param connection The database connection to use for the query.
+     * @param limitRowSize Flag to indicate if row size should be limited.
+     * @param offset The starting point of rows to fetch in the result set.
+     * @param count The number of rows to fetch from the result set.
+     * @param valueHandler Handles the processing of the result set values.
+     * @return ExecuteResult containing the result of the execution.
+     * @throws SQLException If there is any SQL related error.
      */
     public ExecuteResult execute(final String sql, Connection connection, boolean limitRowSize, Integer offset,
         Integer count, ValueHandler valueHandler)
@@ -207,9 +177,9 @@ public class SQLExecutor {
         ExecuteResult executeResult = ExecuteResult.builder().sql(sql).success(Boolean.TRUE).build();
         try (Statement stmt = connection.createStatement()) {
             stmt.setFetchSize(EasyToolsConstant.MAX_PAGE_SIZE);
-            if (!DataSourceTypeEnum.MONGODB.getCode().equals(type)) {
-                stmt.setQueryTimeout(30);
-            }
+//            if (!DataSourceTypeEnum.MONGODB.getCode().equals(type)) {
+//                stmt.setQueryTimeout(30);
+//            }
             if (offset != null && count != null) {
                 stmt.setMaxRows(offset + count);
             }
@@ -562,4 +532,143 @@ public class SQLExecutor {
         return "";
     }
 
+    @Override
+    public List<ExecuteResult> execute(Command command) {
+        // 解析sql
+        String type = Chat2DBContext.getConnectInfo().getDbType();
+        DbType dbType = JdbcUtils.parse2DruidDbType(type);
+//        if ("SQLSERVER".equalsIgnoreCase(type)) {
+//            RemoveSpecialGO(param);
+//        }
+
+        List<String> sqlList = SqlUtils.parse(command.getScript(), dbType);
+
+        if (CollectionUtils.isEmpty(sqlList)) {
+            throw new BusinessException("dataSource.sqlAnalysisError");
+        }
+        List<ExecuteResult> result = new ArrayList<>();
+        // 执行sql
+        for (String originalSql : sqlList) {
+            ExecuteResult executeResult = executeSQL(originalSql, dbType, command);
+            result.add(executeResult);
+        }
+        return result;
+    }
+
+    private ExecuteResult executeSQL(String originalSql, DbType dbType, Command param) {
+        int pageNo = 1;
+        int pageSize = 0;
+        Integer offset = null;
+        Integer count = null;
+        String sqlType = SqlTypeEnum.UNKNOWN.getCode();
+        // 解析sql
+        String type = Chat2DBContext.getConnectInfo().getDbType();
+        boolean supportDruid = !DataSourceTypeEnum.MONGODB.getCode().equals(type);
+        // 解析sql分页
+        SQLStatement sqlStatement = null;
+        if (supportDruid) {
+            try {
+                sqlStatement = SQLUtils.parseSingleStatement(originalSql, dbType);
+            } catch (ParserException e) {
+                log.warn("解析sql失败:{}", originalSql, e);
+            }
+        }
+
+        // Mongodb is currently unable to recognize it, so every time a page is transmitted
+        if (!supportDruid || (sqlStatement instanceof SQLSelectStatement)) {
+            pageNo = Optional.ofNullable(param.getPageNo()).orElse(1);
+            pageSize = Optional.ofNullable(param.getPageSize()).orElse(EasyToolsConstant.MAX_PAGE_SIZE);
+            offset = (pageNo - 1) * pageSize;
+            count = pageSize;
+            sqlType = SqlTypeEnum.SELECT.getCode();
+        }
+
+        ExecuteResult executeResult = null;
+        if (SqlTypeEnum.SELECT.getCode().equals(sqlType) && !SqlUtils.hasPageLimit(originalSql, dbType)) {
+            String pageLimit = Chat2DBContext.getSqlBuilder().pageLimit(originalSql, offset, pageNo, pageSize);
+            if (StringUtils.isNotBlank(pageLimit)) {
+                executeResult = execute(pageLimit, 0, count);
+            }
+        }
+        if (executeResult == null || !executeResult.getSuccess()) {
+            executeResult = execute(originalSql, offset, count);
+        }
+
+        executeResult.setSqlType(sqlType);
+        executeResult.setOriginalSql(originalSql);
+
+        boolean supportJsqlParser = !DataSourceTypeEnum.MONGODB.getCode().equals(type);
+        if (supportJsqlParser) {
+            try {
+                SqlUtils.buildCanEditResult(originalSql, dbType, executeResult);
+            } catch (Exception e) {
+                log.warn("buildCanEditResult error", e);
+            }
+        }
+
+        if (SqlTypeEnum.SELECT.getCode().equals(sqlType)) {
+            executeResult.setPageNo(pageNo);
+            executeResult.setPageSize(pageSize);
+            executeResult.setHasNextPage(
+                    CollectionUtils.size(executeResult.getDataList()) >= executeResult.getPageSize());
+        } else {
+            executeResult.setPageNo(pageNo);
+            executeResult.setPageSize(CollectionUtils.size(executeResult.getDataList()));
+            executeResult.setHasNextPage(Boolean.FALSE);
+        }
+
+        List<Header> headers = executeResult.getHeaderList();
+//        if (executeResult.getSuccess() && executeResult.isCanEdit() && CollectionUtils.isNotEmpty(headers)) {
+//            headers = setColumnInfo(headers, executeResult.getTableName(), param.getSchemaName(),
+//                    param.getDatabaseName());
+//        }
+        Header rowNumberHeader = Header.builder()
+                .name(I18nUtils.getMessage("sqlResult.rowNumber"))
+                .dataType(DataTypeEnum.CHAT2DB_ROW_NUMBER
+                        .getCode()).build();
+
+        executeResult.setHeaderList(EasyCollectionUtils.union(Arrays.asList(rowNumberHeader), headers));
+        if (executeResult.getDataList() != null) {
+            int rowNumberIncrement = 1 + Math.max(pageNo - 1, 0) * pageSize;
+            for (int i = 0; i < executeResult.getDataList().size(); i++) {
+                List<String> row = executeResult.getDataList().get(i);
+                List<String> newRow = Lists.newArrayListWithExpectedSize(row.size() + 1);
+                newRow.add(Integer.toString(i + rowNumberIncrement));
+                newRow.addAll(row);
+                executeResult.getDataList().set(i, newRow);
+            }
+        }
+        //  Total number of fuzzy rows
+        executeResult.setFuzzyTotal(calculateFuzzyTotal(pageNo, pageSize, executeResult));
+        return executeResult;
+    }
+
+    private String calculateFuzzyTotal(int pageNo, int pageSize, ExecuteResult executeResult) {
+        int dataSize = CollectionUtils.size(executeResult.getDataList());
+        if (pageSize <= 0) {
+            return Integer.toString(dataSize);
+        }
+        int fuzzyTotal = Math.max(pageNo - 1, 0) * pageSize + dataSize;
+        if (dataSize < pageSize) {
+            return Integer.toString(fuzzyTotal);
+        }
+        return Integer.toString(fuzzyTotal) + "+";
+    }
+
+    private ExecuteResult execute(String sql, Integer offset, Integer count) {
+        ExecuteResult executeResult;
+        try {
+            ValueHandler valueHandler = Chat2DBContext.getMetaData().getValueHandler();
+            executeResult = SQLExecutor.getInstance().execute(sql, Chat2DBContext.getConnection(), true, offset, count,
+                    valueHandler);
+        } catch (SQLException e) {
+            log.warn("执行sql:{}异常", sql, e);
+            executeResult = ExecuteResult.builder()
+                    .sql(sql)
+                    .success(Boolean.FALSE)
+                    .message(e.getMessage())
+                    .build();
+        }
+        return executeResult;
+    }
 }

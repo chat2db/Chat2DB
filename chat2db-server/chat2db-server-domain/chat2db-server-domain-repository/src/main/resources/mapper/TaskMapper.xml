@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="ai.chat2db.server.domain.repository.mapper.TaskMapper">
+
+    <select id="pageQuery" resultType="ai.chat2db.server.domain.repository.entity.TaskDO">
+        select ID,GMT_CREATE,GMT_MODIFIED,
+               DATA_SOURCE_ID,DATABASE_NAME,SCHEMA_NAME,TABLE_NAME,DELETED,USER_ID,TASK_TYPE,TASK_STATUS,
+        from TASK
+        <where>
+            <if test="dataSourceId != null ">
+                and DATA_SOURCE_ID = #{dataSourceId}
+            </if>
+            <if test="databaseName != null and databaseName != '' ">
+                and DATABASE_NAME = #{databaseName}
+            </if>
+            <if test="tableName != null and tableName != '' ">
+                and TABLE_NAME = #{tableName}
+            </if>
+            <if test="schemaName != null and schemaName != '' ">
+                and SCHEMA_NAME = #{schemaName}
+            </if>
+            <if test="userId != null ">
+                and USER_ID = #{userId}
+            </if>
+            <if test="taskType != null and taskType != '' ">
+                and TASK_TYPE = #{taskType}
+            </if>
+            <if test="taskStatus != null and taskStatus != '' ">
+                and TASK_STATUS = #{taskStatus}
+            </if>
+            <if test="deleted != null ">
+                and DELETED = #{deleted}
+            </if>
+        </where>
+    </select>
+</mapper>

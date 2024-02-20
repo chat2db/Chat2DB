@@ -136,6 +136,6 @@ public class DefaultDBManage implements DBManage {
     @Override
     public void dropTable(Connection connection,String databaseName, String schemaName, String tableName) {
         String sql = "DROP TABLE "+ tableName ;
-        SQLExecutor.getInstance().executeSql(connection,sql, resultSet -> null);
+        SQLExecutor.getInstance().execute(connection,sql, resultSet -> null);
     }
 }

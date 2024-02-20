@@ -1,8 +1,12 @@
 const { DEV_WEB_URL } = require('./constants');
 const path = require('path');
 const url = require('url');
-const { version } = require('os');
 const fs = require('fs');
+
+const isLinux = process.platform == 'linux';
+const isWin = process.platform == 'win32';
+const isMac = process.platform == 'darwin';
+const isProd = process.env.NODE_ENV == 'production';
 
 /**
  * 加载主进程前端资源
@@ -13,7 +17,7 @@ function loadMainResource(mainWindow) {
     mainWindow.loadURL(DEV_WEB_URL);
     mainWindow.webContents.openDevTools();
     // 监听应用程序根路径下的所有文件，当文件发生修改时，自动刷新应用程序
-    require('electron-reload')(path.join(__dirname, '..'));
+    // require('electron-reload')(path.join(__dirname, '..'));
   } else {
     mainWindow.loadURL(
       url.format({
@@ -27,7 +31,7 @@ function loadMainResource(mainWindow) {
 
 /**
  * 应该读取哪个版本的资源
- * @param {*} 
+ * @param {*}
  */
 function readVersion() {
   let version = '';
@@ -39,5 +43,9 @@ function readVersion() {
 
 module.exports = {
   loadMainResource,
-  readVersion
+  readVersion,
+  isLinux,
+  isWin,
+  isMac,
+  isProd,
 };

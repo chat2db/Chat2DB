@@ -13,7 +13,6 @@ import ai.chat2db.plugin.db2.type.DB2IndexTypeEnum;
 import ai.chat2db.spi.MetaData;
 import ai.chat2db.spi.SqlBuilder;
 import ai.chat2db.spi.jdbc.DefaultMetaService;
-import ai.chat2db.spi.jdbc.DefaultSqlBuilder;
 import ai.chat2db.spi.model.Schema;
 import ai.chat2db.spi.model.TableIndex;
 import ai.chat2db.spi.model.TableIndexColumn;
@@ -63,14 +62,14 @@ public class DB2MetaData extends DefaultMetaService implements MetaData {
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         try {
-            SQLExecutor.getInstance().executeSql(connection, functionSQL.replace("tableSchema", schemaName), resultSet -> null);
+            SQLExecutor.getInstance().execute(connection, functionSQL.replace("tableSchema", schemaName), resultSet -> null);
         } catch (Exception e) {
             //log.error("创建函数失败", e);
         }
 
         String ddlSql = "SELECT " + schemaName + ".ufn_GetCreateTableScript('" + schemaName + "', '" + tableName
                 + "') AS sql";
-        return SQLExecutor.getInstance().executeSql(connection, ddlSql, resultSet -> {
+        return SQLExecutor.getInstance().execute(connection, ddlSql, resultSet -> {
             try {
                 if (resultSet.next()) {
                     return resultSet.getString("sql");

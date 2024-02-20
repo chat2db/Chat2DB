@@ -24,7 +24,6 @@ public class ConsoleServiceImpl implements ConsoleService {
 
     @Override
     public ActionResult closeConsole(ConsoleCloseParam param) {
-        SQLExecutor.getInstance().close();
         return ActionResult.isSuccess();
     }
 

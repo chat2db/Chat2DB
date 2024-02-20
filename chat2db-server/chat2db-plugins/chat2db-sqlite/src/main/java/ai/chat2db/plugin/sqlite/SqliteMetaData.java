@@ -25,7 +25,7 @@ public class SqliteMetaData extends DefaultMetaService implements MetaData {
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name='" + tableName + "'";
-        return SQLExecutor.getInstance().executeSql(connection,sql, resultSet -> {
+        return SQLExecutor.getInstance().execute(connection,sql, resultSet -> {
             try {
                 if (resultSet.next()) {
                     return resultSet.getString("sql");

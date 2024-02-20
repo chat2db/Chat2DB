@@ -201,8 +201,6 @@ public interface MetaData {
     /**
      * Get meta data name.
      *
-     * @param names
-     * @return
      */
     String getMetaDataName(String ...names);
 
@@ -210,8 +208,12 @@ public interface MetaData {
     /**
      * Get column builder.
      *
-     * @return
      */
     ValueHandler getValueHandler();
 
+
+    /**
+     * Get command executor.
+     */
+    CommandExecutor getCommandExecutor();
 }

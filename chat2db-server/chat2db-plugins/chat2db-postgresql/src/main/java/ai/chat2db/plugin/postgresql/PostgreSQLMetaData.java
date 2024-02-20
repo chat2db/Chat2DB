@@ -30,7 +30,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
     private List<String> systemDatabases = Arrays.asList("postgres");
     @Override
     public List<Database> databases(Connection connection) {
-        List<Database> list = SQLExecutor.getInstance().executeSql(connection, "SELECT datname FROM pg_database;", resultSet -> {
+        List<Database> list = SQLExecutor.getInstance().execute(connection, "SELECT datname FROM pg_database;", resultSet -> {
             List<Database> databases = new ArrayList<>();
             try {
                 while (resultSet.next()) {
@@ -102,10 +102,10 @@ public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        SQLExecutor.getInstance().executeSql(connection, FUNCTION_SQL.replaceFirst("tableSchema", schemaName),
+        SQLExecutor.getInstance().execute(connection, FUNCTION_SQL.replaceFirst("tableSchema", schemaName),
                 resultSet -> null);
         String ddlSql = "select showcreatetable('" + schemaName + "','" + tableName + "') as sql";
-        return SQLExecutor.getInstance().executeSql(connection, ddlSql, resultSet -> {
+        return SQLExecutor.getInstance().execute(connection, ddlSql, resultSet -> {
             try {
                 if (resultSet.next()) {
                     return resultSet.getString("sql");

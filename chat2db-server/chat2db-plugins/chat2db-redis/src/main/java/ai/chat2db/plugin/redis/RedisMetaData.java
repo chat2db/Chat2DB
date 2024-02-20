@@ -17,7 +17,7 @@ public class RedisMetaData extends DefaultMetaService implements MetaData {
     @Override
     public List<Database> databases(Connection connection) {
         List<Database> databases = new ArrayList<>();
-        return SQLExecutor.getInstance().executeSql(connection,"config get databases", resultSet -> {
+        return SQLExecutor.getInstance().execute(connection,"config get databases", resultSet -> {
             try {
                 if (resultSet.next()) {
                     Object count = resultSet.getObject(2);
@@ -37,7 +37,7 @@ public class RedisMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public List<Table> tables(Connection connection, String databaseName, String schemaName, String tableName) {
-        return SQLExecutor.getInstance().executeSql(connection,"scan 0 MATCH * COUNT 1000", resultSet -> {
+        return SQLExecutor.getInstance().execute(connection,"scan 0 MATCH * COUNT 1000", resultSet -> {
             List<Table> tables = new ArrayList<>();
             try {
                 while (resultSet.next()) {

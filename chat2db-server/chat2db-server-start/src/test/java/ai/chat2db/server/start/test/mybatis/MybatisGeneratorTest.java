@@ -14,8 +14,10 @@ import com.baomidou.mybatisplus.generator.config.converts.MySqlTypeConvert;
 import com.baomidou.mybatisplus.generator.config.rules.DateType;
 import com.baomidou.mybatisplus.generator.engine.FreemarkerTemplateEngine;
 import com.google.common.collect.Lists;
+import com.zaxxer.hikari.HikariDataSource;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -30,12 +32,30 @@ public class MybatisGeneratorTest extends BaseTest {
 
     @Test
     public void coreGenerator() {
+
+        HikariDataSource dataSource = new HikariDataSource();
+        String environment = StringUtils.defaultString(System.getProperty("spring.profiles.active"), "dev");
+        if ("dev".equalsIgnoreCase(environment)) {
+            dataSource.setJdbcUrl("jdbc:h2:file:~/.chat2db/db/chat2db_dev;MODE=MYSQL");
+        }else if ("test".equalsIgnoreCase(environment)) {
+            dataSource.setJdbcUrl("jdbc:h2:file:~/.chat2db/db/chat2db_test;MODE=MYSQL");
+        }else {
+            dataSource.setJdbcUrl("jdbc:h2:~/.chat2db/db/chat2db;MODE=MYSQL;FILE_LOCK=NO");
+        }
+        dataSource.setDriverClassName("org.h2.Driver");
+        dataSource.setIdleTimeout(60000);
+        dataSource.setAutoCommit(true);
+        dataSource.setMaximumPoolSize(500);
+        dataSource.setMinimumIdle(1);
+        dataSource.setMaxLifetime(60000 * 10);
+        dataSource.setConnectionTestQuery("SELECT 1");
+        this.dataSource = dataSource;
         //doGenerator(Lists.newArrayList("data_source"));
         //doGenerator(Lists.newArrayList("operation_log"));
         //doGenerator(Lists.newArrayList("operation_saved"));
         //doGenerator(Lists.newArrayList("environment","data_source","team","team_dbhub_user","data_source_access",
         // "dbhub_user"));
-        doGenerator(Lists.newArrayList("operation_log"));
+        doGenerator(Lists.newArrayList("TASK"));
     }
 
     private void doGenerator(List<String> tableList) {

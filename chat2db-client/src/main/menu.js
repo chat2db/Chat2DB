@@ -1,7 +1,13 @@
 const { shell, app, dialog, BrowserWindow, Menu } = require('electron');
 const os = require('os');
 const path = require('path');
+const { isMac } = require('./utils');
+
 const registerAppMenu = (mainWindow, orgs) => {
+  if (!isMac) {
+    Menu.setApplicationMenu(null);
+    return;
+  }
   const menuBar = [
     {
       label: 'Chat2DB',
@@ -39,7 +45,6 @@ const registerAppMenu = (mainWindow, orgs) => {
       ],
     },
     {
-      // label: i18n('menu.edit'),
       label: '编辑',
       submenu: [
         { label: '撤销', role: 'undo' },
@@ -55,17 +60,16 @@ const registerAppMenu = (mainWindow, orgs) => {
       // label: i18n('menu.edit'),
       label: '视图',
       submenu: [
-        {
-          label: '刷新',
-          // accelerator: process.platform === 'darwin' ? 'Cmd+R' : 'Ctrl+R',
-          accelerator: 'CmdOrCtrl+Shift+R',
-          click() {
-            const focusedWindow = BrowserWindow.getFocusedWindow();
-            if (focusedWindow) {
-              focusedWindow.reload();
-            }
-          },
-        },
+        // {
+        //   label: '刷新',
+        //   accelerator: 'CmdOrCtrl+Shift+R',
+        //   click() {
+        //     const focusedWindow = BrowserWindow.getFocusedWindow();
+        //     if (focusedWindow) {
+        //       focusedWindow.reload();
+        //     }
+        //   },
+        // },
         { type: 'separator' },
         {
           label: '放大',
@@ -86,7 +90,14 @@ const registerAppMenu = (mainWindow, orgs) => {
         { label: '全屏', role: 'togglefullscreen' },
       ],
     },
-
+    {
+      label: '窗口',
+      role: 'window',
+      submenu: [
+        { label: '最小化', role: 'minimize', accelerator: 'Command+W' },
+        { label: '关闭', role: 'close' },
+      ],
+    },
     {
       label: '帮助',
       submenu: [
@@ -128,24 +139,9 @@ const registerAppMenu = (mainWindow, orgs) => {
             shell.openExternal(url);
           },
         },
-        // {
-        //   label: '关于',
-        //   role: 'about', // about （关于），此值只针对 Mac  OS X 系统
-        //   // 点击事件 role 属性能识别时 点击事件无效
-        //   click: () => {
-        //     var aboutWin = new BrowserWindow({
-        //       width: 300,
-        //       height: 200,
-        //       parent: win,
-        //       modal: true,
-        //     });
-        //     aboutWin.loadFile('about.html');
-        //   },
-        // },
       ],
     },
   ];
-  // console.log('registerAppMenu', registerAppMenu);
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuBar));
 };
 

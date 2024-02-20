@@ -2,7 +2,7 @@
 @import '@/styles/var.less';
 
 .loadingBox {
-  height: 100vh;
+  flex: 1;
   width: 100vw;
   display: flex;
   justify-content: center;
@@ -26,23 +26,13 @@
 .app {
   width: 100vw;
   height: 100vh;
+  display: flex;
+  flex-direction: column;
+  .appBody {
+    flex: 1;
+    position: relative;
+  }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 :global {
   #root {

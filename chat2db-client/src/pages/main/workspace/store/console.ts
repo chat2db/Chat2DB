@@ -59,13 +59,13 @@ export const createConsole = (params: ICreateConsoleParams) => {
   const currentConnectionDetails = useWorkspaceStore.getState().currentConnectionDetails;
   const newConsole = {
     ...params,
-    name: params.name || 'new console',
+    name: params.name || `untitled-${params.databaseName || params.schemaName} (${params.dataSourceName})`,
     ddl: params.ddl || '',
     status: ConsoleStatus.DRAFT,
     operationType: params.operationType || WorkspaceTabType.CONSOLE,
     type: params.databaseType,
     supportDatabase: currentConnectionDetails?.supportDatabase,
-    supportSchema: currentConnectionDetails?.supportSchema
+    supportSchema: currentConnectionDetails?.supportSchema,
   };
 
   return new Promise((resolve) => {

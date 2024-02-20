@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import ai.chat2db.spi.CommandExecutor;
 import ai.chat2db.spi.MetaData;
 import ai.chat2db.spi.SqlBuilder;
 import ai.chat2db.spi.ValueHandler;
@@ -135,5 +136,10 @@ public class DefaultMetaService implements MetaData {
     @Override
     public ValueHandler getValueHandler() {
         return new DefaultValueHandler();
+    }
+
+    @Override
+    public CommandExecutor getCommandExecutor() {
+        return SQLExecutor.getInstance();
     }
 }
