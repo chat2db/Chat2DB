@@ -7,6 +7,7 @@ import ai.chat2db.server.domain.api.service.TableService;
 import ai.chat2db.server.domain.core.cache.CacheManage;
 import ai.chat2db.server.domain.core.converter.PinTableConverter;
 import ai.chat2db.server.domain.core.converter.TableConverter;
+import ai.chat2db.server.domain.core.util.BatchUtil;
 import ai.chat2db.server.domain.repository.Dbutils;
 import ai.chat2db.server.domain.repository.entity.TableCacheDO;
 import ai.chat2db.server.domain.repository.entity.TableCacheVersionDO;
@@ -36,8 +37,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -217,7 +216,7 @@ public class TableServiceImpl implements TableService {
             return null;
         }
         return table.getColumnList().stream().filter(tableColumn ->
-                        tableColumn.getPrimaryKey() != null && tableColumn.getPrimaryKey())
+                                                             tableColumn.getPrimaryKey() != null && tableColumn.getPrimaryKey())
                 .collect(Collectors.toList());
     }
 
@@ -420,32 +419,28 @@ public class TableServiceImpl implements TableService {
 
     private long addDBCache(Long dataSourceId, String databaseName, String schemaName, long version) {
         String key = getTableKey(dataSourceId, databaseName, schemaName);
-
         Connection connection = Chat2DBContext.getConnection();
-        long n = 0;
-        try (ResultSet resultSet = connection.getMetaData().getTables(databaseName, schemaName, null,
-                new String[]{"TABLE", "SYSTEM TABLE"})) {
-            List<TableCacheDO> cacheDOS = new ArrayList<>();
-            while (resultSet.next()) {
+        MetaData metaData = Chat2DBContext.getMetaData();
+        List<Table> tables = metaData.tables(connection, databaseName, schemaName, null);
+        if (tables.isEmpty()) {
+            return 0;
+        }
+        List<List<Table>> tableLists = BatchUtil.batch(tables, 500);
+        tableLists.forEach(tableList -> {
+            List<TableCacheDO> cacheDOS = tableList.stream().map(table -> {
                 TableCacheDO tableCacheDO = new TableCacheDO();
                 tableCacheDO.setDatabaseName(databaseName);
                 tableCacheDO.setSchemaName(schemaName);
-                tableCacheDO.setTableName(resultSet.getString("TABLE_NAME"));
-                tableCacheDO.setExtendInfo(resultSet.getString("REMARKS"));
+                tableCacheDO.setTableName(table.getName());
+                tableCacheDO.setExtendInfo(table.getComment());
                 tableCacheDO.setDataSourceId(dataSourceId);
                 tableCacheDO.setVersion(version);
                 tableCacheDO.setKey(key);
-                cacheDOS.add(tableCacheDO);
-                if (cacheDOS.size() >= 500) {
-                    getTableCacheMapper().batchInsert(cacheDOS);
-                    cacheDOS = new ArrayList<>();
-                }
-                n++;
-            }
-            if (!CollectionUtils.isEmpty(cacheDOS)) {
-                getTableCacheMapper().batchInsert(cacheDOS);
-            }
-            LambdaQueryWrapper<TableCacheDO> q = new LambdaQueryWrapper();
+                return tableCacheDO;
+            }).collect(Collectors.toList());
+            getTableCacheMapper().batchInsert(cacheDOS);
+        });
+        LambdaQueryWrapper<TableCacheDO> q = new LambdaQueryWrapper();
             q.eq(TableCacheDO::getDataSourceId, dataSourceId);
             q.lt(TableCacheDO::getVersion, version);
             if (StringUtils.isNotBlank(databaseName)) {
@@ -455,10 +450,7 @@ public class TableServiceImpl implements TableService {
                 q.eq(TableCacheDO::getSchemaName, schemaName);
             }
             getTableCacheMapper().delete(q);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-        return n;
+        return tables.size();
     }
 
     private Long getLock(Long dataSourceId, String databaseName, String schemaName, TableCacheVersionDO versionDO) {

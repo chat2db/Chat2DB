@@ -23,6 +23,51 @@ import static ai.chat2db.plugin.postgresql.consts.SQLConst.FUNCTION_SQL;
 import static ai.chat2db.spi.util.SortUtils.sortDatabase;
 
 public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
+    private static String CHILD_TABLE_NAME_SET_SQL = """
+                     SELECT child.relname AS child_table_name
+                     FROM pg_inherits
+                              JOIN pg_class parent
+                                   ON pg_inherits.inhparent = parent.oid
+                              JOIN pg_class child
+                                   ON pg_inherits.inhrelid = child.oid
+                              JOIN pg_namespace nmsp_parent
+                                   ON nmsp_parent.oid = parent.relnamespace
+                              JOIN pg_namespace nmsp_child
+                                   ON nmsp_child.oid = child.relnamespace
+                     WHERE parent.relname IN %s;""";
+    @Override
+    public List<Table> tables(Connection connection, String databaseName, String schemaName, String tableName) {
+        List<Table> tables =  SQLExecutor.getInstance().tables(connection, databaseName,
+                                      schemaName, null, new String[]{"TABLE","SYSTEM TABLE","PARTITIONED TABLE"});
+        if (tables.isEmpty()) {
+            return tables;
+        }
+        String parentTableNames = tables.stream()
+                .filter(table -> "PARTITIONED TABLE".equalsIgnoreCase(table.getType()))
+                .map(table -> "'" + table.getName() + "'")
+                .collect(Collectors.joining(",", "(", ")"));
+        if (Objects.equals("()", parentTableNames)) {
+            return tables;
+        }
+        HashSet<String> childTableNameSet = new HashSet<>();
+        String sql = String.format(CHILD_TABLE_NAME_SET_SQL, parentTableNames);
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
+            try {
+                while (resultSet.next()) {
+                    String childTableName = resultSet.getString("child_table_name");
+                    childTableNameSet.add(childTableName);
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+            return childTableNameSet;
+        });
+        if (!childTableNameSet.isEmpty()) {
+            tables = tables.stream().filter(table -> !childTableNameSet.contains(table.getName()))
+                                    .collect(Collectors.toList());
+        }
+        return tables;
+    }
 
     private static final String SELECT_KEY_INDEX = "SELECT ccu.table_schema AS Foreign_schema_name, ccu.table_name AS Foreign_table_name, ccu.column_name AS Foreign_column_name, constraint_type AS Constraint_type, tc.CONSTRAINT_NAME AS Key_name, tc.TABLE_NAME, kcu.Column_name, tc.is_deferrable, tc.initially_deferred FROM information_schema.table_constraints AS tc JOIN information_schema.key_column_usage AS kcu ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name WHERE tc.TABLE_SCHEMA = '%s'  AND tc.TABLE_NAME = '%s';";
 
@@ -47,15 +92,15 @@ public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
             }
             return databases;
         });
-        return sortDatabase(list, systemDatabases,connection);
+        return sortDatabase(list, systemDatabases, connection);
     }
 
-    private List<String> systemSchemas = Arrays.asList("pg_toast","pg_temp_1","pg_toast_temp_1","pg_catalog","information_schema");
+    private List<String> systemSchemas = Arrays.asList("pg_toast", "pg_temp_1", "pg_toast_temp_1", "pg_catalog", "information_schema");
 
     @Override
     public List<Schema> schemas(Connection connection, String databaseName) {
         List<Schema> schemas = SQLExecutor.getInstance().execute(connection,
-                "SELECT catalog_name, schema_name FROM information_schema.schemata;", resultSet -> {
+                                                                 "SELECT catalog_name, schema_name FROM information_schema.schemata;", resultSet -> {
                     List<Schema> databases = new ArrayList<>();
                     while (resultSet.next()) {
                         Schema schema = new Schema();
@@ -103,7 +148,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         SQLExecutor.getInstance().execute(connection, FUNCTION_SQL.replaceFirst("tableSchema", schemaName),
-                resultSet -> null);
+                                          resultSet -> null);
         String ddlSql = "select showcreatetable('" + schemaName + "','" + tableName + "') as sql";
         return SQLExecutor.getInstance().execute(connection, ddlSql, resultSet -> {
             try {

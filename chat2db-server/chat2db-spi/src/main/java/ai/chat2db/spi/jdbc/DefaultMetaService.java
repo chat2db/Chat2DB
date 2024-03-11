@@ -3,9 +3,7 @@ package ai.chat2db.spi.jdbc;
 import java.sql.Connection;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
-
 import ai.chat2db.spi.CommandExecutor;
 import ai.chat2db.spi.MetaData;
 import ai.chat2db.spi.SqlBuilder;
@@ -14,6 +12,7 @@ import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.sql.SQLExecutor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+
 
 /**
  * @author jipengfei
@@ -45,7 +44,9 @@ public class DefaultMetaService implements MetaData {
 
     @Override
     public List<Table> tables(Connection connection, String databaseName, String schemaName, String tableName) {
-        return SQLExecutor.getInstance().tables(connection, StringUtils.isEmpty(databaseName) ? null : databaseName, StringUtils.isEmpty(schemaName) ? null : schemaName, tableName, new String[]{"TABLE","SYSTEM TABLE"});
+        return SQLExecutor.getInstance().tables(connection, StringUtils.isEmpty(databaseName) ? null : databaseName,
+                                                StringUtils.isEmpty(schemaName) ? null : schemaName, tableName,
+                                                new String[]{"TABLE","SYSTEM TABLE"});
     }
 
     @Override
