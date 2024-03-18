@@ -197,11 +197,11 @@ $ cp -r dist/index.html ../chat2db-server/chat2db-server-start/src/main/resource
 
 加群前请先 Star 和 Fork，谢谢~关注微信公众号可加入微信、钉钉、QQ 群一起讨论，并可以获取 Chat2DB 最新动态和更新。
 
-<a><img src="https://github.com/chat2db/Chat2DB/assets/22975773/e4239d29-1426-4361-bf57-f1b0b67d1281" width="30%"/></a>
+<a><img src="https://github.com/chat2db/Chat2DB/assets/22975773/81d13eff-c615-49f5-aee3-4107089593e0" width="30%"/></a>
 
 ## ❤️ 致谢
 
-感谢所有为 Chat2DB 贡献力量的同学们~
+感谢所有为 Chat2DB 贡献力量的同学们~~
 
 <a href="https://github.com/chat2db/Chat2DB/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=chat2db/Chat2DB" />
