@@ -26,35 +26,36 @@ input:-webkit-autofill {
   caret-color: var(--color-text) !important; // 光标的颜色
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: var(--color-fill);
-  border-radius: 2px;
-}
-
-::-webkit-scrollbar-button {
-  width: 0;
-  height: 0;
-  background: transparent;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-  width: 0px;
-  cursor: pointer;
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
 * {
-  scrollbar-width: 4px; // 宽度：auto（默认），thin（窄），none（隐藏）
-  scrollbar-color: var(--color-fill) transparent; // 颜色：第一个颜色是滑块颜色，第二个颜色是轨道颜色
+  ::-webkit-scrollbar {
+    cursor: pointer;
+    width: 4px;
+    height: 4px;
+    background-color: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    cursor: pointer;
+    background-color: transparent;
+    border-radius: 2px;
+    // transition: background-color 500ms ${token.motionEaseOut};
+
+    &:hover {
+      background-color: var(--color-text);
+    }
+  }
+
+  ::-webkit-scrollbar-corner {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  &:hover {
+    ::-webkit-scrollbar-thumb {
+      background-color: var(--color-fill);
+    }
+  }
 }
 
 html,
