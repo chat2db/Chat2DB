@@ -1,0 +1,7 @@
+node_modules
+.umi
+.umi-production
+chat2db-server
+.vscode
+dist
+.idea
