@@ -38,9 +38,9 @@ const Login: React.FC = () => {
         <div className={styles.loginWelcome}>{i18n('login.text.welcome')}</div>
         <Tooltip
           placement="right"
-          color={window._AppThemePack.colorBgBase}
+          color={window._AppThemePack?.colorBgBase}
           title={
-            <div style={{ color: window._AppThemePack.colorText, opacity: 0.8, padding: '8px 4px' }}>
+            <div style={{ color: window._AppThemePack?.colorText, opacity: 0.8, padding: '8px 4px' }}>
               {i18n('login.text.tips')}
             </div>
           }

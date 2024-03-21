@@ -394,7 +394,7 @@ const TreeNode = memo((props: TreeNodeIProps) => {
           zIndex: 1080,
         }}
       >
-        <Tooltip placement="right" color={window._AppThemePack.colorPrimary} title={treeNodeData.comment}>
+        <Tooltip placement="right" color={window._AppThemePack?.colorPrimary} title={treeNodeData.comment}>
           <div
             className={classnames(styles.treeNode, { [styles.treeNodeFocus]: isFocus })}
             onClick={handelClickTreeNode}

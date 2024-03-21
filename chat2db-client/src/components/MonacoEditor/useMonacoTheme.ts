@@ -8,7 +8,7 @@ function useMonacoTheme() {
   const [appTheme] = useTheme();
   // 监听主题色变化切换编辑器主题色
   useEffect(() => {
-    const { colorPrimary, colorBgBase, colorTextBase  } = window._AppThemePack;
+    const { colorPrimary, colorBgBase, colorTextBase  } = window._AppThemePack || {};
 
     const colors = {
       'editor.lineHighlightBackground': colorPrimary + '14', // 当前行背景色
