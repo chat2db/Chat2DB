@@ -339,6 +339,16 @@ public class TableServiceImpl implements TableService {
                 t.setComment(tableCacheDO.getExtendInfo());
                 t.setSchemaName(tableCacheDO.getSchemaName());
                 t.setDatabaseName(tableCacheDO.getDatabaseName());
+                if(Boolean.TRUE.equals(selector.getColumnList())){
+                    TableQueryParam tableQueryParam = new TableQueryParam();
+                    tableQueryParam.setDataSourceId(param.getDataSourceId());
+                    tableQueryParam.setDatabaseName(param.getDatabaseName());
+                    tableQueryParam.setSchemaName(param.getSchemaName());
+                    tableQueryParam.setTableName(tableCacheDO.getTableName());
+                    tableQueryParam.setRefresh(false);
+                    List<TableColumn> columns = queryColumns(tableQueryParam);
+                    t.setColumnList(columns);
+                }
                 tables.add(t);
             }
         }
@@ -419,44 +429,41 @@ public class TableServiceImpl implements TableService {
 
     private long addDBCache(Long dataSourceId, String databaseName, String schemaName, long version) {
         String key = getTableKey(dataSourceId, databaseName, schemaName);
-
         Connection connection = Chat2DBContext.getConnection();
         long n = 0;
-        try (ResultSet resultSet = connection.getMetaData().getTables(databaseName, schemaName, null,
-                new String[]{"TABLE", "SYSTEM TABLE"})) {
-            List<TableCacheDO> cacheDOS = new ArrayList<>();
-            while (resultSet.next()) {
-                TableCacheDO tableCacheDO = new TableCacheDO();
-                tableCacheDO.setDatabaseName(databaseName);
-                tableCacheDO.setSchemaName(schemaName);
-                tableCacheDO.setTableName(resultSet.getString("TABLE_NAME"));
-                tableCacheDO.setExtendInfo(resultSet.getString("REMARKS"));
-                tableCacheDO.setDataSourceId(dataSourceId);
-                tableCacheDO.setVersion(version);
-                tableCacheDO.setKey(key);
-                cacheDOS.add(tableCacheDO);
-                if (cacheDOS.size() >= 500) {
-                    getTableCacheMapper().batchInsert(cacheDOS);
-                    cacheDOS = new ArrayList<>();
-                }
-                n++;
-            }
-            if (!CollectionUtils.isEmpty(cacheDOS)) {
+        MetaData metaSchema = Chat2DBContext.getMetaData();
+        List<Table> tables = metaSchema.tables(connection, databaseName, schemaName, null);
+        List<TableCacheDO> cacheDOS = new ArrayList<>();
+        for(Table table : tables){
+            TableCacheDO tableCacheDO = new TableCacheDO();
+            tableCacheDO.setDatabaseName(databaseName);
+            tableCacheDO.setSchemaName(schemaName);
+            tableCacheDO.setTableName(table.getName());
+            tableCacheDO.setExtendInfo(table.getComment());
+            tableCacheDO.setDataSourceId(dataSourceId);
+            tableCacheDO.setVersion(version);
+            tableCacheDO.setKey(key);
+            metaSchema.columns(connection, databaseName, schemaName, table.getName());
+            cacheDOS.add(tableCacheDO);
+            if (cacheDOS.size() >= 500) {
                 getTableCacheMapper().batchInsert(cacheDOS);
+                cacheDOS = new ArrayList<>();
             }
-            LambdaQueryWrapper<TableCacheDO> q = new LambdaQueryWrapper();
-            q.eq(TableCacheDO::getDataSourceId, dataSourceId);
-            q.lt(TableCacheDO::getVersion, version);
-            if (StringUtils.isNotBlank(databaseName)) {
-                q.eq(TableCacheDO::getDatabaseName, databaseName);
-            }
-            if (StringUtils.isNotBlank(schemaName)) {
-                q.eq(TableCacheDO::getSchemaName, schemaName);
-            }
-            getTableCacheMapper().delete(q);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+            n++;
         }
+        if (!CollectionUtils.isEmpty(cacheDOS)) {
+            getTableCacheMapper().batchInsert(cacheDOS);
+        }
+        LambdaQueryWrapper<TableCacheDO> q = new LambdaQueryWrapper();
+        q.eq(TableCacheDO::getDataSourceId, dataSourceId);
+        q.lt(TableCacheDO::getVersion, version);
+        if (StringUtils.isNotBlank(databaseName)) {
+            q.eq(TableCacheDO::getDatabaseName, databaseName);
+        }
+        if (StringUtils.isNotBlank(schemaName)) {
+            q.eq(TableCacheDO::getSchemaName, schemaName);
+        }
+        getTableCacheMapper().delete(q);
         return n;
     }
 
@@ -480,7 +487,7 @@ public class TableServiceImpl implements TableService {
             }
         } else {
             long version = versionDO.getVersion() + 1;
-            LambdaQueryWrapper<TableCacheVersionDO> queryWrapper = new LambdaQueryWrapper();
+            LambdaQueryWrapper<TableCacheVersionDO> queryWrapper = new LambdaQueryWrapper<>();
             queryWrapper.eq(TableCacheVersionDO::getId, versionDO.getId());
             queryWrapper.eq(TableCacheVersionDO::getVersion, versionDO.getVersion());
             versionDO.setVersion(version);

@@ -29,3 +29,4 @@ package-lock.json
 /chat2db-server/ali-dbhub-server-domain/ali-dbhub-server-domain-support/lib/*
 /lib
 /out/*
+/chat2db-gateway/target

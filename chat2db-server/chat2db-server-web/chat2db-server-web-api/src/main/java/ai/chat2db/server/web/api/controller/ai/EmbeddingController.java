@@ -242,7 +242,7 @@ public class EmbeddingController extends ChatController {
             return;
         }
 
-        String apiKey = getApiKey();
+        String apiKey = promptService.getApiKey();
         if (StringUtils.isBlank(apiKey)) {
             return;
         }
@@ -281,7 +281,7 @@ public class EmbeddingController extends ChatController {
         List<List<BigDecimal>> contentVector = new ArrayList<>();
         for(String str : schemaList){
             // request embedding
-            FastChatEmbeddingResponse response = distributeAIEmbedding(str);
+            FastChatEmbeddingResponse response = promptService.distributeAIEmbedding(str);
             if(response == null){
                 throw new ParamBusinessException();
             }
@@ -310,7 +310,7 @@ public class EmbeddingController extends ChatController {
             return;
         }
 
-        String apiKey = getApiKey();
+        String apiKey = promptService.getApiKey();
         if (StringUtils.isBlank(apiKey)) {
             return;
         }

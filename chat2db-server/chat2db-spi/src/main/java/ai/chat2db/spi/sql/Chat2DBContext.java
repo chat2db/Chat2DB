@@ -142,6 +142,7 @@ public class Chat2DBContext {
             try {
                 if (connection != null && !connection.isClosed()) {
                     connection.close();
+                    connectInfo.setConnection(null);
                 }
             } catch (SQLException e) {
                 log.error("close connection error", e);

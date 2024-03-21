@@ -7,6 +7,8 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.unfbx.chatgpt.entity.chat.tool.Tools;
+
 import lombok.Data;
 
 /**
@@ -391,4 +393,11 @@ public final class AzureChatCompletionsOptions {
         this.model = model;
         return this;
     }
+
+    // 新添加的参数
+    @JsonProperty(value = "tool_choice")
+    private String toolChoice; // 工具选择策略
+
+    @JsonProperty(value = "tools")
+    private List<Tools> tools; // 工具列表
 }

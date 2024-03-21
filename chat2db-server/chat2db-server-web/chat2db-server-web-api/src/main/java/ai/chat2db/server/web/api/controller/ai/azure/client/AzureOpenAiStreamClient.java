@@ -149,22 +149,14 @@ public class AzureOpenAiStreamClient {
      * @param chatMessages
      * @param eventSourceListener
      */
-    public void streamCompletions(List<AzureChatMessage> chatMessages, EventSourceListener eventSourceListener) {
-        if (CollectionUtils.isEmpty(chatMessages)) {
-            log.error("param error：Azure Prompt cannot be empty");
-            throw new ParamBusinessException("prompt");
-        }
+    public void streamCompletions(AzureChatCompletionsOptions chatCompletionsOptions, EventSourceListener eventSourceListener) {
         if (Objects.isNull(eventSourceListener)) {
             log.error("param error：AzureEventSourceListener cannot be empty");
             throw new ParamBusinessException();
         }
-        log.info("Azure Open AI, prompt:{}", chatMessages.get(chatMessages.size() - 1).getContent());
         try {
-
-            AzureChatCompletionsOptions chatCompletionsOptions = new AzureChatCompletionsOptions(chatMessages);
             chatCompletionsOptions.setStream(true);
             chatCompletionsOptions.setModel(this.deployId);
-
             EventSource.Factory factory = EventSources.createFactory(this.okHttpClient);
             ObjectMapper mapper = new ObjectMapper();
             mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -172,7 +164,7 @@ public class AzureOpenAiStreamClient {
             if (!endpoint.endsWith("/")) {
                 endpoint = endpoint + "/";
             }
-            String url = this.endpoint + "openai/deployments/"+ deployId + "/chat/completions?api-version=2023-05-15";
+            String url = this.endpoint + "openai/deployments/"+ deployId + "/chat/completions?api-version=2024-02-15-preview";
             Request request = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(MediaType.parse(ContentType.JSON.getValue()), requestBody))

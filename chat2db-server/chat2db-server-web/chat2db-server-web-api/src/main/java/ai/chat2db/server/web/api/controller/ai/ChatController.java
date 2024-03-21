@@ -1,20 +1,17 @@
 package ai.chat2db.server.web.api.controller.ai;
 
+
+
 import ai.chat2db.server.domain.api.enums.AiSqlSourceEnum;
 import ai.chat2db.server.domain.api.model.Config;
-import ai.chat2db.server.domain.api.model.DataSource;
-import ai.chat2db.server.domain.api.param.ShowCreateTableParam;
-import ai.chat2db.server.domain.api.param.TableQueryParam;
 import ai.chat2db.server.domain.api.service.ConfigService;
-import ai.chat2db.server.domain.api.service.DataSourceService;
-import ai.chat2db.server.domain.api.service.TableService;
-import ai.chat2db.server.tools.base.enums.WhiteListTypeEnum;
-import ai.chat2db.server.tools.base.wrapper.result.DataResult;
 import ai.chat2db.server.tools.common.exception.ParamBusinessException;
-import ai.chat2db.server.tools.common.util.EasyEnumUtils;
+import ai.chat2db.server.tools.common.model.LoginUser;
+import ai.chat2db.server.tools.common.util.ContextUtils;
 import ai.chat2db.server.web.api.aspect.ConnectionInfoAspect;
 import ai.chat2db.server.web.api.controller.ai.azure.client.AzureOpenAIClient;
 import ai.chat2db.server.web.api.controller.ai.azure.listener.AzureOpenAIEventSourceListener;
+import ai.chat2db.server.web.api.controller.ai.azure.model.AzureChatCompletionsOptions;
 import ai.chat2db.server.web.api.controller.ai.azure.model.AzureChatMessage;
 import ai.chat2db.server.web.api.controller.ai.azure.model.AzureChatRole;
 import ai.chat2db.server.web.api.controller.ai.baichuan.client.BaichuanAIClient;
@@ -26,11 +23,9 @@ import ai.chat2db.server.web.api.controller.ai.claude.listener.ClaudeAIEventSour
 import ai.chat2db.server.web.api.controller.ai.claude.model.ClaudeChatCompletionsOptions;
 import ai.chat2db.server.web.api.controller.ai.claude.model.ClaudeChatMessage;
 import ai.chat2db.server.web.api.controller.ai.config.LocalCache;
-import ai.chat2db.server.web.api.controller.ai.converter.ChatConverter;
-import ai.chat2db.server.web.api.controller.ai.enums.PromptType;
 import ai.chat2db.server.web.api.controller.ai.fastchat.client.FastChatAIClient;
-import ai.chat2db.server.web.api.controller.ai.fastchat.embeddings.FastChatEmbeddingResponse;
 import ai.chat2db.server.web.api.controller.ai.fastchat.listener.FastChatAIEventSourceListener;
+import ai.chat2db.server.web.api.controller.ai.fastchat.model.FastChatCompletionsOptions;
 import ai.chat2db.server.web.api.controller.ai.fastchat.model.FastChatMessage;
 import ai.chat2db.server.web.api.controller.ai.fastchat.model.FastChatRole;
 import ai.chat2db.server.web.api.controller.ai.openai.client.OpenAIClient;
@@ -41,42 +36,36 @@ import ai.chat2db.server.web.api.controller.ai.rest.client.RestAIClient;
 import ai.chat2db.server.web.api.controller.ai.rest.listener.RestAIEventSourceListener;
 import ai.chat2db.server.web.api.controller.ai.tongyi.client.TongyiChatAIClient;
 import ai.chat2db.server.web.api.controller.ai.tongyi.listener.TongyiChatAIEventSourceListener;
+import ai.chat2db.server.web.api.controller.ai.utils.PromptService;
 import ai.chat2db.server.web.api.controller.ai.wenxin.client.WenxinAIClient;
 import ai.chat2db.server.web.api.controller.ai.wenxin.listener.WenxinAIEventSourceListener;
 import ai.chat2db.server.web.api.controller.ai.zhipu.client.ZhipuChatAIClient;
 import ai.chat2db.server.web.api.controller.ai.zhipu.listener.ZhipuChatAIEventSourceListener;
+import ai.chat2db.server.web.api.controller.ai.zhipu.model.ZhipuChatCompletionsOptions;
 import ai.chat2db.server.web.api.http.GatewayClientService;
-import ai.chat2db.server.web.api.http.model.EsTableSchema;
-import ai.chat2db.server.web.api.http.model.TableSchema;
-import ai.chat2db.server.web.api.http.request.EsTableSchemaRequest;
-import ai.chat2db.server.web.api.http.request.TableSchemaRequest;
-import ai.chat2db.server.web.api.http.request.WhiteListRequest;
-import ai.chat2db.server.web.api.http.response.EsTableSchemaResponse;
-import ai.chat2db.server.web.api.http.response.TableSchemaResponse;
 import ai.chat2db.server.web.api.util.ApplicationContextUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
-import com.alibaba.fastjson2.JSON;
 import com.google.common.collect.Lists;
+import com.unfbx.chatgpt.entity.chat.ChatCompletion;
 import com.unfbx.chatgpt.entity.chat.Message;
+import com.unfbx.chatgpt.entity.chat.tool.Tools;
+import com.unfbx.chatgpt.entity.chat.tool.ToolsFunction;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * 描述：
@@ -90,14 +79,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ChatController {
 
-    @Autowired
-    private TableService tableService;
-
-    @Autowired
-    private ChatConverter chatConverter;
-
-    @Autowired
-    private DataSourceService dataSourceService;
 
     @Value("${chatgpt.context.length}")
     private Integer contextLength;
@@ -107,6 +88,10 @@ public class ChatController {
 
     @Resource
     private GatewayClientService gatewayClientService;
+
+
+    @Resource
+    protected PromptService promptService;
 
     /**
      * chat的超时时间
@@ -171,7 +156,7 @@ public class ChatController {
     /**
      * 自定义模型非流式输出接口DEMO
      * <p>
-     *     Note:使用自己本地的飞流式输出自定义AI，接口输入和输出需与该样例保持一致
+     * Note:使用自己本地的飞流式输出自定义AI，接口输入和输出需与该样例保持一致
      * </p>
      *
      * @param queryRequest
@@ -262,7 +247,7 @@ public class ChatController {
      */
     private SseEmitter chatWithRestAi(ChatQueryRequest prompt, SseEmitter sseEmitter) {
         RestAIEventSourceListener eventSourceListener = new RestAIEventSourceListener(sseEmitter);
-        RestAIClient.getInstance().restCompletions(buildPrompt(prompt), eventSourceListener);
+        RestAIClient.getInstance().restCompletions(promptService.buildPrompt(prompt), eventSourceListener);
         return sseEmitter;
     }
 
@@ -276,11 +261,11 @@ public class ChatController {
      * @throws IOException
      */
     private SseEmitter chatWithOpenAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid)
-        throws IOException {
-        String prompt = buildPrompt(queryRequest);
+            throws IOException {
+        String prompt = promptService.buildAutoPrompt(queryRequest);
         if (prompt.length() / TOKEN_CONVERT_CHAR_LENGTH > MAX_PROMPT_LENGTH) {
             log.error("提示语超出最大长度:{}，输入长度:{}, 请重新输入", MAX_PROMPT_LENGTH,
-                prompt.length() / TOKEN_CONVERT_CHAR_LENGTH);
+                    prompt.length() / TOKEN_CONVERT_CHAR_LENGTH);
             throw new ParamBusinessException();
         }
 
@@ -290,9 +275,17 @@ public class ChatController {
         Message currentMessage = Message.builder().content(prompt).role(Message.Role.USER).build();
         messages.add(currentMessage);
         buildSseEmitter(sseEmitter, uid);
-
-        OpenAIEventSourceListener openAIEventSourceListener = new OpenAIEventSourceListener(sseEmitter);
-        OpenAIClient.getInstance().streamChatCompletion(messages, openAIEventSourceListener);
+        LoginUser loginUser = ContextUtils.getLoginUser();
+        OpenAIEventSourceListener openAIEventSourceListener = new OpenAIEventSourceListener(sseEmitter, promptService, queryRequest,loginUser);
+        ChatCompletion chatCompletion = ChatCompletion.builder()
+                .messages(messages).stream(true).build();
+        if(queryRequest.getDatabaseName()!=null){
+            ToolsFunction function = PromptService.getToolsFunction();
+            chatCompletion.setModel("gpt-3.5-turbo-0125");
+            chatCompletion.setTools(List.of(new Tools(Tools.Type.FUNCTION.getName(), function)));
+            chatCompletion.setToolChoice("auto");
+        }
+        OpenAIClient.getInstance().streamChatCompletion(chatCompletion, openAIEventSourceListener);
         LocalCache.CACHE.put(uid, JSONUtil.toJsonStr(messages), LocalCache.TIMEOUT);
         return sseEmitter;
     }
@@ -308,7 +301,7 @@ public class ChatController {
      */
     private SseEmitter chatWithChat2dbAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid)
         throws IOException {
-        String prompt = buildPrompt(queryRequest);
+        String prompt = promptService.buildPrompt(queryRequest);
         if (prompt.length() / TOKEN_CONVERT_CHAR_LENGTH > MAX_PROMPT_LENGTH) {
             log.error("exceed max token length:{}，input length:{}", MAX_PROMPT_LENGTH,
                 prompt.length() / TOKEN_CONVERT_CHAR_LENGTH);
@@ -338,7 +331,7 @@ public class ChatController {
      * @throws IOException
      */
     private SseEmitter chatWithAzureAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid) throws IOException {
-        String prompt = buildPrompt(queryRequest);
+        String prompt = promptService.buildAutoPrompt(queryRequest);
         if (prompt.length() / TOKEN_CONVERT_CHAR_LENGTH > MAX_PROMPT_LENGTH) {
             log.error("提示语超出最大长度:{}，输入长度:{}, 请重新输入", MAX_PROMPT_LENGTH,
                     prompt.length() / TOKEN_CONVERT_CHAR_LENGTH);
@@ -356,9 +349,16 @@ public class ChatController {
         messages.add(currentMessage);
 
         buildSseEmitter(sseEmitter, uid);
-
-        AzureOpenAIEventSourceListener sourceListener = new AzureOpenAIEventSourceListener(sseEmitter);
-        AzureOpenAIClient.getInstance().streamCompletions(messages, sourceListener);
+        LoginUser loginUser = ContextUtils.getLoginUser();
+        AzureOpenAIEventSourceListener sourceListener = new AzureOpenAIEventSourceListener(sseEmitter,promptService,queryRequest,loginUser);
+        AzureChatCompletionsOptions chatCompletionsOptions = new AzureChatCompletionsOptions(messages);
+        chatCompletionsOptions.setStream(true);
+        if(queryRequest.getDatabaseName()!=null){
+            ToolsFunction function = PromptService.getToolsFunction();
+            chatCompletionsOptions.setTools(List.of(new Tools(Tools.Type.FUNCTION.getName(), function)));
+            chatCompletionsOptions.setToolChoice("auto");
+        }
+        AzureOpenAIClient.getInstance().streamCompletions(chatCompletionsOptions, sourceListener);
         LocalCache.CACHE.put(uid, messages, LocalCache.TIMEOUT);
         return sseEmitter;
     }
@@ -373,8 +373,8 @@ public class ChatController {
      * @throws IOException
      */
     private SseEmitter chatWithFastChatAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid) throws IOException {
-        String prompt = buildPrompt(queryRequest);
-        List<FastChatMessage> messages = getFastChatMessage(uid, prompt);
+        String prompt = promptService.buildPrompt(queryRequest);
+        List<FastChatMessage> messages = promptService.getFastChatMessage(uid, prompt);
 
         buildSseEmitter(sseEmitter, uid);
 
@@ -394,13 +394,27 @@ public class ChatController {
      * @throws IOException
      */
     private SseEmitter chatWithZhipuChatAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid) throws IOException {
-        String prompt = buildPrompt(queryRequest);
-        List<FastChatMessage> messages = getFastChatMessage(uid, prompt);
+        String prompt = promptService.buildAutoPrompt(queryRequest);
+        log.info("原始提示词{}",prompt);
+        List<FastChatMessage> messages = promptService.getFastChatMessage(uid, prompt);
 
         buildSseEmitter(sseEmitter, uid);
+        LoginUser loginUser = ContextUtils.getLoginUser();
+        ZhipuChatAIEventSourceListener sourceListener = new ZhipuChatAIEventSourceListener(sseEmitter,promptService,queryRequest,loginUser);
+        String requestId = String.valueOf(System.currentTimeMillis());
+        // 建议直接查看demo包代码，这里更新可能不及时
+        ZhipuChatCompletionsOptions completionsOptions = ZhipuChatCompletionsOptions.builder()
+                .requestId(requestId)
+                .stream(true)
 
-        ZhipuChatAIEventSourceListener sourceListener = new ZhipuChatAIEventSourceListener(sseEmitter);
-        ZhipuChatAIClient.getInstance().streamCompletions(messages, sourceListener);
+                .messages(messages)
+                .build();
+        if(queryRequest.getDatabaseName()!=null){
+            ToolsFunction function = PromptService.getToolsFunction();
+            completionsOptions.setTools(List.of(new Tools(Tools.Type.FUNCTION.getName(), function)));
+            completionsOptions.setToolChoice("auto");
+        }
+        ZhipuChatAIClient.getInstance().streamCompletions(completionsOptions, sourceListener);
         LocalCache.CACHE.put(uid, messages, LocalCache.TIMEOUT);
         return sseEmitter;
     }
@@ -415,8 +429,8 @@ public class ChatController {
      * @throws IOException
      */
     private SseEmitter chatWithTongyiChatAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid) throws IOException {
-        String prompt = buildPrompt(queryRequest);
-        List<FastChatMessage> messages = getFastChatMessage(uid, prompt);
+        String prompt = promptService.buildPrompt(queryRequest);
+        List<FastChatMessage> messages = promptService.getFastChatMessage(uid, prompt);
 
         buildSseEmitter(sseEmitter, uid);
 
@@ -436,8 +450,8 @@ public class ChatController {
      * @throws IOException
      */
     private SseEmitter chatWithBaichuanAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid) throws IOException {
-        String prompt = buildPrompt(queryRequest);
-        List<FastChatMessage> messages = getFastChatMessage(uid, prompt);
+        String prompt = promptService.buildPrompt(queryRequest);
+        List<FastChatMessage> messages = promptService.getFastChatMessage(uid, prompt);
 
         buildSseEmitter(sseEmitter, uid);
 
@@ -447,26 +461,7 @@ public class ChatController {
         return sseEmitter;
     }
 
-    /**
-     * get fast chat message
-     *
-     * @param uid
-     * @param prompt
-     * @return
-     */
-    private List<FastChatMessage> getFastChatMessage(String uid, String prompt) {
-        List<FastChatMessage> messages = (List<FastChatMessage>)LocalCache.CACHE.get(uid);
-        if (CollectionUtils.isNotEmpty(messages)) {
-            if (messages.size() >= contextLength) {
-                messages = messages.subList(1, contextLength);
-            }
-        } else {
-            messages = Lists.newArrayList();
-        }
-        FastChatMessage currentMessage = new FastChatMessage(FastChatRole.USER).setContent(prompt);
-        messages.add(currentMessage);
-        return messages;
-    }
+    
 
     /**
      * chat with wenxin chat openai
@@ -478,8 +473,8 @@ public class ChatController {
      * @throws IOException
      */
     private SseEmitter chatWithWenxinAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid) throws IOException {
-        String prompt = buildPrompt(queryRequest);
-        List<FastChatMessage> messages = getFastChatMessage(uid, prompt);
+        String prompt = promptService.buildPrompt(queryRequest);
+        List<FastChatMessage> messages = promptService.getFastChatMessage(uid, prompt);
         if (messages.size() >= 2 && messages.size() % 2 == 0) {
             messages.remove(messages.size() - 1);
         }
@@ -503,7 +498,7 @@ public class ChatController {
      * @throws IOException
      */
     private SseEmitter chatWithClaudeAi(ChatQueryRequest queryRequest, SseEmitter sseEmitter, String uid) throws IOException {
-        String prompt = buildPrompt(queryRequest);
+        String prompt = promptService.buildPrompt(queryRequest);
         ClaudeChatMessage claudeChatMessage = new ClaudeChatMessage();
         claudeChatMessage.setText(prompt);
         ClaudeChatCompletionsOptions chatCompletionsOptions = new ClaudeChatCompletionsOptions();
@@ -546,270 +541,5 @@ public class ChatController {
         return sseEmitter;
     }
 
-    /**
-     * 构建schema参数
-     *
-     * @param tableQueryParam
-     * @param tableNames
-     * @return
-     */
-    private String buildTableColumn(TableQueryParam tableQueryParam,
-        List<String> tableNames) {
-        if (CollectionUtils.isEmpty(tableNames)) {
-            return "";
-        }
-        List<String> schemaContent = Lists.newArrayList();
-        try {
-             schemaContent = tableNames.stream().map(tableName -> {
-                tableQueryParam.setTableName(tableName);
-                return queryTableDdl(tableName, tableQueryParam);
-            }).collect(Collectors.toList());
-        } catch (Exception exception) {
-            log.error("query table error, do nothing");
-        }
-
-        return JSON.toJSONString(schemaContent);
-    }
-
-    /**
-     * query table schema
-     *
-     * @param tableName
-     * @param request
-     * @return
-     */
-    private String queryTableDdl(String tableName, TableQueryParam request) {
-        ShowCreateTableParam param = new ShowCreateTableParam();
-        param.setTableName(tableName);
-        param.setDataSourceId(request.getDataSourceId());
-        param.setDatabaseName(request.getDatabaseName());
-        param.setSchemaName(request.getSchemaName());
-        DataResult<String> tableSchema = tableService.showCreateTable(param);
-        return tableSchema.getData();
-    }
-
-    /**
-     * 构建prompt
-     *
-     * @param queryRequest
-     * @return
-     */
-    private String buildPrompt(ChatQueryRequest queryRequest) {
-        if (PromptType.TEXT_GENERATION.getCode().equals(queryRequest.getPromptType())) {
-            return queryRequest.getMessage();
-        }
-
-        // 查询schema信息
-        String dataSourceType = queryDatabaseType(queryRequest);
-        String properties = "";
-        if (CollectionUtils.isNotEmpty(queryRequest.getTableNames())) {
-            TableQueryParam queryParam = chatConverter.chat2tableQuery(queryRequest);
-            properties = buildTableColumn(queryParam, queryRequest.getTableNames());
-        } else {
-            properties = mappingDatabaseSchema(queryRequest);
-        }
-        String prompt = queryRequest.getMessage();
-        String promptType = StringUtils.isBlank(queryRequest.getPromptType()) ? PromptType.NL_2_SQL.getCode()
-            : queryRequest.getPromptType();
-        PromptType pType = EasyEnumUtils.getEnum(PromptType.class, promptType);
-        String ext = StringUtils.isNotBlank(queryRequest.getExt()) ? queryRequest.getExt() : "";
-        String schemaProperty = StringUtils.isNotEmpty(properties) ? String.format(
-            "### 请根据以下table properties和SQL input%s. %s\n#\n### %s SQL tables, with their properties:\n#\n# "
-                + "%s\n#\n#\n### SQL input: %s", pType.getDescription(), ext, dataSourceType,
-            properties, prompt) : String.format("### 请根据以下SQL input%s. %s\n#\n### SQL input: %s",
-            pType.getDescription(), ext, prompt);
-        switch (pType) {
-            case SQL_2_SQL:
-                schemaProperty = StringUtils.isNotBlank(queryRequest.getDestSqlType()) ? String.format(
-                    "%s\n#\n### 目标SQL类型: %s", schemaProperty, queryRequest.getDestSqlType()) : String.format(
-                    "%s\n#\n### 目标SQL类型: %s", schemaProperty, dataSourceType);
-            default:
-                break;
-        }
-        String cleanedInput = schemaProperty.replaceAll("[\r\t]", "");
-        return cleanedInput;
-    }
-
-    /**
-     * query chat2db apikey
-     *
-     * @return
-     */
-    public String getApiKey() {
-        ConfigService configService = ApplicationContextUtil.getBean(ConfigService.class);
-        Config config = configService.find(RestAIClient.AI_SQL_SOURCE).getData();
-        String aiSqlSource = AiSqlSourceEnum.CHAT2DBAI.getCode();
-        // only sync for chat2db ai
-        if (Objects.isNull(config) || !aiSqlSource.equals(config.getContent())) {
-            return null;
-        }
-        Config keyConfig = configService.find(Chat2dbAIClient.CHAT2DB_OPENAI_KEY).getData();
-        if (Objects.isNull(keyConfig) || StringUtils.isBlank(keyConfig.getContent())) {
-            return null;
-        }
-        return keyConfig.getContent();
-    }
-
-    /**
-     * query database type
-     *
-     * @param queryRequest
-     * @return
-     */
-    public String queryDatabaseType(ChatQueryRequest queryRequest) {
-        // 查询schema信息
-        DataResult<DataSource> dataResult = dataSourceService.queryById(queryRequest.getDataSourceId());
-        String dataSourceType = dataResult.getData().getType();
-        if (StringUtils.isBlank(dataSourceType)) {
-            dataSourceType = "MYSQL";
-        }
-        return dataSourceType;
-    }
-
-    public String mappingDatabaseSchema(ChatQueryRequest queryRequest) {
-        String properties = "";
-        String apiKey = getApiKey();
-        if (StringUtils.isNotBlank(apiKey)) {
-            boolean res = gatewayClientService.checkInWhite(new WhiteListRequest(apiKey, WhiteListTypeEnum.VECTOR.getCode())).getData();
-            if (res) {
-//                properties = queryDatabaseSchema(queryRequest) + querySchemaByEs(queryRequest);
-                properties = queryDatabaseSchema(queryRequest);
-            }
-        }
-        return properties;
-    }
-
-    /**
-     * query database schema
-     *
-     * @param queryRequest
-     * @return
-     * @throws IOException
-     */
-    public String queryDatabaseSchema(ChatQueryRequest queryRequest) {
-        // request embedding
-        FastChatEmbeddingResponse response = distributeAIEmbedding(queryRequest.getMessage());
-        List<List<BigDecimal>> contentVector = new ArrayList<>();
-        if (Objects.isNull(response) || CollectionUtils.isEmpty(response.getData())) {
-            return "";
-        }
-        contentVector.add(response.getData().get(0).getEmbedding());
-
-        // search embedding
-        TableSchemaRequest tableSchemaRequest = new TableSchemaRequest();
-        tableSchemaRequest.setSchemaVector(contentVector);
-        tableSchemaRequest.setDataSourceId(queryRequest.getDataSourceId());
-        tableSchemaRequest.setDatabaseName(queryRequest.getDatabaseName());
-        tableSchemaRequest.setDataSourceSchema(queryRequest.getSchemaName());
-        ConfigService configService = ApplicationContextUtil.getBean(ConfigService.class);
-        Config keyConfig = configService.find(Chat2dbAIClient.CHAT2DB_OPENAI_KEY).getData();
-        if (Objects.isNull(keyConfig) || StringUtils.isBlank(keyConfig.getContent())) {
-            return "";
-        }
-        tableSchemaRequest.setApiKey(keyConfig.getContent());
-        try {
-            DataResult<TableSchemaResponse> result = gatewayClientService.schemaVectorSearch(tableSchemaRequest);
-            List<String> schemas = Lists.newArrayList();
-            if (Objects.nonNull(result.getData()) && CollectionUtils.isNotEmpty(result.getData().getTableSchemas())) {
-                for(TableSchema data: result.getData().getTableSchemas()){
-                    schemas.add(data.getTableSchema());
-                }
-            }
-            if (CollectionUtils.isEmpty(schemas)) {
-                return "";
-            }
-            String res = JSON.toJSONString(schemas);
-            log.info("search vector result:{}", res);
-            return res;
-        } catch (Exception exception) {
-            log.error("query table error, do nothing");
-            return "";
-        }
-    }
-
-    /**
-     * query database schema
-     *
-     * @param queryRequest
-     * @return
-     * @throws IOException
-     */
-    public String querySchemaByEs(ChatQueryRequest queryRequest) {
-        // search embedding
-        EsTableSchemaRequest tableSchemaRequest = new EsTableSchemaRequest();
-        tableSchemaRequest.setSearchKey(queryRequest.getMessage());
-        tableSchemaRequest.setDataSourceId(queryRequest.getDataSourceId());
-        tableSchemaRequest.setDatabaseName(queryRequest.getDatabaseName());
-        tableSchemaRequest.setSchemaName(queryRequest.getSchemaName());
-        ConfigService configService = ApplicationContextUtil.getBean(ConfigService.class);
-        Config keyConfig = configService.find(Chat2dbAIClient.CHAT2DB_OPENAI_KEY).getData();
-        if (Objects.isNull(keyConfig) || StringUtils.isBlank(keyConfig.getContent())) {
-            return "";
-        }
-        tableSchemaRequest.setApiKey(keyConfig.getContent());
-        try {
-            DataResult<EsTableSchemaResponse> result = gatewayClientService.schemaEsSearch(tableSchemaRequest);
-            List<String> schemas = Lists.newArrayList();
-            if (Objects.nonNull(result.getData()) && CollectionUtils.isNotEmpty(result.getData().getTableSchemas())) {
-                for(EsTableSchema data: result.getData().getTableSchemas()){
-                    schemas.add(data.getTableSchemaContent());
-                }
-            }
-            if (CollectionUtils.isEmpty(schemas)) {
-                return "";
-            }
-            String res = JSON.toJSONString(schemas);
-            log.info("search es result:{}", res);
-            return res;
-        } catch (Exception exception) {
-            log.error("query es table error, do nothing");
-            return "";
-        }
-    }
-
-    /**
-     * distribute embedding with different AI
-     *
-     * @return
-     */
-    public FastChatEmbeddingResponse distributeAIEmbedding(String input) {
-        ConfigService configService = ApplicationContextUtil.getBean(ConfigService.class);
-        Config config = configService.find(RestAIClient.AI_SQL_SOURCE).getData();
-        String aiSqlSource = config.getContent();
-        if (Objects.isNull(aiSqlSource)) {
-            return null;
-        }
-        AiSqlSourceEnum aiSqlSourceEnum = AiSqlSourceEnum.getByName(aiSqlSource);
-        switch (Objects.requireNonNull(aiSqlSourceEnum)) {
-            case CHAT2DBAI:
-                return embeddingWithChat2dbAi(input);
-            case FASTCHATAI:
-                return embeddingWithFastChatAi(input);
-        }
-        return null;
-    }
-
-    /**
-     * embedding with fast chat openai
-     *
-     * @param input
-     * @return
-     * @throws IOException
-     */
-    private FastChatEmbeddingResponse embeddingWithFastChatAi(String input) {
-        FastChatEmbeddingResponse response = FastChatAIClient.getInstance().embeddings(input);
-        return response;
-    }
-
-    /**
-     * embedding with open ai
-     *
-     * @param input
-     * @return
-     */
-    private FastChatEmbeddingResponse embeddingWithChat2dbAi(String input) {
-        FastChatEmbeddingResponse embeddings = Chat2dbAIClient.getInstance().embeddings(input);
-        return embeddings;
-    }
 
 }

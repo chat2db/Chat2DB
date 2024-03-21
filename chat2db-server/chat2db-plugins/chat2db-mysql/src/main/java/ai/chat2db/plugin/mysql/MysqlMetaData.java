@@ -33,8 +33,13 @@ public class MysqlMetaData extends DefaultMetaService implements MetaData {
     @Override
     public String tableDDL(Connection connection, @NotEmpty String databaseName, String schemaName,
                            @NotEmpty String tableName) {
-        String sql = "SHOW CREATE TABLE " + format(databaseName) + "."
-                + format(tableName);
+        String sql;
+        if(StringUtils.isEmpty(databaseName)) {
+            sql = "SHOW CREATE TABLE " + format(tableName);
+        }else{
+            sql = "SHOW CREATE TABLE " + format(databaseName) + "."
+                    + format(tableName);
+        }
         return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 return resultSet.getString("Create Table");

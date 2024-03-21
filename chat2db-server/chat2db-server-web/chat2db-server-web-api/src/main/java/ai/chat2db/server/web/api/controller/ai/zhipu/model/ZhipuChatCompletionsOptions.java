@@ -5,6 +5,9 @@ package ai.chat2db.server.web.api.controller.ai.zhipu.model;
 
 import ai.chat2db.server.web.api.controller.ai.fastchat.model.FastChatMessage;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.unfbx.chatgpt.entity.chat.tool.Tools;
+
+import lombok.Builder;
 import lombok.Data;
 
 import java.util.List;
@@ -14,17 +17,15 @@ import java.util.List;
  * generate text that continues from or "completes" provided prompt data.
  */
 @Data
+@Builder
 public final class ZhipuChatCompletionsOptions {
 
     @JsonProperty(value = "request_id")
     private String requestId;
 
     // sse-params
-    @JsonProperty(value = "incremental")
+    @JsonProperty(value = "stream")
     private Boolean stream = true;
-
-    @JsonProperty(value = "sseFormat")
-    private String sseFormat = "data";
 
 
     /*
@@ -33,8 +34,8 @@ public final class ZhipuChatCompletionsOptions {
      * the behavior of the assistant, followed by alternating messages between the User and
      * Assistant roles.
      */
-    @JsonProperty(value = "prompt")
-    private List<FastChatMessage> prompt;
+    @JsonProperty(value = "messages")
+    private List<FastChatMessage> messages;
 
 
     //
@@ -45,4 +46,14 @@ public final class ZhipuChatCompletionsOptions {
      */
     @JsonProperty(value = "model")
     private String model;
+
+
+
+    // 新添加的参数
+    @JsonProperty(value = "tool_choice")
+    private String toolChoice; // 工具选择策略
+
+    @JsonProperty(value = "tools")
+    private List<Tools> tools; // 工具列表
+
 }

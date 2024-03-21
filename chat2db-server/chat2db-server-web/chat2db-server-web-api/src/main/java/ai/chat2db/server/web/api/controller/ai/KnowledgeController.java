@@ -70,7 +70,7 @@ public class KnowledgeController extends ChatController {
             contentWordCount.add(str.length());
 
             // request embedding
-            FastChatEmbeddingResponse response = distributeAIEmbedding(str);
+            FastChatEmbeddingResponse response = promptService.distributeAIEmbedding(str);
             if(response == null){
                 continue;
             }
@@ -97,7 +97,7 @@ public class KnowledgeController extends ChatController {
     public SseEmitter search(ChatQueryRequest queryRequest, @RequestHeader Map<String, String> headers)
             throws Exception {
         // request embedding
-        FastChatEmbeddingResponse response = distributeAIEmbedding(queryRequest.getMessage());
+        FastChatEmbeddingResponse response = promptService.distributeAIEmbedding(queryRequest.getMessage());
         List<List<BigDecimal>> contentVector = new ArrayList<>();
         contentVector.add(response.getData().get(0).getEmbedding());
 

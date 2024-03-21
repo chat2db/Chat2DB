@@ -4,6 +4,7 @@ package ai.chat2db.server.web.api.controller.ai.openai.client;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 import ai.chat2db.server.domain.api.model.Config;
 import ai.chat2db.server.domain.api.service.ConfigService;
@@ -93,7 +94,17 @@ public class OpenAIClient {
         log.info("refresh openai apikey:{}", maskApiKey(apikey));
         if (Objects.nonNull(host) && Objects.nonNull(port)) {
             Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port));
-            OkHttpClient okHttpClient = new OkHttpClient.Builder().proxy(proxy).build();
+            OkHttpClient okHttpClient = new OkHttpClient.Builder()
+                    // 设置连接超时为10秒
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    // 设置读取超时为30秒
+                    .readTimeout(30, TimeUnit.SECONDS)
+                    // 设置写入超时为15秒
+                    .writeTimeout(15, TimeUnit.SECONDS)
+                    // 设置整个调用的超时为1分钟
+                    .callTimeout(1, TimeUnit.MINUTES)
+                    .proxy(proxy)
+                    .build();
             OPEN_AI_STREAM_CLIENT = OpenAiStreamClient.builder().apiHost(apiHost).apiKey(
                 Lists.newArrayList(apikey)).okHttpClient(okHttpClient).build();
         } else {

@@ -3,6 +3,7 @@ package ai.chat2db.server.web.api.controller.rdb.converter;
 import java.util.List;
 
 import ai.chat2db.server.domain.api.param.*;
+import ai.chat2db.server.web.api.controller.ai.request.ChatQueryRequest;
 import ai.chat2db.server.web.api.controller.data.source.vo.DatabaseVO;
 import ai.chat2db.server.web.api.controller.rdb.request.*;
 import ai.chat2db.server.web.api.controller.rdb.vo.ColumnVO;
@@ -99,6 +100,14 @@ public abstract class RdbWebConverter {
      * @return
      */
     public abstract SqlVO dto2vo(Sql dto);
+
+    /**
+     * 参数转换
+     *
+     * @param request
+     * @return
+     */
+    public abstract TablePageQueryParam tablePageRequest2param(ChatQueryRequest request);
     /**
      * 参数转换
      *

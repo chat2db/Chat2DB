@@ -18,17 +18,18 @@ import ai.chat2db.server.web.api.controller.rdb.vo.IndexVO;
 import ai.chat2db.server.web.api.controller.rdb.vo.SqlVO;
 import ai.chat2db.server.web.api.controller.rdb.vo.TableVO;
 import ai.chat2db.spi.model.*;
-import ai.chat2db.spi.sql.Chat2DBContext;
-import ai.chat2db.spi.sql.ConnectInfo;
 import com.google.common.collect.Lists;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @Slf4j
 @ConnectionInfoAspect
@@ -249,5 +250,41 @@ public class TableController extends EmbeddingController {
     public ActionResult delete(@Valid @RequestBody TableDeleteRequest request) {
         DropParam dropParam = rdbWebConverter.tableDelete2dropParam(request);
         return tableService.drop(dropParam);
+    }
+
+
+    /**
+     * 查询ER图
+     *
+     * @param request
+     * @return
+     */
+    @GetMapping("/er-diagram")
+    public DataResult<ErDiagram> erDiagram(@Valid TableBriefQueryRequest request) {
+        TablePageQueryParam queryParam = rdbWebConverter.tablePageRequest2param(request);
+        TableSelector tableSelector = new TableSelector();
+        tableSelector.setColumnList(true);
+        tableSelector.setIndexList(false);
+        PageResult<Table> tableDTOPageResult = tableService.pageQuery(queryParam, tableSelector);
+        List<ErDiagram.Node> entityList = tableDTOPageResult.getData().stream().map(table -> {
+            ErDiagram.Node entity = new ErDiagram.Node(table.getName(),
+                    StringUtils.defaultIfBlank(table.getComment(), table.getName()));
+            return entity;
+        }).collect(Collectors.toList());
+        List<ErDiagram.Edge> relationList = tableDTOPageResult.getData().stream().flatMap(table -> {
+            return table.getColumnList().stream().filter(column -> {
+                String columnName = column.getName();
+                Boolean primaryKey = column.getPrimaryKey();
+                return columnName != null && columnName.matches(".+_id") && Boolean.FALSE.equals(primaryKey);
+            }).map(column -> {
+                String columnName = column.getName();
+                String tableName = column.getTableName();
+                // 从列名中移除"_id"以获取可能的关联表名
+                String potentialForeignKeyTable = columnName.substring(0, columnName.length() - 3);
+                ErDiagram.Edge relation = new ErDiagram.Edge(columnName,tableName, potentialForeignKeyTable,column.getComment());
+                return relation;
+            });
+        }).collect(Collectors.toList());
+        return DataResult.of(new ErDiagram(entityList, relationList));
     }
 }

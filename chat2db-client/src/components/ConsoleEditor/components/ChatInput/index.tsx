@@ -42,18 +42,17 @@ const ChatInput = (props: IProps) => {
   };
 
   const renderSelectTable = () => {
-    const { tables, onSelectTableSyncModel, selectedTables, onSelectTables } = props;
+    const { tables, onSelectTableSyncModel, selectedTables, onSelectTables,syncTableModel } = props;
     const options = (tables || []).map((t) => ({ value: t, label: t }));
     return (
       <div className={styles.aiSelectedTable}>
         <Radio.Group
           onChange={(v) => onSelectTableSyncModel(v.target.value)}
-          // value={syncTableModel}
-          value={SyncModelType.MANUAL}
+          value={syncTableModel}
           style={{ marginBottom: '8px' }}
         >
           <Space direction="horizontal">
-            {/* <Radio value={SyncModelType.AUTO}>自动</Radio> */}
+            <Radio value={SyncModelType.AUTO}>自动</Radio>
             <Radio value={SyncModelType.MANUAL}>手动</Radio>
           </Space>
         </Radio.Group>

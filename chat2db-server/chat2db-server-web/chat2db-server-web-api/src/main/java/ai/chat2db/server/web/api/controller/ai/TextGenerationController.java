@@ -63,8 +63,8 @@ public class TextGenerationController extends ChatController {
                 "```sql";
 
         // query database schema info
-        String databaseType = queryDatabaseType(queryRequest);
-        String schemas = queryDatabaseSchema(queryRequest);
+        String databaseType = promptService.queryDatabaseType(queryRequest);
+        String schemas = promptService.queryDatabaseSchema(queryRequest);
         if (StringUtils.isNotBlank(schemas)) {
             databaseType = String.format(", given a %s database schema", databaseType);
             schemas = String.format("This query will run on a database whose schema is represented in this string:\n$s", schemas);

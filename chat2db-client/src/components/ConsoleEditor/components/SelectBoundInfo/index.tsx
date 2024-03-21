@@ -184,7 +184,7 @@ const SelectBoundInfo = memo((props: IProps) => {
         boundInfo.databaseName,
         boundInfo.schemaName,
       );
-      setSelectedTables(tableNameListTemp.slice(0, 1));
+      //setSelectedTables(tableNameListTemp.slice(0, 1));
     }
   }, [allTableList, isActive]);
 
