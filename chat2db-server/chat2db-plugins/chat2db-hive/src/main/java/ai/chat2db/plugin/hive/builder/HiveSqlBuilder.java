@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-public class HiveSqlBuilder extends DefaultSqlBuilder implements SqlBuilder {
+public class HiveSqlBuilder extends DefaultSqlBuilder implements SqlBuilder<Table> {
     @Override
     public String buildCreateTableSql(Table table) {
         StringBuilder script = new StringBuilder();
