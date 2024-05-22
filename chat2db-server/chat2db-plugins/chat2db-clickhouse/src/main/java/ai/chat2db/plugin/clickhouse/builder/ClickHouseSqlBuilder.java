@@ -14,58 +14,100 @@ import org.apache.commons.lang3.StringUtils;
 public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildCreateTableSql(Table table) {
-        StringBuilder script = new StringBuilder();
-        script.append("CREATE TABLE ");
-        if (StringUtils.isNotBlank(table.getDatabaseName())) {
-            script.append("`").append(table.getDatabaseName()).append("`").append(".");
-        }
+        // Initialize StringBuilder to build the SQL script
+        StringBuilder script = new StringBuilder("CREATE TABLE ");
+        
+        // Append the database name, if present
+        appendDatabaseName(script, table.getDatabaseName());
+        
+        // Append the table name
         script.append("`").append(table.getName()).append("`").append(" (").append("\n");
 
         // append column
-        for (TableColumn column : table.getColumnList()) {
-            if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
-                continue;
-            }
-            ClickHouseColumnTypeEnum typeEnum = ClickHouseColumnTypeEnum.getByType(column.getColumnType());
-            script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
-        }
+        appendColumns(script, table.getColumnList());
 
         // append index
-        for (TableIndex tableIndex : table.getIndexList()) {
-            if (StringUtils.isBlank(tableIndex.getName()) || StringUtils.isBlank(tableIndex.getType())) {
-                continue;
-            }
-            ClickHouseIndexTypeEnum mysqlIndexTypeEnum = ClickHouseIndexTypeEnum.getByType(tableIndex.getType());
-            if (!ClickHouseIndexTypeEnum.PRIMARY.equals(mysqlIndexTypeEnum) ) {
-                script.append("\t").append("").append(mysqlIndexTypeEnum.buildIndexScript(tableIndex)).append(",\n");
-            }
-        }
+        appendIndexes(script, table.getIndexList());
 
+        // Remove the last comma
         script = new StringBuilder(script.substring(0, script.length() - 2));
         script.append("\n)");
 
+        // Append the engine, if present
+       appendEngine(script, table.getEngine());
 
-        if (StringUtils.isNotBlank(table.getEngine())) {
-            script.append(" ENGINE=").append(table.getEngine()).append("\n");
-        }
-        // append primary key
-        for (TableIndex tableIndex : table.getIndexList()) {
-            if (StringUtils.isBlank(tableIndex.getName()) || StringUtils.isBlank(tableIndex.getType())) {
-                continue;
-            }
-            ClickHouseIndexTypeEnum mysqlIndexTypeEnum = ClickHouseIndexTypeEnum.getByType(tableIndex.getType());
-            if (ClickHouseIndexTypeEnum.PRIMARY.equals(mysqlIndexTypeEnum) ) {
-                script.append("\t").append("").append(mysqlIndexTypeEnum.buildIndexScript(tableIndex)).append("\n");
-            }
-        }
+       // append primary key
+       appendPrimaryKey(script, table.getIndexList());
+       
+        // Append the comment, if present
+        appendComment(script, table.getComment());
 
-        if (StringUtils.isNotBlank(table.getComment())) {
-            script.append(" COMMENT '").append(table.getComment()).append("'");
-        }
-
+         // Append a semicolon to complete the SQL statement
         script.append(";");
-
+       
+        // Return the complete SQL script
         return script.toString();
+    }
+
+    // Method to append the database name to the SQL script
+    private void appendDatabaseName(StringBuilder script, String databaseName) {
+        if (StringUtils.isNotBlank(databaseName)) {
+            script.append("`").append(databaseName).append("`.");
+        }
+    }
+
+    // Method to append columns to the SQL script
+    private void appendColumns(StringBuilder script, List<TableColumn> columns) {
+        for (TableColumn column : columns) {
+            // Check if column name and type are not blank
+            if (StringUtils.isNotBlank(column.getName()) && StringUtils.isNotBlank(column.getColumnType())) {
+                // Get the column type enum and append the column SQL to the script
+                ClickHouseColumnTypeEnum typeEnum = ClickHouseColumnTypeEnum.getByType(column.getColumnType());
+                script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
+            }
+        }
+    }
+
+    // Method to append indexes to the SQL script
+    private void appendIndexes(StringBuilder script, List<TableIndex> indexes) {
+        for (TableIndex index : indexes) {
+            // Check if index name and type are not blank
+            if (StringUtils.isNotBlank(index.getName()) && StringUtils.isNotBlank(index.getType())) {
+                // Get the index type enum and append the index script to the script
+                ClickHouseIndexTypeEnum indexTypeEnum = ClickHouseIndexTypeEnum.getByType(index.getType());
+                if (!ClickHouseIndexTypeEnum.PRIMARY.equals(indexTypeEnum)) {
+                    script.append("\t").append(indexTypeEnum.buildIndexScript(index)).append(",\n");
+                }
+            }
+        }
+    }
+
+    // Method to append the engine to the SQL script
+    private void appendEngine(StringBuilder script, String engine) {
+        if (StringUtils.isNotBlank(engine)) {
+            script.append(" ENGINE=").append(engine).append("\n");
+        }
+    }
+
+    // Method to append the primary key to the SQL script
+    private void appendPrimaryKey(StringBuilder script, List<TableIndex> indexes) {
+        for (TableIndex index : indexes) {
+            // Check if index name and type are not blank
+            if (StringUtils.isNotBlank(index.getName()) && StringUtils.isNotBlank(index.getType())) {
+                // Get the index type enum and append the index script to the script
+                ClickHouseIndexTypeEnum indexTypeEnum = ClickHouseIndexTypeEnum.getByType(index.getType());
+                if (ClickHouseIndexTypeEnum.PRIMARY.equals(indexTypeEnum)) {
+                    script.append("\t").append(indexTypeEnum.buildIndexScript(index)).append("\n");
+                }
+            }
+        }
+    }
+
+    // Method to append the comment to the SQL script
+    private void appendComment(StringBuilder script, String comment) {
+        if (StringUtils.isNotBlank(comment)) {
+            script.append(" COMMENT '").append(comment).append("'");
+        }
     }
 
     @Override

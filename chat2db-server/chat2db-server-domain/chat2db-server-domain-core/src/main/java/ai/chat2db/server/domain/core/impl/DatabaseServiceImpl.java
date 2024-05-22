@@ -118,9 +118,10 @@ public class DatabaseServiceImpl implements DatabaseService {
                             ThreadUtil.execute(() -> {
                                 try {
                                     database.setSchemas(metaData.schemas(connection, database.getName()));
-                                    countDownLatch.countDown();
                                 } catch (Exception e) {
                                     log.error("queryDatabaseSchema error", e);
+                                } finally{
+                                    countDownLatch.countDown();
                                 }
                             });
                         }

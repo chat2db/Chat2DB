@@ -176,7 +176,22 @@ public class DlTemplateServiceImpl implements DlTemplateService {
         return DataResult.of(orderSql);
     }
 
-
+    
+    /**
+     * The method getGroupBySql constructs a GROUP BY SQL query string from the provided parameters.
+     *
+     * @param param - a GroupByParam object containing the original SQL query and the list of columns to group by
+     * @return DataResult<String> - a DataResult object containing the constructed GROUP BY SQL query string
+    */
+   @Override
+    public DataResult<String> getGroupBySql(GroupByParam param) {
+        // - Retrieve the SqlBuilder instance from Chat2DBContext
+        SqlBuilder sqlBuilder = Chat2DBContext.getSqlBuilder();
+        // Build the GROUP BY SQL using the provided parameters
+        String groupSql = sqlBuilder.buildGroupBySql(param.getOriginSql(), param.getGroupByList());
+        // Return the built SQL as a DataResult
+        return DataResult.of(groupSql);
+    }
     private List<Header> setColumnInfo(List<Header> headers, String tableName, String schemaName, String databaseName) {
         try {
             TableQueryParam tableQueryParam = new TableQueryParam();
