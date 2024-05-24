@@ -6,6 +6,7 @@ import ai.chat2db.server.domain.api.param.OrderByParam;
 import ai.chat2db.server.domain.api.param.UpdateSelectResultParam;
 import ai.chat2db.spi.model.ExecuteResult;
 import ai.chat2db.server.tools.base.wrapper.result.DataResult;
+import ai.chat2db.server.domain.api.param.GroupByParam;
 
 import ai.chat2db.server.tools.base.wrapper.result.ListResult;
 
@@ -57,6 +58,13 @@ public interface DlTemplateService {
      * @return
      */
     DataResult<String> updateSelectResult(UpdateSelectResultParam param);
+
+    /**
+     *
+     * @param param
+     * @return
+     */
+    DataResult<String> getGroupBySql(GroupByParam param);
 
     /**
      *

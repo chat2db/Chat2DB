@@ -717,4 +717,30 @@ public class SQLExecutor implements CommandExecutor {
         }
         return executeResult;
     }
+    
+    /**
+     * Formats the given table name by stripping off any schema or catalog prefixes.
+     * If the table name contains a dot ('.'), it splits the string by the dot
+     * and returns the last part, which is generally the actual table name.
+     * If the table name is blank (null, empty, or only whitespace), it returns the original table name.
+     *
+     * @param tableName the original table name, potentially including schema or catalog prefixes.
+     * @return the formatted table name, or the original table name if it's blank or contains no dot.
+     */
+    public static String formatTableName(String tableName) {
+        // Check if the table name is blank (null, empty, or only whitespace)
+        if (StringUtils.isBlank(tableName)) {
+            return tableName;
+        }
+
+        // Check if the table name contains a dot ('.')
+        if (tableName.contains(".")) {
+            // Split the table name by the dot and return the last part
+            String[] split = tableName.split("\\.");
+            return split[split.length - 1];
+        }
+
+        // Return the original table name if it contains no dot
+        return tableName;
+    }
 }

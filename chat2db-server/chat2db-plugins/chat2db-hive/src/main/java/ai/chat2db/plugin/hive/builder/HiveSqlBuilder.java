@@ -27,27 +27,41 @@ public class HiveSqlBuilder extends DefaultSqlBuilder implements SqlBuilder {
         script.append("`").append(table.getName()).append("`").append(" (").append("\n");
 
         // append column
-        for (TableColumn column : table.getColumnList()) {
+        appendColumns(script, table.getColumnList());
+
+        // append primary key and index
+        appendIndexes(script, table.getIndexList());
+        script = new StringBuilder(script.substring(0, script.length() - 2));
+        script.append("\n)");
+
+        // append engine, charset, collate, auto_increment, comment, and partition
+        appendTableOptions(script, table);
+        script.append(";");       
+
+        return script.toString();
+    }
+
+    private void appendColumns(StringBuilder script, List<TableColumn> columns) {
+        for (TableColumn column : columns) {
             if (StringUtils.isBlank(column.getName()) || StringUtils.isBlank(column.getColumnType())) {
                 continue;
             }
             HiveColumnTypeEnum typeEnum = HiveColumnTypeEnum.getByType(column.getColumnType());
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
+    }
 
-        // append primary key and index
-        for (TableIndex tableIndex : table.getIndexList()) {
-            if (StringUtils.isBlank(tableIndex.getName()) || StringUtils.isBlank(tableIndex.getType())) {
+    private void appendIndexes(StringBuilder script, List<TableIndex> indexes) {
+        for (TableIndex index : indexes) {
+            if (StringUtils.isBlank(index.getName()) || StringUtils.isBlank(index.getType())) {
                 continue;
             }
-            HiveIndexTypeEnum hiveIndexTypeEnum = HiveIndexTypeEnum.getByType(tableIndex.getType());
-            script.append("\t").append("").append(hiveIndexTypeEnum.buildIndexScript(tableIndex)).append(",\n");
+                HiveIndexTypeEnum hiveIndexTypeEnum = HiveIndexTypeEnum.getByType(index.getType());
+                script.append("\t").append("").append(hiveIndexTypeEnum.buildIndexScript(index)).append(",\n");
         }
+    }
 
-        script = new StringBuilder(script.substring(0, script.length() - 2));
-        script.append("\n)");
-
-
+    private void appendTableOptions(StringBuilder script, Table table) {
         if (StringUtils.isNotBlank(table.getEngine())) {
             script.append(" ENGINE=").append(table.getEngine());
         }
@@ -71,9 +85,6 @@ public class HiveSqlBuilder extends DefaultSqlBuilder implements SqlBuilder {
         if (StringUtils.isNotBlank(table.getPartition())) {
             script.append(" \n").append(table.getPartition());
         }
-        script.append(";");
-
-        return script.toString();
     }
 
     @Override

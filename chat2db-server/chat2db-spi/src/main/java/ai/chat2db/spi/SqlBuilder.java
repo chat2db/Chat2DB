@@ -75,6 +75,13 @@ public interface SqlBuilder<T> {
      */
     String buildOrderBySql(String originSql, List<OrderBy> orderByList);
 
+    /**
+     * @param originSql
+     * @param groupByList
+     * @return
+     */
+    String buildGroupBySql(String originSql, List<String> groupByList);
+
 
     /**
      * generate sql based on results

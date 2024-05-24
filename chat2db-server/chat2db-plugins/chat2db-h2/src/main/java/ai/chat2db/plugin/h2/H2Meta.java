@@ -33,10 +33,33 @@ public class H2Meta extends DefaultMetaService implements MetaData {
     }
 
     private String getDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        try {
-            // Query table structure information
-            ResultSet columns = connection.getMetaData().getColumns(databaseName, schemaName, tableName, null);
-            List<String> columnDefinitions = new ArrayList<>();
+
+         try{
+            List<String> columnDefinitions = getColumnDefinitions(connection, databaseName, schemaName, tableName);
+            Map<String, List<String>> indexMap = getIndexInfo(connection, databaseName, schemaName, tableName);   
+            StringBuilder createTableDDL = new StringBuilder("CREATE TABLE ");
+            createTableDDL.append(tableName).append(" (\n");
+            createTableDDL.append(String.join(",\n", columnDefinitions));
+            createTableDDL.append("\n);\n");
+
+             // Output index information
+            for (Map.Entry<String, List<String>> entry : indexMap.entrySet()) {
+                String indexName = entry.getKey();
+                List<String> columnList = entry.getValue();
+                String indexColumns = String.join(", ", columnList);
+                String createIndexDDL = String.format("CREATE INDEX %s ON %s (%s);", indexName, tableName, indexColumns);
+                createTableDDL.append(createIndexDDL);
+            }
+            return createTableDDL.toString();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
+
+    private List<String> getColumnDefinitions(Connection connection, String databaseName, String schemaName, String tableName) {
+        List<String> columnDefinitions = new ArrayList<>();
+        try (ResultSet columns = connection.getMetaData().getColumns(databaseName, schemaName, tableName, null)) {
             while (columns.next()) {
                 String columnName = columns.getString("COLUMN_NAME");
                 String columnType = columns.getString("TYPE_NAME");
@@ -58,40 +81,26 @@ public class H2Meta extends DefaultMetaService implements MetaData {
                 }
                 columnDefinitions.add(columnDefinition.toString());
             }
+        } catch (Exception e) {
+           throw new RuntimeException(e);
+        }
+        return columnDefinitions;
+    }
 
-            // Query table index information
-            ResultSet indexes = connection.getMetaData().getIndexInfo(databaseName, schemaName, tableName, false,
-                false);
-            Map<String, List<String>> indexMap = new HashMap<>();
+    private Map<String, List<String>> getIndexInfo(Connection connection, String databaseName, String schemaName, String tableName) {
+        Map<String, List<String>> indexMap = new HashMap<>();
+        try (ResultSet indexes = connection.getMetaData().getIndexInfo(databaseName, schemaName, tableName, false, false)) {
             while (indexes.next()) {
                 String indexName = indexes.getString("INDEX_NAME");
                 String columnName = indexes.getString("COLUMN_NAME");
                 if (indexName != null) {
-                    if (!indexMap.containsKey(indexName)) {
-                        indexMap.put(indexName, new ArrayList<>());
-                    }
-                    indexMap.get(indexName).add(columnName);
+                    indexMap.computeIfAbsent(indexName, k -> new ArrayList<>()).add(columnName);
                 }
             }
-            StringBuilder createTableDDL = new StringBuilder("CREATE TABLE ");
-            createTableDDL.append(tableName).append(" (\n");
-            createTableDDL.append(String.join(",\n", columnDefinitions));
-            createTableDDL.append("\n);\n");
-            // Output index information
-            for (Map.Entry<String, List<String>> entry : indexMap.entrySet()) {
-                String indexName = entry.getKey();
-                List<String> columnList = entry.getValue();
-                String indexColumns = String.join(", ", columnList);
-                String createIndexDDL = String.format("CREATE INDEX %s ON %s (%s);", indexName, tableName,
-                    indexColumns);
-                createTableDDL.append(createIndexDDL);
-            }
-            return createTableDDL.toString();
-
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (SQLException e) {
+           throw new RuntimeException(e);
         }
-        return "";
+        return indexMap;
     }
 
     private static String ROUTINES_SQL

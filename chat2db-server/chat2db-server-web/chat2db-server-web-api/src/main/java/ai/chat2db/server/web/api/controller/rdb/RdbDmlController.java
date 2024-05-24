@@ -8,6 +8,7 @@ import java.util.concurrent.Executors;
 
 import ai.chat2db.server.domain.api.model.Config;
 import ai.chat2db.server.domain.api.param.DlExecuteParam;
+import ai.chat2db.server.domain.api.param.GroupByParam;
 import ai.chat2db.server.domain.api.param.OrderByParam;
 import ai.chat2db.server.domain.api.param.UpdateSelectResultParam;
 import ai.chat2db.server.domain.api.service.ConfigService;
@@ -125,6 +126,14 @@ public class RdbDmlController {
         return dlTemplateService.updateSelectResult(param);
     }
 
+
+    @RequestMapping(value = "/get_group_by_sql", method = {RequestMethod.POST, RequestMethod.PUT})
+    public DataResult<String> getGroupBySql(@RequestBody GroupByRequest request) {
+
+        GroupByParam param = rdbWebConverter.request2param(request);
+
+        return dlTemplateService.getGroupBySql(param);
+    }
 
     @RequestMapping(value = "/get_order_by_sql", method = {RequestMethod.POST, RequestMethod.PUT})
     public DataResult<String> getOrderBySql(@RequestBody OrderByRequest request) {
