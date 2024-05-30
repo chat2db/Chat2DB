@@ -17,24 +17,28 @@ public class MysqlValueHandler extends DefaultValueHandler {
 
     @Override
     public String getString(ResultSet rs, int index, boolean limitSize) throws SQLException {
-        Object obj = rs.getObject(index);
-        if (obj == null) {
-            return null;
-        }
-        String columnTypeName = rs.getMetaData().getColumnTypeName(index);
-        if (MysqlColumnTypeEnum.GEOMETRY.name().equalsIgnoreCase(columnTypeName)
-            || MysqlColumnTypeEnum.POINT.name().equalsIgnoreCase(columnTypeName)
-            || MysqlColumnTypeEnum.LINESTRING.name().equalsIgnoreCase(columnTypeName)
-            || MysqlColumnTypeEnum.POLYGON.name().equalsIgnoreCase(columnTypeName)
-            || MysqlColumnTypeEnum.MULTIPOINT.name().equalsIgnoreCase(columnTypeName)
-            || MysqlColumnTypeEnum.MULTILINESTRING.name().equalsIgnoreCase(columnTypeName)
-            || MysqlColumnTypeEnum.MULTIPOLYGON.name().equalsIgnoreCase(columnTypeName)
-            || MysqlColumnTypeEnum.GEOMETRYCOLLECTION.name().equalsIgnoreCase(columnTypeName)
-        ) {
-            ValueHandler handler = VALUE_HANDLER_MAP.get(MysqlColumnTypeEnum.GEOMETRY.name());
-            return handler.getString(rs, index, limitSize);
-        } else {
-            return super.getString(rs, index, limitSize);
+        try {
+            Object obj = rs.getObject(index);
+            if (obj == null) {
+                return null;
+            }
+            String columnTypeName = rs.getMetaData().getColumnTypeName(index);
+            if (MysqlColumnTypeEnum.GEOMETRY.name().equalsIgnoreCase(columnTypeName)
+                    || MysqlColumnTypeEnum.POINT.name().equalsIgnoreCase(columnTypeName)
+                    || MysqlColumnTypeEnum.LINESTRING.name().equalsIgnoreCase(columnTypeName)
+                    || MysqlColumnTypeEnum.POLYGON.name().equalsIgnoreCase(columnTypeName)
+                    || MysqlColumnTypeEnum.MULTIPOINT.name().equalsIgnoreCase(columnTypeName)
+                    || MysqlColumnTypeEnum.MULTILINESTRING.name().equalsIgnoreCase(columnTypeName)
+                    || MysqlColumnTypeEnum.MULTIPOLYGON.name().equalsIgnoreCase(columnTypeName)
+                    || MysqlColumnTypeEnum.GEOMETRYCOLLECTION.name().equalsIgnoreCase(columnTypeName)
+            ) {
+                ValueHandler handler = VALUE_HANDLER_MAP.get(MysqlColumnTypeEnum.GEOMETRY.name());
+                return handler.getString(rs, index, limitSize);
+            } else {
+                return super.getString(rs, index, limitSize);
+            }
+        }catch (Exception e){
+            return rs.getString(index);
         }
     }
 

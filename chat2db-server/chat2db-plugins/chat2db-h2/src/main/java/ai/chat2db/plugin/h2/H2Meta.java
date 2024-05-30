@@ -15,8 +15,10 @@ import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.sql.SQLExecutor;
 import ai.chat2db.spi.util.SortUtils;
 import jakarta.validation.constraints.NotEmpty;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+@Slf4j
 public class H2Meta extends DefaultMetaService implements MetaData {
 
 
@@ -89,7 +91,7 @@ public class H2Meta extends DefaultMetaService implements MetaData {
             return createTableDDL.toString();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Failed to get table DDL", e);
         }
         return "";
     }

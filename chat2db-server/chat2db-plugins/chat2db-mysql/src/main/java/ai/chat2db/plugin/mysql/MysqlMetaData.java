@@ -31,6 +31,35 @@ public class MysqlMetaData extends DefaultMetaService implements MetaData {
     }
 
 
+    private static String TABLES_SQL
+            = "SELECT TABLE_SCHEMA, TABLE_NAME, ENGINE, VERSION, TABLE_ROWS, DATA_LENGTH, AUTO_INCREMENT, CREATE_TIME, UPDATE_TIME, TABLE_COLLATION, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = '%s'";
+    @Override
+    public List<Table> tables(Connection connection, @NotEmpty String databaseName, String schemaName, String tableName) {
+        String sql = String.format(TABLES_SQL, databaseName);
+        if(StringUtils.isNotBlank(tableName)){
+            sql += " AND TABLE_NAME = '" + tableName + "'";
+        }
+        return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
+            List<Table> tables = new ArrayList<>();
+            while (resultSet.next()) {
+                Table table = new Table();
+                table.setDatabaseName(databaseName);
+                table.setSchemaName(schemaName);
+                table.setName(resultSet.getString("TABLE_NAME"));
+                table.setEngine(resultSet.getString("ENGINE"));
+                table.setRows(resultSet.getLong("TABLE_ROWS"));
+                table.setDataLength(resultSet.getLong("DATA_LENGTH"));
+                table.setCreateTime(resultSet.getString("CREATE_TIME"));
+                table.setUpdateTime(resultSet.getString("UPDATE_TIME"));
+                table.setCollate(resultSet.getString("TABLE_COLLATION"));
+                table.setComment(resultSet.getString("TABLE_COMMENT"));
+                tables.add(table);
+            }
+            return tables;
+        });
+    }
+
+
     @Override
     public String tableDDL(Connection connection, @NotEmpty String databaseName, String schemaName,
                            @NotEmpty String tableName) {
@@ -70,12 +99,12 @@ public class MysqlMetaData extends DefaultMetaService implements MetaData {
             }
             return f;
         });
-        String functionDDlSql =String.format("SHOW CREATE FUNCTION %s", functionName);
-        SQLExecutor.getInstance().execute(connection,functionDDlSql, resultSet -> {
+        String functionDDlSql = String.format("SHOW CREATE FUNCTION %s", functionName);
+        SQLExecutor.getInstance().execute(connection, functionDDlSql, resultSet -> {
             if (resultSet.next()) {
                 function.setFunctionBody(resultSet.getString("Create Function"));
             }
-        } );
+        });
         return function;
 
     }
@@ -103,6 +132,7 @@ public class MysqlMetaData extends DefaultMetaService implements MetaData {
         });
     }
 
+
     @Override
     public Trigger trigger(Connection connection, @NotEmpty String databaseName, String schemaName,
                            String triggerName) {
@@ -123,15 +153,15 @@ public class MysqlMetaData extends DefaultMetaService implements MetaData {
     @Override
     public List<Procedure> procedures(Connection connection, String databaseName, String schemaName) {
         String sql = "SHOW PROCEDURE STATUS WHERE Db = DATABASE()";
-       return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
-           ArrayList<Procedure> procedures = new ArrayList<>();
-           Procedure procedure = new Procedure();
-           while (resultSet.next()){
-               procedure.setProcedureName(resultSet.getString("Name"));
-               procedures.add(procedure);
-           }
-           return procedures;
-       });
+        return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
+            ArrayList<Procedure> procedures = new ArrayList<>();
+            while (resultSet.next()) {
+                Procedure procedure = new Procedure();
+                procedure.setProcedureName(resultSet.getString("Name"));
+                procedures.add(procedure);
+            }
+            return procedures;
+        });
     }
 
     @Override
@@ -214,7 +244,7 @@ public class MysqlMetaData extends DefaultMetaService implements MetaData {
         }
     }
 
-    private static String VIEW_DDL_SQL="show create view %s";
+    private static String VIEW_DDL_SQL = "show create view %s";
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {

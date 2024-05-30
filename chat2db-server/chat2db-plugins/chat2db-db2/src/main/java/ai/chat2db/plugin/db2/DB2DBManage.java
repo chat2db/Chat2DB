@@ -6,6 +6,7 @@ import ai.chat2db.spi.jdbc.DefaultDBManage;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -13,6 +14,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+@Slf4j
 public class DB2DBManage extends DefaultDBManage implements DBManage {
 
     @Override
@@ -93,7 +95,7 @@ public class DB2DBManage extends DefaultDBManage implements DBManage {
         try {
             SQLExecutor.getInstance().execute(connection, "SET SCHEMA \"" + schemaName + "\"");
         } catch (SQLException e) {
-            e.printStackTrace();
+
         }
     }
 

@@ -45,29 +45,15 @@ public class DefaultDBManage implements DBManage {
                 url = url.replace(host, "127.0.0.1").replace(port, ssh.getLocalPort());
             }
         } catch (Exception e) {
+
             throw new ConnectionException("connection.ssh.error", null, e);
         }
         try {
             connection = IDriverManager.getConnection(url, connectInfo.getUser(), connectInfo.getPassword(),
                     connectInfo.getDriverConfig(), connectInfo.getExtendMap());
 
-        } catch (Exception e1) {
-            if (connection != null) {
-                try {
-                    connection.close();
-                } catch (SQLException e) {
-                }
-            }
-            if (session != null) {
-                try {
-                    session.delPortForwardingL(Integer.parseInt(ssh.getLocalPort()));
-                } catch (JSchException e) {
-                }
-                try {
-                    session.disconnect();
-                } catch (Exception e) {
-                }
-            }
+        }catch (Exception e1) {
+            close(connection,session,ssh);
             throw new BusinessException("connection.error", null, e1);
         }
         connectInfo.setSession(session);
@@ -76,6 +62,24 @@ public class DefaultDBManage implements DBManage {
             connectDatabase(connection, connectInfo.getDatabaseName());
         }
         return connection;
+    }
+    private void close(Connection connection,Session session,SSHInfo ssh){
+        if (connection != null) {
+            try {
+                connection.close();
+            } catch (SQLException e) {
+            }
+        }
+        if (session != null) {
+            try {
+                session.delPortForwardingL(Integer.parseInt(ssh.getLocalPort()));
+            } catch (JSchException e) {
+            }
+            try {
+                session.disconnect();
+            } catch (Exception e) {
+            }
+        }
     }
 
     private Session getSession(SSHInfo ssh) {

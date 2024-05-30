@@ -230,7 +230,7 @@ public class DesUtil {
         } catch (FileNotFoundException e) {
             result = 5;
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
         return result;
     }
@@ -263,7 +263,7 @@ public class DesUtil {
         }catch (FileNotFoundException e) {
             result = 5;
         }  catch (Exception e) {
-            e.printStackTrace();
+            throw new RuntimeException(e);
         }
         return result;
     }

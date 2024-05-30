@@ -22,7 +22,7 @@ services:
       POSTGRES_DB: ali_dbhub_test
       TZ: Asia/Shanghai
     ports:
-      - 5432:5432
+      - 5431:5431
   # Connection address:jdbc:oracle:thin:@localhost:1521:XE,  username:system, password:ali_dbhub
   # The default database XEPDB1 will start much faster
   oracle:

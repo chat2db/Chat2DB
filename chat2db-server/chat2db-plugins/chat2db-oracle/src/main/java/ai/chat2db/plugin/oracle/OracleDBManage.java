@@ -5,6 +5,7 @@ import ai.chat2db.spi.jdbc.DefaultDBManage;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -14,6 +15,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.Objects;
 
+@Slf4j
 public class OracleDBManage extends DefaultDBManage implements DBManage {
     private static String TABLE_DDL_SQL = "SELECT DBMS_METADATA.GET_DDL('TABLE', table_name)  as ddl FROM all_tables WHERE owner = '%s' AND table_name = '%s'";
     private static String TABLE_COMMENT_SQL = "SELECT 'COMMENT ON TABLE ' || table_name || ' IS ''' || comments || ''';' AS table_comment_ddl FROM user_tab_comments WHERE table_name = '%s'";
@@ -201,7 +203,7 @@ public class OracleDBManage extends DefaultDBManage implements DBManage {
         try {
             SQLExecutor.getInstance().execute(connection, "ALTER SESSION SET CURRENT_SCHEMA = \"" + schemaName + "\"");
         } catch (SQLException e) {
-            e.printStackTrace();
+            log.error("connectDatabase error", e);
         }
     }
 

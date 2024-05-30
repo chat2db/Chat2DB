@@ -25,15 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Chat2DBContext {
     private static final ThreadLocal<ConnectInfo> CONNECT_INFO_THREAD_LOCAL = new ThreadLocal<>();
 
-//    private static final Cache<String, ConnectInfo> CONNECT_INFO_CACHE = CacheBuilder.newBuilder()
-//            .maximumSize(1000)
-//            .expireAfterAccess(5, TimeUnit.MINUTES)
-//            .removalListener((RemovalListener<String, ConnectInfo>) notification -> {
-//                if (notification.getValue() != null) {
-//                    System.out.println("remove connect info " + notification.getKey());
-//                    notification.getValue().close();
-//                }
-//            }).build();
+
 
     public static Map<String, Plugin> PLUGIN_MAP = new ConcurrentHashMap<>();
 
@@ -87,29 +79,36 @@ public class Chat2DBContext {
     }
 
     public static Connection getConnection() {
-        ConnectInfo connectInfo = getConnectInfo();
-        Connection connection = connectInfo.getConnection();
-        try {
-            if (connection == null || connection.isClosed()) {
-                synchronized (connectInfo) {
-                    connection = connectInfo.getConnection();
-                    try {
-                        if (connection != null && !connection.isClosed()) {
-                            return connection;
-                        } else {
-                            connection = getDBManage().getConnection(connectInfo);
-                        }
-                    } catch (SQLException e) {
-                        connection = getDBManage().getConnection(connectInfo);
-                    }
-                    connectInfo.setConnection(connection);
-                }
-            }
-        } catch (SQLException e) {
-            log.error("get connection error", e);
-        }
-        return connection;
+//        ConnectInfo connectInfo = getConnectInfo();
+//        Connection connection = connectInfo.getConnection();
+//        try {
+//            if (connection == null || connection.isClosed()) {
+//                synchronized (connectInfo) {
+//                    connection = connectInfo.getConnection();
+//                    try {
+//                        if (connection != null && !connection.isClosed()) {
+//                            log.info("get connection from cache");
+//                            return connection;
+//                        } else {
+//                            log.info("get connection from db begin");
+//                            connection = getDBManage().getConnection(connectInfo);
+//                            log.info("get connection from db end");
+//                        }
+//                    } catch (SQLException e) {
+//                        log.error("get connection error", e);
+//                        log.info("get connection from db begin2");
+//                        connection = getDBManage().getConnection(connectInfo);
+//                        log.info("get connection from db end2");
+//                    }
+//                    connectInfo.setConnection(connection);
+//                }
+//            }
+//        } catch (SQLException e) {
+//            log.error("get connection error", e);
+//        }
+        return ConnectionPool.getConnection(getConnectInfo());
     }
+
 
     public static String getDbVersion() {
         ConnectInfo connectInfo = getConnectInfo();
@@ -151,8 +150,9 @@ public class Chat2DBContext {
     public static void removeContext() {
         ConnectInfo connectInfo = CONNECT_INFO_THREAD_LOCAL.get();
         if (connectInfo != null) {
-            connectInfo.close();
+//            connectInfo.close();
             CONNECT_INFO_THREAD_LOCAL.remove();
+            ConnectionPool.close(connectInfo);
         }
     }
 

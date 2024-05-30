@@ -225,7 +225,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements MetaData {
             table.setSchemaName(schemaName);
             table.setName(viewName);
             if (resultSet.next()) {
-                table.setDdl(resultSet.getString(1));
+                table.setDdl(resultSet.getString("create_table_query"));
             }
             return table;
         });
@@ -298,7 +298,11 @@ public class ClickHouseMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "`" + name + "`").collect(Collectors.joining("."));
+        return Arrays.stream(names)
+                .skip(1) // 跳过第一个名称
+                .filter(StringUtils::isNotBlank)
+                .map(name -> "`" + name + "`")
+                .collect(Collectors.joining("."));
     }
 
 

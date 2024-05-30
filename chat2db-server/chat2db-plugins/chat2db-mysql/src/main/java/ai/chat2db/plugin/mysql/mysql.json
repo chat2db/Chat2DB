@@ -17,6 +17,11 @@
           "key": "zeroDateTimeBehavior",
           "value": "convertToNull",
           "required": false
+        },
+        {
+          "key": "tinyInt1isBit",
+          "value": "false",
+          "required": false
         }
       ]
     },
@@ -33,6 +38,11 @@
         {
           "key": "characterEncoding",
           "value": "UTF-8",
+          "required": false
+        },
+        {
+          "key": "tinyInt1isBit",
+          "value": "false",
           "required": false
         }
       ]

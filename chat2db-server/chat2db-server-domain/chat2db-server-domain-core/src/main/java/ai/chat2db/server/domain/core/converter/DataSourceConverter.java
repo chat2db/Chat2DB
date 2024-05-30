@@ -84,17 +84,17 @@ public abstract class DataSourceConverter {
      * @param param
      * @return
      */
-    protected String encryptString(DataSourceUpdateParam param) {
-        String encryptStr = param.getPassword();
-        try {
-            DesUtil desUtil = new DesUtil(DesUtil.DES_KEY);
-            encryptStr = desUtil.encrypt(param.getPassword(), "CBC");
-        } catch (Exception exception) {
-            // do nothing
-            log.error("encrypt error", exception);
+        protected String encryptString(DataSourceUpdateParam param) {
+            String encryptStr = param.getPassword();
+            try {
+                DesUtil desUtil = new DesUtil(DesUtil.DES_KEY);
+                encryptStr = desUtil.encrypt(param.getPassword(), "CBC");
+            } catch (Exception exception) {
+                // do nothing
+                log.error("encrypt error", exception);
+            }
+            return encryptStr;
         }
-        return encryptStr;
-    }
 
     /**
      * decrypt

@@ -61,6 +61,7 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
     NATIONAL_CHAR_VARYING("NATIONAL CHAR VARYING", true, false, true, false, false, false, true, true, false, true),
 
 
+
     NATIONAL_CHARACTER("NATIONAL CHARACTER", true, false, true, false, false, false, true, true, false, true),
 
 

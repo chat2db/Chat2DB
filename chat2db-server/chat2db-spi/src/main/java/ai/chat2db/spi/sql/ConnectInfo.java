@@ -4,9 +4,11 @@ package ai.chat2db.spi.sql;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import ai.chat2db.spi.config.DriverConfig;
 import ai.chat2db.spi.model.KeyValue;
@@ -14,12 +16,14 @@ import ai.chat2db.spi.model.SSHInfo;
 import ai.chat2db.spi.model.SSLInfo;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.ObjectUtils;
 
 /**
  * @author jipengfei
  * @version : ConnectInfo.java
  */
+@Slf4j
 public class ConnectInfo {
 
     private String loginUser;
@@ -140,6 +144,9 @@ public class ConnectInfo {
     private DriverConfig driverConfig;
 
 
+    private Date lastAccessTime;
+
+
     public String getDbVersion() {
         return dbVersion;
     }
@@ -168,6 +175,7 @@ public class ConnectInfo {
     public Session session;
 
 
+
     public LinkedHashMap<String, Object> getExtendMap() {
 
         if (ObjectUtils.isEmpty(extendInfo)) {
@@ -192,9 +200,6 @@ public class ConnectInfo {
         this.databaseName = database;
     }
 
-    public String key() {
-        return this.dataSourceId + "_" + this.databaseName;
-    }
 
     public void setUrl(String url) {
         this.url = url;
@@ -551,6 +556,7 @@ public class ConnectInfo {
         copy.setDriverConfig(this.getDriverConfig());
         copy.setSid(this.getSid());
         copy.setUrlWithOutDatabase(this.getUrlWithOutDatabase());
+        copy.setLastAccessTime(new Date());
         return copy;
     }
 
@@ -560,9 +566,10 @@ public class ConnectInfo {
             try {
                 if (connection != null && !connection.isClosed()) {
                     connection.close();
+                    log.info("connection close success");
                 }
             } catch (SQLException e) {
-
+                log.error("connection close error",e);
             }
             com.jcraft.jsch.Session session = this.getSession();
             if (session != null && session.isConnected() && this.getSsh() != null
@@ -570,6 +577,7 @@ public class ConnectInfo {
                 try {
                     session.delPortForwardingL(Integer.parseInt(this.getSsh().getLocalPort()));
                 } catch (JSchException e) {
+                    log.error("ssh close error",e);
                 }
             }
         }
@@ -586,5 +594,27 @@ public class ConnectInfo {
 
     public void setLoginUser(String loginUser) {
         this.loginUser = loginUser;
+    }
+
+    public Date getLastAccessTime() {
+        return lastAccessTime;
+    }
+
+    public void setLastAccessTime(Date lastAccessTime) {
+        this.lastAccessTime = lastAccessTime;
+    }
+
+    private final AtomicInteger refCount = new AtomicInteger(0);
+
+    public int incrementRefCount() {
+       return refCount.incrementAndGet();
+    }
+
+    public int decrementRefCount() {
+       return refCount.decrementAndGet();
+    }
+
+    public int getRefCount() {
+        return refCount.get();
     }
 }

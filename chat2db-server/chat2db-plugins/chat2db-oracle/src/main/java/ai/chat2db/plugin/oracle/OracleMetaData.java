@@ -19,8 +19,10 @@ import ai.chat2db.spi.sql.SQLExecutor;
 import ai.chat2db.spi.util.SortUtils;
 import com.google.common.collect.Lists;
 import jakarta.validation.constraints.NotEmpty;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+@Slf4j
 public class OracleMetaData extends DefaultMetaService implements MetaData {
 
     private static final String TABLE_DDL_SQL = "select dbms_metadata.get_ddl('TABLE','%s','%s') as sql from dual";
@@ -113,7 +115,7 @@ public class OracleMetaData extends DefaultMetaService implements MetaData {
                         tableColumn.setDefaultValue(sb.toString());
                     }
                 }catch (Exception e){
-                    e.printStackTrace();
+                    log.error("getDefaultValue error",e);
                 }
                 tableColumn.setName(resultSet.getString("COLUMN_NAME"));
                 tableColumn.setColumnType(resultSet.getString("DATA_TYPE"));

@@ -539,7 +539,7 @@ public class ChatController {
                     sseEmitter.send(SseEmitter.event().id("765431").name("An exception occurs!").data(throwable.getMessage())
                         .reconnectTime(3000));
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    log.error("An exception occurs!{}", e.getMessage(), e);
                 }
             }
         );

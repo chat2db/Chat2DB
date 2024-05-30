@@ -91,7 +91,7 @@ public class SqlServerMetaData extends DefaultMetaService implements MetaData {
         });
     }
 
-    private static String SELECT_TABLES_SQL = "SELECT t.name AS TableName, mm.value as comment FROM sys.tables t LEFT JOIN(SELECT * from sys.extended_properties ep where ep.minor_id = 0 AND ep.name = 'MS_Description') mm ON t.object_id = mm.major_id WHERE t.schema_id= SCHEMA_ID('%S') ";
+    private static String SELECT_TABLES_SQL = "SELECT t.name AS TableName, mm.value as comment FROM sys.tables t LEFT JOIN(SELECT * from sys.extended_properties ep where ep.minor_id = 0 AND ep.name = 'MS_Description') mm ON t.object_id = mm.major_id WHERE t.schema_id= SCHEMA_ID('%S')";
 
     @Override
     public List<Table> tables(Connection connection, String databaseName, String schemaName, String tableName) {
@@ -99,7 +99,10 @@ public class SqlServerMetaData extends DefaultMetaService implements MetaData {
         String sql = String.format(SELECT_TABLES_SQL, schemaName);
         if (StringUtils.isNotBlank(tableName)) {
             sql += " AND t.name = '" + tableName + "'";
+        }else {
+            sql += " ORDER BY t.name";
         }
+
         return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Table table = new Table();
@@ -153,7 +156,7 @@ public class SqlServerMetaData extends DefaultMetaService implements MetaData {
 
 
     private static String OBJECT_SQL
-            = "SELECT name FROM sys.objects WHERE type = '%s' and SCHEMA_ID = SCHEMA_ID('%s');";
+            = "SELECT name FROM sys.objects WHERE type = '%s' and SCHEMA_ID = SCHEMA_ID('%s') order by name;";
 
     @Override
     public Function function(Connection connection, @NotEmpty String databaseName, String schemaName,
@@ -232,7 +235,7 @@ public class SqlServerMetaData extends DefaultMetaService implements MetaData {
     private static String TRIGGER_SQL_LIST
             = "SELECT OBJECT_NAME(parent_obj) AS TableName, name AS triggerName, OBJECT_DEFINITION(id) AS "
             + "triggerDefinition, CASE WHEN status & 1 = 1 THEN 'Enabled' ELSE 'Disabled' END AS Status FROM sysobjects "
-            + "WHERE xtype = 'TR' ";
+            + "WHERE xtype = 'TR' order by name";
 
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {

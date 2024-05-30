@@ -1,5 +1,6 @@
 package ai.chat2db.spi.model;
 
+import com.alibaba.fastjson2.annotation.JSONField;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -169,7 +170,8 @@ public class TableColumn  implements Serializable {
      * ISO rules are used to determine the nullability for a column.
      */
 
-    @JsonAlias({"NULLABLE","nullable"})
+    @JsonAlias({"nullable","NULLABLE"})
+    @JSONField(name = "nullable")
     private Integer nullable;
 
     /**

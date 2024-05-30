@@ -25,8 +25,6 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 720,
     show: false,
-    frame: false, // 无边框
-    titleBarStyle: 'hidden',
     webPreferences: {
       webSecurity: false,
       spellcheck: false, // 禁用拼写检查器

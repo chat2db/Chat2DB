@@ -7,8 +7,10 @@ import ai.chat2db.spi.jdbc.DefaultDBManage;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
+@Slf4j
 public class KingBaseDBManage extends DefaultDBManage implements DBManage {
 
     @Override
@@ -19,7 +21,7 @@ public class KingBaseDBManage extends DefaultDBManage implements DBManage {
                 SQLExecutor.getInstance().execute(connection, "SET search_path TO \"" + connectInfo.getSchemaName() + "\"");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("connectDatabase error", e);
         }
     }
 

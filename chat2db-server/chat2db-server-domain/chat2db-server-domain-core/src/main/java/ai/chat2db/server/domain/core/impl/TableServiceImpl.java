@@ -476,7 +476,7 @@ public class TableServiceImpl implements TableService {
                 getVersionMapper().insert(versionDO);
                 return 0L;
             } catch (Exception e) {
-                e.printStackTrace();
+                log.error("getLock error", e);
                 return -1L;
             }
         } else {

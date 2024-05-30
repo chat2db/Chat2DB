@@ -209,7 +209,6 @@ public class WsServer {
     @OnError
     public void onError(Session session, Throwable error) {
         log.error("An error occurred:{}，Session ID： {}", error.getMessage(), session.getId(), error);
-        error.printStackTrace();
     }
 
     /**
@@ -244,7 +243,6 @@ public class WsServer {
             }
         } catch (IOException e) {
             log.error("Error sending message：{}", e.getMessage());
-            e.printStackTrace();
         }
     }
 }

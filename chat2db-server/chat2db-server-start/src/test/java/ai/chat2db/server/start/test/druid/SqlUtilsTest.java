@@ -190,7 +190,7 @@ public class SqlUtilsTest {
                 DbType.h2, SQLParserFeature.PrintSQLWhileParsingFailed);
             log.info("Parse sql:{}", sqlStatement);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("error", e);
         }
     }
 

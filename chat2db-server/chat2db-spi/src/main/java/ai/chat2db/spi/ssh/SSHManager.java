@@ -49,6 +49,10 @@ public class SSHManager {
         }
         if (session != null && StringUtils.isNotBlank(ssh.getRHost()) && StringUtils.isNotBlank(ssh.getRPort())) {
             try {
+                String[] portForwardingL = session.getPortForwardingL();
+                if (portForwardingL != null && portForwardingL.length > 0) {
+                    return session;
+                }
                 int localPort = !StringUtils.isBlank(ssh.getLocalPort()) ? Integer.parseInt(ssh.getLocalPort())
                     : NetUtil.getUsableLocalPort();
                 ssh.setLocalPort(String.valueOf(localPort));

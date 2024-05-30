@@ -6,6 +6,7 @@ import cn.hutool.core.io.unit.DataSizeUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -13,15 +14,15 @@ import java.time.format.DateTimeFormatter;
 @Slf4j
 public class DefaultValueHandler implements ValueHandler {
 
-    private static final long MAX_RESULT_SIZE = 256 * 1024;
+    private static final long MAX_RESULT_SIZE = 10* 1024 * 1024;
 
     @Override
     public String getString(ResultSet rs, int index, boolean limitSize) throws SQLException {
-        Object obj = rs.getObject(index);
-        if (obj == null) {
-            return null;
-        }
         try {
+            Object obj = rs.getObject(index);
+            if (obj == null) {
+                return null;
+            }
             if (obj instanceof BigDecimal bigDecimal) {
                 return bigDecimal.toPlainString();
             } else if (obj instanceof Double d) {
@@ -40,8 +41,8 @@ public class DefaultValueHandler implements ValueHandler {
                 return obj.toString();
             }
         } catch (Exception e) {
-            log.warn("Failed to parse number:{},{}", index, obj, e);
-            return obj.toString();
+            log.warn("Failed to parse number:{},", index, e);
+            return rs.getString(index);
         }
     }
 
@@ -54,7 +55,7 @@ public class DefaultValueHandler implements ValueHandler {
             length = Math.toIntExact(MAX_RESULT_SIZE);
         }
         byte[] data = blob.getBytes(1, length);
-        String result = new String(data);
+        String result = new String(data, StandardCharsets.UTF_8);
 
         if (length > MAX_RESULT_SIZE) {
             return "[ " + DataSizeUtil.format(MAX_RESULT_SIZE) + " of " + DataSizeUtil.format(length)
@@ -72,10 +73,15 @@ public class DefaultValueHandler implements ValueHandler {
         if (obj instanceof Timestamp) {
             // Convert a time field of type Object to a LocalDateTime object
             localDateTime = ((Timestamp) timeField).toLocalDateTime();
+        } else if(obj instanceof  LocalDateTime){
+            localDateTime = (LocalDateTime) timeField;
         } else {
-            localDateTime = LocalDateTime.parse(timeField.toString(), DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
+            try {
+                localDateTime = LocalDateTime.parse(timeField.toString(), DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
+            }catch (Exception e){
+                localDateTime = LocalDateTime.parse(timeField.toString(), DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"));
+            }
         }
-
         // Create a DateTimeFormatter instance and specify the output date and time format
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 

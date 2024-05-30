@@ -412,28 +412,28 @@ public class SQLExecutor implements CommandExecutor {
             DatabaseMetaData metadata = connection.getMetaData();
             ResultSet resultSet = metadata.getTables(databaseName, schemaName, tableName,
                     types);
-            // If connection is mysql
-            if ("MySQL".equalsIgnoreCase(metadata.getDatabaseProductName())) {
-                // Get the comment of mysql table
-                List<Table> tables = ResultSetUtils.toObjectList(resultSet, Table.class);
-                if (CollectionUtils.isNotEmpty(tables)) {
-                    for (Table table : tables) {
-                        String sql = "show table status where name = '" + table.getName() + "'";
-                        try (Statement stmt = connection.createStatement()) {
-                            boolean query = stmt.execute(sql);
-                            if (query) {
-                                try (ResultSet rs = stmt.getResultSet();) {
-                                    while (rs.next()) {
-                                        table.setComment(rs.getString("Comment"));
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    return tables;
-                }
-            }
+//            // If connection is mysql
+//            if ("MySQL".equalsIgnoreCase(metadata.getDatabaseProductName())) {
+//                // Get the comment of mysql table
+//                List<Table> tables = ResultSetUtils.toObjectList(resultSet, Table.class);
+//                if (CollectionUtils.isNotEmpty(tables)) {
+//                    for (Table table : tables) {
+//                        String sql = "show table status where name = '" + table.getName() + "'";
+//                        try (Statement stmt = connection.createStatement()) {
+//                            boolean query = stmt.execute(sql);
+//                            if (query) {
+//                                try (ResultSet rs = stmt.getResultSet();) {
+//                                    while (rs.next()) {
+//                                        table.setComment(rs.getString("Comment"));
+//                                    }
+//                                }
+//                            }
+//                        }
+//                    }
+//
+//                    return tables;
+//                }
+//            }
             return ResultSetUtils.toObjectList(resultSet, Table.class);
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -708,7 +708,7 @@ public class SQLExecutor implements CommandExecutor {
             executeResult = SQLExecutor.getInstance().execute(sql, Chat2DBContext.getConnection(), true, offset, count,
                     valueHandler);
         } catch (SQLException e) {
-            log.warn("Execute sql: {} exception", sql, e);
+            log.error("Execute sql: {} exception", sql, e);
             executeResult = ExecuteResult.builder()
                     .sql(sql)
                     .success(Boolean.FALSE)

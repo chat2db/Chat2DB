@@ -1,11 +1,5 @@
 package ai.chat2db.plugin.postgresql;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.*;
-import java.util.stream.Collectors;
-
 import ai.chat2db.plugin.postgresql.builder.PostgreSQLSqlBuilder;
 import ai.chat2db.plugin.postgresql.type.*;
 import ai.chat2db.server.tools.common.util.EasyCollectionUtils;
@@ -19,7 +13,14 @@ import com.google.common.collect.Lists;
 import jakarta.validation.constraints.NotEmpty;
 import org.apache.commons.lang3.StringUtils;
 
-import static ai.chat2db.plugin.postgresql.consts.SQLConst.FUNCTION_SQL;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static ai.chat2db.plugin.postgresql.consts.SQLConst.DROP_TYPE_SQL;
+import static ai.chat2db.plugin.postgresql.consts.SQLConst.TABLE_DEF_FUNCTION_SQL;
 import static ai.chat2db.spi.util.SortUtils.sortDatabase;
 
 public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
@@ -28,6 +29,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
 
 
     private List<String> systemDatabases = Arrays.asList("postgres");
+
     @Override
     public List<Database> databases(Connection connection) {
         List<Database> list = SQLExecutor.getInstance().execute(connection, "SELECT datname FROM pg_database;", resultSet -> {
@@ -47,15 +49,15 @@ public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
             }
             return databases;
         });
-        return sortDatabase(list, systemDatabases,connection);
+        return sortDatabase(list, systemDatabases, connection);
     }
 
-    private List<String> systemSchemas = Arrays.asList("pg_toast","pg_temp_1","pg_toast_temp_1","pg_catalog","information_schema");
+    private List<String> systemSchemas = Arrays.asList("pg_toast", "pg_temp_1", "pg_toast_temp_1", "pg_catalog", "information_schema");
 
     @Override
     public List<Schema> schemas(Connection connection, String databaseName) {
         List<Schema> schemas = SQLExecutor.getInstance().execute(connection,
-                "SELECT catalog_name, schema_name FROM information_schema.schemata;", resultSet -> {
+                                                                 "SELECT catalog_name, schema_name FROM information_schema.schemata;", resultSet -> {
                     List<Schema> databases = new ArrayList<>();
                     while (resultSet.next()) {
                         Schema schema = new Schema();
@@ -102,15 +104,12 @@ public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
-        SQLExecutor.getInstance().execute(connection, FUNCTION_SQL, resultSet -> null);
-        String ddlSql = "select pg_get_tabledef" + "(" + "'" + schemaName + "'" + "," + "'" + tableName + "'" + "," + "false" + "," + "'" + "COMMENTS" + "'" + ")" + ";";
+        SQLExecutor.getInstance().execute(connection, String.format(DROP_TYPE_SQL,schemaName,"tabledefs"), resultSet -> null);
+        SQLExecutor.getInstance().execute(connection, TABLE_DEF_FUNCTION_SQL, resultSet -> null);
+        String ddlSql = String.format("select * from pg_get_tabledef('%s','%s',false,'COMMENTS') as ddl;", schemaName, tableName);
         return SQLExecutor.getInstance().execute(connection, ddlSql, resultSet -> {
-            try {
-                if (resultSet.next()) {
-                    return resultSet.getString(1);
-                }
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
+            if (resultSet.next()) {
+                return resultSet.getString("ddl");
             }
             return null;
         });
@@ -226,7 +225,7 @@ public class PostgreSQLMetaData extends DefaultMetaService implements MetaData {
                 TableIndex tableIndex = map.get(keyName);
                 if (tableIndex != null) {
                     List<TableIndexColumn> columnList = tableIndex.getColumnList();
-                    if(columnList == null){
+                    if (columnList == null) {
                         columnList = new ArrayList<>();
                         tableIndex.setColumnList(columnList);
                     }

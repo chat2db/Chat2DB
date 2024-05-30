@@ -41,6 +41,9 @@ public class JdbcUtils {
         if (dbType == null) {
             return null;
         }
+        if("SUNDB".equalsIgnoreCase(dbType)){
+            return DbType.oracle;
+        }
         try {
             return DbType.valueOf(dbType.toLowerCase());
         } catch (Exception e) {

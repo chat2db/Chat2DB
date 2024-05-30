@@ -98,5 +98,13 @@ public class Table implements Serializable {
 
 
     private String tablespace;
+
+    private Long rows;
+
+    private Long dataLength;
+
+    private String createTime;
+
+    private String updateTime;
 }
 

@@ -2,6 +2,7 @@ package ai.chat2db.spi.enums;
 
 import ai.chat2db.server.tools.base.enums.BaseEnum;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Driver class enumeration
@@ -108,9 +109,9 @@ public enum DataTypeEnum implements BaseEnum<String> {
 
     public String getSqlValue(String value) {
         if (this == DataTypeEnum.BOOLEAN) {
-            if("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)){
+            if ("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)) {
                 return value;
-            }else {
+            } else {
                 return "'" + value + "'";
             }
         }
@@ -118,7 +119,7 @@ public enum DataTypeEnum implements BaseEnum<String> {
             return value;
         }
         if (this == DataTypeEnum.STRING) {
-            return "'" + value + "'";
+            return getStringValue(value);
         }
         if (this == DataTypeEnum.DATETIME) {
             return "'" + value + "'";
@@ -155,4 +156,14 @@ public enum DataTypeEnum implements BaseEnum<String> {
         }
         return "'" + value + "'";
     }
+
+    public static String getStringValue(String value) {
+        if (StringUtils.isBlank(value)) {
+            return "'" + value + "'";
+        }
+        value = value.replace("\\", "\\\\");
+        value = value.replace("'", "\\'");
+        return "'" + value + "'";
+    }
+
 }

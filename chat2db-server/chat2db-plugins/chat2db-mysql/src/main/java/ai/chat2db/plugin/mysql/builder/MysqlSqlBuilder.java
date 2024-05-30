@@ -12,6 +12,7 @@ import cn.hutool.core.util.ArrayUtil;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class MysqlSqlBuilder extends DefaultSqlBuilder {
@@ -76,12 +77,14 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
 
     @Override
     public String buildModifyTaleSql(Table oldTable, Table newTable) {
-        StringBuilder script = new StringBuilder();
-        script.append("ALTER TABLE ");
+        StringBuilder tableBuilder = new StringBuilder();
+        tableBuilder.append("ALTER TABLE ");
         if (StringUtils.isNotBlank(oldTable.getDatabaseName())) {
-            script.append("`").append(oldTable.getDatabaseName()).append("`").append(".");
+            tableBuilder.append("`").append(oldTable.getDatabaseName()).append("`").append(".");
         }
-        script.append("`").append(oldTable.getName()).append("`").append("\n");
+        tableBuilder.append("`").append(oldTable.getName()).append("`").append("\n");
+
+        StringBuilder script = new StringBuilder();
         if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
             script.append("\t").append("RENAME TO ").append("`").append(newTable.getName()).append("`").append(",\n");
         }
@@ -92,11 +95,27 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
             script.append("\t").append("AUTO_INCREMENT=").append(newTable.getIncrementValue()).append(",\n");
         }
 
+        // 判断新增字段
+        List<TableColumn> addColumnList = new ArrayList<>();
+        for (TableColumn tableColumn : newTable.getColumnList()) {
+            if (tableColumn.getEditStatus() != null ?  tableColumn.getEditStatus().equals("ADD") : false) {
+                addColumnList.add(tableColumn);
+            }
+        }
+
+        // 判断移动的字段
+        List<TableColumn> moveColumnList = movedElements(oldTable.getColumnList(), newTable.getColumnList());
+
         // append modify column
         for (TableColumn tableColumn : newTable.getColumnList()) {
-            if (StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType()) && StringUtils.isNotBlank(tableColumn.getName())) {
+            if ((StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType())
+                    && StringUtils.isNotBlank(tableColumn.getName())) || moveColumnList.contains(tableColumn) || addColumnList.contains(tableColumn)) {
                 MysqlColumnTypeEnum typeEnum = MysqlColumnTypeEnum.getByType(tableColumn.getColumnType());
-                script.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(",\n");
+                if (moveColumnList.contains(tableColumn) || addColumnList.contains(tableColumn)) {
+                    script.append("\t").append(typeEnum.buildModifyColumn(tableColumn, true, findPrevious(tableColumn, newTable))).append(",\n");
+                } else {
+                    script.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(",\n");
+                }
             }
         }
 
@@ -109,16 +128,25 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
         }
 
         // append reorder column
-        script.append(buildGenerateReorderColumnSql(oldTable, newTable));
+       // script.append(buildGenerateReorderColumnSql(oldTable, newTable));
 
         if (script.length() > 2) {
             script = new StringBuilder(script.substring(0, script.length() - 2));
             script.append(";");
+            return tableBuilder.append(script).toString();
+        }else {
+            return StringUtils.EMPTY;
         }
 
-        return script.toString();
     }
 
+    private String findPrevious(TableColumn tableColumn, Table newTable) {
+        int index = newTable.getColumnList().indexOf(tableColumn);
+        if (index == 0) {
+            return "-1";
+        }
+        return newTable.getColumnList().get(index - 1).getName();
+    }
 
     @Override
     public String pageLimit(String sql, int offset, int pageNo, int pageSize) {
@@ -150,6 +178,47 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
         return sqlBuilder.toString();
     }
 
+    public static List<TableColumn> movedElements(List<TableColumn> original, List<TableColumn> modified) {
+        int[][] dp = new int[original.size() + 1][modified.size() + 1];
+
+        // 构建DP表
+        for (int i = 1; i <= original.size(); i++) {
+            for (int j = 1; j <= modified.size(); j++) {
+                if (original.get(i - 1).getName().equals(modified.get(j - 1).getOldName())) {
+                    dp[i][j] = dp[i - 1][j - 1] + 1;
+                } else {
+                    dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                }
+            }
+        }
+
+        // 追踪LCS，找出移动了位置的元素
+        List<TableColumn> moved = new ArrayList<>();
+        int i = original.size();
+        int j = modified.size();
+        while (i > 0 && j > 0) {
+            if (original.get(i - 1).equals(modified.get(j - 1))) {
+                i--;
+                j--;
+            } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+                moved.add(original.get(i - 1));
+                // modified List中找到original.get(i-1)的位置
+                System.out.println("Moved elements:"+ original.get(i-1).getName() + " after " + modified.indexOf(original.get(i-1)) );
+                i--;
+            } else {
+                j--;
+            }
+        }
+
+        // 这里添加原始列表中未被包含在LCS中的元素
+        while (i > 0) {
+            moved.add(original.get(i - 1));
+            i--;
+        }
+
+        return moved;
+    }
+
     public String buildGenerateReorderColumnSql(Table oldTable, Table newTable) {
         StringBuilder sql = new StringBuilder();
         int n = 0;
@@ -177,13 +246,10 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
         if (!originalArray[0].equals(targetArray[0])) {
             int a = findIndex(originalArray, targetArray[0]);
             TableColumn column = oldTable.getColumnList().stream().filter(col -> StringUtils.equals(col.getName(), originalArray[a])).findFirst().get();
-            String[] newArray = moveElement(originalArray, a, 0);
+            String[] newArray = moveElement(originalArray, a, 0, targetArray, new AtomicInteger(0));
             sql.append(" MODIFY COLUMN ");
             MysqlColumnTypeEnum typeEnum = MysqlColumnTypeEnum.getByType(column.getColumnType());
             sql.append(typeEnum.buildColumn(column));
-            if (StringUtils.isNotBlank(column.getComment())) {
-                sql.append(" COMMENT '").append(column.getComment()).append("'");
-            }
             sql.append(" FIRST;\n");
             n++;
             if (Arrays.equals(newArray, targetArray)) {
@@ -201,7 +267,7 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
             int a = findIndex(originalArray, targetArray[max]);
             //System.out.println("Move " + originalArray[a] + " after " + (a > 0 ? originalArray[max] : "start"));
             TableColumn column = oldTable.getColumnList().stream().filter(col -> StringUtils.equals(col.getName(), originalArray[a])).findFirst().get();
-            String[] newArray = moveElement(originalArray, a, max);
+            String[] newArray = moveElement(originalArray, a, max, targetArray, new AtomicInteger(0));
             if (n > 0) {
                 sql.append("ALTER TABLE ");
                 if (StringUtils.isNotBlank(oldTable.getDatabaseName())) {
@@ -212,9 +278,6 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
             sql.append(" MODIFY COLUMN ");
             MysqlColumnTypeEnum typeEnum = MysqlColumnTypeEnum.getByType(column.getColumnType());
             sql.append(typeEnum.buildColumn(column));
-            if (StringUtils.isNotBlank(column.getComment())) {
-                sql.append(" COMMENT '").append(column.getComment()).append("'");
-            }
             sql.append(" AFTER ");
             sql.append(oldTable.getColumnList().get(max).getName());
             sql.append(";\n");
@@ -245,19 +308,18 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
                 sql.append(" MODIFY COLUMN ");
                 MysqlColumnTypeEnum typeEnum = MysqlColumnTypeEnum.getByType(column.getColumnType());
                 sql.append(typeEnum.buildColumn(column));
-                if (StringUtils.isNotBlank(column.getComment())) {
-                    sql.append(" COMMENT '").append(column.getComment()).append("'");
-                }
                 sql.append(" AFTER ");
+                AtomicInteger continuousDataCount = new AtomicInteger(0);
+                String[] newArray = moveElement(originalArray, i, a, targetArray, continuousDataCount);
                 if (i < a) {
-                    sql.append(originalArray[a]);
+                    sql.append(originalArray[a + continuousDataCount.get()]);
                 } else {
                     sql.append(originalArray[a - 1]);
                 }
 
                 sql.append(";\n");
                 n++;
-                String[] newArray = moveElement(originalArray, i, a);
+
                 if (Arrays.equals(newArray, targetArray)) {
                     return newArray;
                 }
@@ -280,20 +342,40 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
     }
 
     private static boolean isMoveValid(String[] originalArray, String[] targetArray, int i, int a) {
-        return (i == 0 || a == 0 || !originalArray[i - 1].equals(targetArray[a - 1])) &&
-                (i >= originalArray.length - 1 || a >= targetArray.length - 1 || !originalArray[i + 1].equals(targetArray[a + 1]));
+        return ((i == 0 || a == 0 || !originalArray[i - 1].equals(targetArray[a - 1])) &&
+                (i >= originalArray.length - 1 || a >= targetArray.length - 1 || !originalArray[i + 1].equals(targetArray[a + 1])))
+                || (i > 0 && a > 0 && !originalArray[i - 1].equals(targetArray[a - 1]));
     }
 
-    private static String[] moveElement(String[] originalArray, int from, int to) {
+    private static String[] moveElement(String[] originalArray, int from, int to, String[] targetArray, AtomicInteger continuousDataCount) {
         String[] newArray = new String[originalArray.length];
         System.arraycopy(originalArray, 0, newArray, 0, originalArray.length);
         String temp = newArray[from];
+        // 是否有连续移动数据
+        boolean isContinuousData = false;
+        // 连续数据数量
         if (from < to) {
-            System.arraycopy(originalArray, from + 1, newArray, from, to - from);
+            for (int i = to; i < originalArray.length - 1; i++) {
+                if (originalArray[i+1].equals(targetArray[findIndex(targetArray, originalArray[i]) +1])) {
+                    continuousDataCount.set(continuousDataCount.incrementAndGet());
+                } else {
+                    break;
+                }
+            }
+            if (continuousDataCount.get() > 0) {
+                System.arraycopy(originalArray, from + 1, newArray, from, to - from +1);
+                isContinuousData = true;
+            } else {
+                System.arraycopy(originalArray, from + 1, newArray, from, to - from);
+            }
         } else {
             System.arraycopy(originalArray, to, newArray, to + 1, from - to);
         }
-        newArray[to] = temp;
+        if (isContinuousData){
+            newArray[to+continuousDataCount.get()] = temp;
+        } else {
+            newArray[to] = temp;
+        }
         return newArray;
     }
 

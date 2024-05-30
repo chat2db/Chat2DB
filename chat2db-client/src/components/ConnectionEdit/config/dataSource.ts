@@ -254,6 +254,10 @@ export const dataSourceFormConfigs: IConnectionConfig[] = [
       {
         "key": "useInformationSchema",
         "value": "true"
+      },
+      {
+        "key": "tinyInt1isBit",
+        "value": "false"
       }
     ],
     type: DatabaseTypeCode.MYSQL,

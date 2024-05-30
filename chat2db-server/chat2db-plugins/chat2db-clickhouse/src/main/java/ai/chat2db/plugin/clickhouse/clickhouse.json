@@ -1,7 +1,7 @@
 {
   "dbType": "CLICKHOUSE",
-  "supportDatabase": true,
-  "supportSchema":false,
+  "supportDatabase": false,
+  "supportSchema":true,
   "driverConfigList": [
     {
       "url": "jdbc:clickhouse://localhost:8123/",

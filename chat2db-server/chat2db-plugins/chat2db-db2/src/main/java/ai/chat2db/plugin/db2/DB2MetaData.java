@@ -115,7 +115,7 @@ public class DB2MetaData extends DefaultMetaService implements MetaData {
         return table;
     }
 
-    private static String ROUTINE_DDL_SQL="select TEXT from syscat.routines where ROUTINESCHEMA='%s' and ROUTINENAME='%s';";
+    private static String ROUTINE_DDL_SQL="select TEXT from syscat.routines where ROUTINESCHEMA='%s' and ROUTINENAME='%s' and ROUTINETYPE='%s';";
 
     @Override
     public Function function(Connection connection, String databaseName, String schemaName, String functionName) {
@@ -123,7 +123,7 @@ public class DB2MetaData extends DefaultMetaService implements MetaData {
        function.setDatabaseName(databaseName);
        function.setSchemaName(schemaName);
        function.setFunctionName(functionName);
-        String sql = String.format(ROUTINE_DDL_SQL, schemaName, functionName);
+        String sql = String.format(ROUTINE_DDL_SQL, schemaName, functionName,'F');
         SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 function.setFunctionBody(resultSet.getString("TEXT")+";");
@@ -138,7 +138,7 @@ public class DB2MetaData extends DefaultMetaService implements MetaData {
         procedure.setDatabaseName(databaseName);
         procedure.setSchemaName(schemaName);
         procedure.setProcedureName(procedureName);
-        String sql = String.format(ROUTINE_DDL_SQL, schemaName, procedureName);
+        String sql = String.format(ROUTINE_DDL_SQL, schemaName, procedureName,'P');
         SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
                 procedure.setProcedureBody(resultSet.getString("TEXT")+";");
