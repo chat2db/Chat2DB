@@ -2,13 +2,12 @@ package ai.chat2db.plugin.mysql.builder;
 
 import ai.chat2db.plugin.mysql.type.MysqlColumnTypeEnum;
 import ai.chat2db.plugin.mysql.type.MysqlIndexTypeEnum;
-import ai.chat2db.spi.SqlBuilder;
+import ai.chat2db.spi.enums.EditStatus;
 import ai.chat2db.spi.jdbc.DefaultSqlBuilder;
 import ai.chat2db.spi.model.Database;
 import ai.chat2db.spi.model.Table;
 import ai.chat2db.spi.model.TableColumn;
 import ai.chat2db.spi.model.TableIndex;
-import cn.hutool.core.util.ArrayUtil;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
@@ -145,7 +144,13 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
         if (index == 0) {
             return "-1";
         }
-        return newTable.getColumnList().get(index - 1).getName();
+        // Find the previous column that is not deleted
+        for (int i = index - 1; i >= 0; i--) {
+            if (newTable.getColumnList().get(i).getEditStatus() == null || !newTable.getColumnList().get(i).getEditStatus().equals(EditStatus.DELETE.name())) {
+                return newTable.getColumnList().get(i).getName();
+            }
+        }
+        return "-1";
     }
 
     @Override
