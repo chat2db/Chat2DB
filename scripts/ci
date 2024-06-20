@@ -1,0 +1,42 @@
+#!/bin/bash
+##
+## 依赖安装脚本
+## 使用:
+##   ./scripts/ci
+##   bash ./scripts/ci
+##
+
+# 期望的 pnpm 大版本号
+majorVersionRequired=$(grep -o '"pnpm": *"[^"]*"' package.json | awk -F'"' '{print $4}')
+echo "期望的 pnpm 大版本号:$majorVersionRequired"
+
+# 检测 pnpm 是否已安装并且大版本号符合要求
+checkPNPMVersion() {
+  # 获取已安装的 pnpm 版本
+  local pnpmVersionInstalled=$(pnpm --version 2>/dev/null)
+  if [[ $pnpmVersionInstalled =~ ^$majorVersionRequired ]]; then
+    echo "已安装的 pnpm 版本：$pnpmVersionInstalled"
+    echo "已安装的 pnpm 大版本号符合要求."
+    return 0
+  else
+    echo "未安装 pnpm 或 pnpm 大版本号不符合要求."
+    return 1
+  fi
+}
+
+# 安装pnpm
+installRequiredPNPM(){
+   npm i pnpm@$majorVersionRequired -g
+}
+
+
+## 判断是PNPM安装且版本符合要求
+if command -v pnpm &> /dev/null && checkPNPMVersion; then
+  echo "无需安装 pnpm@@$majorVersionRequired"
+else
+  echo "安装 pnpm@$majorVersionRequired..."
+  installRequiredPNPM;
+fi
+
+# 安装项目依赖
+pnpm i --frozen-lockfile --registry https://registry.npmmirror.com
