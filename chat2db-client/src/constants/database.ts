@@ -118,6 +118,13 @@ export const databaseMap: {
     // port: 27017,
     icon: '\uec21',
   },
+  [DatabaseTypeCode.XUGUDB]: {
+    name: 'XuguDB',
+    img: moreDBLogo,
+    code: DatabaseTypeCode.XUGUDB,
+    // port: 5138,
+    icon: '\uec21',
+  },
   // [DatabaseTypeCode.REDIS]: {
   //   name: 'Redis',
   //   img: moreDBLogo,

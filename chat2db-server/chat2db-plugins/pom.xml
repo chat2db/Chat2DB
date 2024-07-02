@@ -29,6 +29,7 @@
         <module>chat2db-presto</module>
         <module>chat2db-hive</module>
         <module>chat2db-kingbase</module>
+        <module>chat2db-xugudb</module>
     </modules>
 
 </project>

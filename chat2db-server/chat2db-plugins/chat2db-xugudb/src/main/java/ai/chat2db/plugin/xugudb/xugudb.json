@@ -1,0 +1,18 @@
+{
+  "dbType": "XUGUDB",
+  "supportDatabase": true,
+  "supportSchema": true,
+  "driverConfigList": [
+    {
+      "url": "jdbc:xugu://localhost:5138/",
+      "defaultDriver": true,
+      "custom": false,
+      "downloadJdbcDriverUrls": [
+        "https://cdn.chat2db-ai.com/lib/xugu-jdbc-12.1.12.jar"
+      ],
+      "jdbcDriver": "xugu-jdbc-12.1.12.jar",
+      "jdbcDriverClass": "com.xugu.cloudjdbc.Driver"
+    }
+  ],
+  "name": "XUGUDB"
+}

@@ -121,5 +121,10 @@
             <artifactId>chat2db-sqlserver</artifactId>
             <version>${revision}</version>
         </dependency>
+        <dependency>
+            <groupId>ai.chat2db</groupId>
+            <artifactId>chat2db-xugudb</artifactId>
+            <version>${revision}</version>
+        </dependency>
     </dependencies>
 </project>
