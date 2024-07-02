@@ -34,6 +34,8 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.util.Assert;
 
+import java.sql.*;
+
 /**
  * Dbhub unified database connection management
  *
@@ -69,6 +71,44 @@ public class SQLExecutor implements CommandExecutor {
             throw new RuntimeException(e);
         }
         return null;
+    }
+
+
+    public <R> R preExecute(Connection connection, String sql, String[] parameters, ResultSetFunction<R> function) {
+        log.info("execute:{}", sql);
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            for (int i = 0; i < parameters.length; i++) {
+                stmt.setString(i + 1, parameters[i]);
+            }
+            boolean query = stmt.execute();
+            if (query) {
+                // Represents the query
+                try (ResultSet rs = stmt.getResultSet();) {
+                    return function.apply(rs);
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return null;
+    }
+
+    public void preExecute(Connection connection, String sql, String[] parameters, ResultSetConsumer consumer) {
+        log.info("execute:{}", sql);
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            for (int i = 0; i < parameters.length; i++) {
+                stmt.setString(i + 1, parameters[i]);
+            }
+            boolean query = stmt.execute();
+            if (query) {
+                // Represents the query
+                try (ResultSet rs = stmt.getResultSet();) {
+                    consumer.accept(rs);
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void execute(Connection connection, String sql, ResultSetConsumer consumer) {
