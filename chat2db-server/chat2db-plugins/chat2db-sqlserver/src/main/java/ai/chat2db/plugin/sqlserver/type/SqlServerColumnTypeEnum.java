@@ -140,10 +140,9 @@ public enum SqlServerColumnTypeEnum implements ColumnBuilder {
 
         script.append(buildDefaultValue(column, type)).append(" ");
 
-        script.append(buildNullable(column, type)).append(" ");
-
         script.append(buildCollation(column, type)).append(" ");
 
+        script.append(buildNullable(column, type)).append(" ");
         return script.toString();
     }
 
@@ -232,8 +231,13 @@ public enum SqlServerColumnTypeEnum implements ColumnBuilder {
         if (Arrays.asList(CHAR, NCHAR, NVARCHAR, VARBINARY, VARCHAR).contains(type)) {
             StringBuilder script = new StringBuilder();
             script.append(columnType);
-            if (column.getColumnSize() != null) {
-                script.append("(").append(column.getColumnSize()).append(")");
+            Integer columnSize = column.getColumnSize();
+            if (columnSize != null) {
+                if (columnSize==-1) {
+                    script.append("(MAX)");
+                    return script.toString();
+                }
+                script.append("(").append(columnSize).append(")");
             }
 
             return script.toString();
