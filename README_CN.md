@@ -1,6 +1,6 @@
 <p align="center">
     <a href="https://chat2db-ai.com/" target="_blank">
-        <img src="https://chat2db-cdn.oss-us-west-1.aliyuncs.com/website/img/cover.png" alt="Chat2DB" />
+        <img src="https://cdn.chat2db-ai.com/img/banner.png" alt="Chat2DB" />
     </a>
 </p>
 
@@ -66,6 +66,8 @@
 - huggingface🤗：[Chat2DB-SQL-7B](https://huggingface.co/Chat2DB/Chat2DB-SQL-7B)
 - modelscope：[Chat2DB-SQL-7B](https://modelscope.cn/models/Chat2DB/Chat2DB-SQL-7B/summary)
 
+### 🎁🎁🎁 在Chat2DB上即成InternLM模型
+感谢InternLM对本项目的大力支持，在本项目中的自定义模型中，可以集成InternLM的多个模型权重，具体请参考[chat2db-internlm-deploy](https://github.com/chat2db/chat2db-internlm-deploy)
 
 ## 🚀 支持的数据库
 Chat2DB Pro支持以下所有数据库，包括备受期待的Redis功能。
