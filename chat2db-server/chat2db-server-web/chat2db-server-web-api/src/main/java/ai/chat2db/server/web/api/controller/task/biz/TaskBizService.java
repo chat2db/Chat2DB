@@ -19,6 +19,7 @@ import ai.chat2db.server.web.api.controller.rdb.doc.conf.ExportOptions;
 import ai.chat2db.server.web.api.controller.rdb.factory.ExportServiceFactory;
 import ai.chat2db.server.web.api.controller.rdb.request.DataExportRequest;
 import ai.chat2db.server.web.api.controller.rdb.vo.TableVO;
+import ai.chat2db.spi.model.Header;
 import ai.chat2db.spi.model.Table;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
@@ -273,20 +274,18 @@ public class TaskBizService {
         try (PrintWriter printWriter = new PrintWriter(file, StandardCharsets.UTF_8.name())) {
             RdbDmlExportController.InsertWrapper insertWrapper = new RdbDmlExportController.InsertWrapper();
             SQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), sql,
-                    headerList -> insertWrapper.setHeaderList(
-                            EasyCollectionUtils.toList(headerList, header -> new SQLIdentifierExpr(header.getName())))
+                    headerList -> insertWrapper.setHeaderList(headerList)
                     , dataList -> {
                         SQLInsertStatement sqlInsertStatement = new SQLInsertStatement();
                         sqlInsertStatement.setDbType(dbType);
                         sqlInsertStatement.setTableSource(new SQLExprTableSource(tableName));
-                        sqlInsertStatement.getColumns().addAll(insertWrapper.getHeaderList());
-                        SQLInsertStatement.ValuesClause valuesClause = new SQLInsertStatement.ValuesClause();
-                        for (String s : dataList) {
-                            valuesClause.addValue(s);
-                        }
+                        List<Header> headerList = insertWrapper.getHeaderList();
+                        sqlInsertStatement.getColumns().addAll(EasyCollectionUtils.toList(headerList, header -> new SQLIdentifierExpr(header.getName())));
+                        SQLInsertStatement.ValuesClause valuesClause = SqlUtils.getValuesClause(dataList, headerList);
                         sqlInsertStatement.setValues(valuesClause);
 
                         printWriter.println(SQLUtils.toSQLString(sqlInsertStatement, dbType, INSERT_FORMAT_OPTION) + ";");
+
                     }, false);
         }
     }

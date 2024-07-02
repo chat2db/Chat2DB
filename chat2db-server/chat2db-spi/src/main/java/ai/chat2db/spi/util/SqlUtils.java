@@ -4,13 +4,15 @@ package ai.chat2db.spi.util;
 import ai.chat2db.server.tools.base.excption.BusinessException;
 import ai.chat2db.spi.enums.DataTypeEnum;
 import ai.chat2db.spi.model.ExecuteResult;
+import ai.chat2db.spi.model.Header;
 import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLStatement;
-import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
-import com.alibaba.druid.sql.ast.statement.SQLJoinTableSource;
-import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
-import com.alibaba.druid.sql.ast.statement.SQLTableSource;
+import com.alibaba.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.druid.sql.ast.expr.SQLNullExpr;
+import com.alibaba.druid.sql.ast.expr.SQLTimestampExpr;
+import com.alibaba.druid.sql.ast.expr.SQLValuableExpr;
+import com.alibaba.druid.sql.ast.statement.*;
 import com.alibaba.druid.sql.parser.SQLParserUtils;
 import com.google.common.collect.Lists;
 import com.oceanbase.tools.sqlparser.oracle.PlSqlLexer;
@@ -112,6 +114,28 @@ public class SqlUtils {
         return sqlExprTableSource.getTableName();
     }
 
+    public static SQLInsertStatement.ValuesClause getValuesClause(List<String> row, List<Header> headerList) {
+        SQLInsertStatement.ValuesClause valuesClause = new SQLInsertStatement.ValuesClause();
+        for (int i = 0; i < row.size(); i++) {
+            String s = row.get(i);
+            Header header = headerList.get(i);
+            valuesClause.addValue(getSqlExpr(s, header.getDataType()));
+        }
+        return valuesClause;
+    }
+
+    public static SQLValuableExpr getSqlExpr(String value, String dataType) {
+        if (value == null) {
+            return new SQLNullExpr();
+        } else if (DataTypeEnum.getByCode(dataType).equals(DataTypeEnum.DATETIME)) {
+            return new SQLTimestampExpr(value);
+        } else {
+            return new SQLCharExpr(value);
+        }
+
+
+    }
+
     private static SQLTableSource getSQLExprTableSource(SQLTableSource sqlTableSource) {
         if (sqlTableSource instanceof SQLExprTableSource sqlExprTableSource) {
             return sqlExprTableSource;
@@ -140,8 +164,8 @@ public class SqlUtils {
                     List<SplitSqlString> sqls = sqlSplitter.split(sql);
                     return sqls.stream().map(splitSqlString -> SQLParserUtils.removeComment(splitSqlString.getStr(), dbType)).collect(Collectors.toList());
                 }
-            }catch (Exception e){
-                log.error("sqlSplitter error",e);
+            } catch (Exception e) {
+                log.error("sqlSplitter error", e);
             }
             try {
                 if (DbType.mysql.equals(dbType) ||
@@ -152,8 +176,8 @@ public class SqlUtils {
                     sqlSplitProcessor.setDelimiter(";");
                     return split(sqlSplitProcessor, sql, dbType);
                 }
-            }catch (Exception e){
-                log.error("sqlSplitProcessor error",e);
+            } catch (Exception e) {
+                log.error("sqlSplitProcessor error", e);
             }
 //            sql = removeDelimiter(sql);
             if (StringUtils.isBlank(sql)) {
@@ -246,7 +270,7 @@ public class SqlUtils {
         if (value == null) {
             return null;
         }
-        if("".equals(value)){
+        if ("".equals(value)) {
             return "''";
         }
         if (DEFAULT_VALUE.equals(value)) {

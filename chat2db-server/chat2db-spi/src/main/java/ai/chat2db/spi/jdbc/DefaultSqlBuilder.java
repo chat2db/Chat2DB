@@ -1,11 +1,19 @@
 package ai.chat2db.spi.jdbc;
 
+import ai.chat2db.server.tools.common.util.EasyCollectionUtils;
 import ai.chat2db.spi.MetaData;
 import ai.chat2db.spi.SqlBuilder;
 import ai.chat2db.spi.enums.DmlType;
 import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.sql.Chat2DBContext;
+import ai.chat2db.spi.util.JdbcUtils;
 import ai.chat2db.spi.util.SqlUtils;
+import com.alibaba.druid.DbType;
+import com.alibaba.druid.sql.SQLUtils;
+import com.alibaba.druid.sql.ast.SQLExpr;
+import com.alibaba.druid.sql.ast.expr.SQLBinaryOpExpr;
+import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
+import com.alibaba.druid.sql.ast.statement.*;
 import com.google.common.collect.Lists;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.statement.Statement;
@@ -49,6 +57,7 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
     }
 
     public static String CREATE_DATABASE_SQL = "CREATE DATABASE IF NOT EXISTS `%s` DEFAULT CHARACTER SET %s COLLATE %s";
+    private static final SQLUtils.FormatOption FORMAT_OPTION = new SQLUtils.FormatOption(true, false);
 
     @Override
     public String buildCreateDatabaseSql(Database database) {
@@ -116,14 +125,14 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
             String sql = "";
             if ("UPDATE".equalsIgnoreCase(operation.getType())) {
                 sql = getUpdateSql(tableName, headerList, row, odlRow, metaSchema, keyColumns, false);
-                if("MYSQL".equalsIgnoreCase(dbType)){
+                if ("MYSQL".equalsIgnoreCase(dbType)) {
                     sql = sql + " LIMIT 1";
                 }
             } else if ("CREATE".equalsIgnoreCase(operation.getType())) {
                 sql = getInsertSql(tableName, headerList, row, metaSchema);
             } else if ("DELETE".equalsIgnoreCase(operation.getType())) {
                 sql = getDeleteSql(tableName, headerList, odlRow, metaSchema, keyColumns);
-                if("MYSQL".equalsIgnoreCase(dbType)){
+                if ("MYSQL".equalsIgnoreCase(dbType)) {
                     sql = sql + " LIMIT 1";
                 }
             } else if ("UPDATE_COPY".equalsIgnoreCase(operation.getType())) {
@@ -310,10 +319,12 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
 
     private String getDeleteSql(String tableName, List<Header> headerList, List<String> row, MetaData metaSchema,
                                 List<String> keyColumns) {
-        StringBuilder script = new StringBuilder();
-        script.append("DELETE FROM ").append(tableName).append("");
-        script.append(buildWhere(headerList, row, metaSchema, keyColumns));
-        return script.toString();
+        SQLDeleteStatement sqlDeleteStatement = new SQLDeleteStatement();
+        sqlDeleteStatement.setTableSource(new SQLExprTableSource(tableName));
+        sqlDeleteStatement.setWhere(buildWhereExpr(headerList, row, metaSchema, keyColumns));
+        DbType dbType = JdbcUtils.parse2DruidDbType(Chat2DBContext.getConnectInfo().getDbType());
+        String deleteSql = SQLUtils.toSQLString(sqlDeleteStatement, dbType, FORMAT_OPTION);
+        return deleteSql;
     }
 
     private String buildWhere(List<Header> headerList, List<String> row, MetaData metaSchema, List<String> keyColumns) {
@@ -357,34 +368,55 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
         return script.toString();
     }
 
+    private SQLExpr buildWhereExpr(List<Header> headerList, List<String> row, MetaData metaSchema, List<String> keyColumns) {
+        List<SQLBinaryOpExpr> conditions = new ArrayList<>();
+
+        if (CollectionUtils.isEmpty(keyColumns)) {
+            for (int i = 1; i < row.size(); i++) {
+                String oldValue = row.get(i);
+                Header header = headerList.get(i);
+                if (oldValue == null) {
+                    conditions.add(SQLBinaryOpExpr.isNull(new SQLIdentifierExpr(metaSchema.getMetaDataName(header.getName()))));
+                } else {
+                    conditions.add(SQLBinaryOpExpr.eq(new SQLIdentifierExpr(metaSchema.getMetaDataName(header.getName())),
+                            SqlUtils.getSqlExpr(oldValue, header.getDataType())));
+                }
+            }
+        } else {
+            for (int i = 1; i < row.size(); i++) {
+                String oldValue = row.get(i);
+                Header header = headerList.get(i);
+                String columnName = header.getName();
+                if (keyColumns.contains(columnName)) {
+                    if (oldValue == null) {
+                        conditions.add(SQLBinaryOpExpr.isNull(new SQLIdentifierExpr(metaSchema.getMetaDataName(header.getName()))));
+                    } else {
+                        conditions.add(SQLBinaryOpExpr.eq(new SQLIdentifierExpr(metaSchema.getMetaDataName(header.getName())),
+                                SqlUtils.getSqlExpr(oldValue, header.getDataType())));
+                    }
+                }
+            }
+        }
+        SQLExpr expr = null;
+        for (SQLBinaryOpExpr condition : conditions) {
+            expr = SQLBinaryOpExpr.and(expr, condition);
+        }
+
+        return expr;
+    }
+
     private String getInsertSql(String tableName, List<Header> headerList, List<String> row, MetaData metaSchema) {
         if (CollectionUtils.isEmpty(row) || ObjectUtils.allNull(row.toArray())) {
             return "";
         }
-        StringBuilder script = new StringBuilder();
-        script.append("INSERT INTO ").append(tableName)
-                .append(" (");
-        for (int i = 1; i < row.size(); i++) {
-            Header header = headerList.get(i);
-            //String newValue = row.get(i);
-            //if (newValue != null) {
-            script.append(metaSchema.getMetaDataName(header.getName()))
-                    .append(",");
-            // }
-        }
-        script.deleteCharAt(script.length() - 1);
-        script.append(") VALUES (");
-        for (int i = 1; i < row.size(); i++) {
-            String newValue = row.get(i);
-            //if (newValue != null) {
-            Header header = headerList.get(i);
-            script.append(SqlUtils.getSqlValue(newValue, header.getDataType()))
-                    .append(",");
-            //}
-        }
-        script.deleteCharAt(script.length() - 1);
-        script.append(")");
-        return script.toString();
+        DbType dbType = JdbcUtils.parse2DruidDbType(Chat2DBContext.getConnectInfo().getDbType());
+        SQLInsertStatement sqlInsertStatement = new SQLInsertStatement();
+        sqlInsertStatement.setDbType(dbType);
+        sqlInsertStatement.setTableSource(new SQLExprTableSource(tableName));
+        sqlInsertStatement.getColumns().addAll(EasyCollectionUtils.toList(headerList, header -> new SQLIdentifierExpr(metaSchema.getMetaDataName(header.getName()))));
+        SQLInsertStatement.ValuesClause valuesClause = SqlUtils.getValuesClause(row, headerList);
+        sqlInsertStatement.setValues(valuesClause);
+        return SQLUtils.toSQLString(sqlInsertStatement, dbType, FORMAT_OPTION);
 
     }
 
@@ -395,6 +427,10 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
         if (CollectionUtils.isEmpty(row) || CollectionUtils.isEmpty(odlRow)) {
             return "";
         }
+        DbType dbType = JdbcUtils.parse2DruidDbType(Chat2DBContext.getConnectInfo().getDbType());
+        SQLUpdateStatement sqlUpdateStatement = new SQLUpdateStatement();
+        sqlUpdateStatement.setDbType(dbType);
+        sqlUpdateStatement.setTableSource(new SQLExprTableSource(tableName));
         script.append("UPDATE ").append(tableName).append(" set ");
         for (int i = 1; i < row.size(); i++) {
             String newValue = row.get(i);
@@ -403,14 +439,14 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
                 continue;
             }
             Header header = headerList.get(i);
-            String newSqlValue = SqlUtils.getSqlValue(newValue, header.getDataType());
-            script.append(metaSchema.getMetaDataName(header.getName()))
-                    .append(" = ")
-                    .append(newSqlValue)
-                    .append(",");
+            SQLUpdateSetItem sqlUpdateSetItem = new SQLUpdateSetItem();
+            sqlUpdateSetItem.setColumn(new SQLIdentifierExpr(metaSchema.getMetaDataName(header.getName())));
+            sqlUpdateSetItem.setValue(SqlUtils.getSqlExpr(newValue, header.getDataType()));
+            sqlUpdateStatement.addItem(sqlUpdateSetItem);
         }
-        script.deleteCharAt(script.length() - 1);
-        script.append(buildWhere(headerList, odlRow, metaSchema, keyColumns));
-        return script.toString();
+        SQLExpr sqlExpr = buildWhereExpr(headerList, odlRow, metaSchema, keyColumns);
+        sqlUpdateStatement.addWhere(sqlExpr);
+
+        return SQLUtils.toSQLString(sqlUpdateStatement, dbType, FORMAT_OPTION);
     }
 }
