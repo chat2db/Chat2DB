@@ -42,6 +42,22 @@ public class ConnectionPool {
 
     }
 
+    public static synchronized void removeConnection(Long datasourceId) {
+        CONNECTION_MAP.forEach((k, v) -> {
+            if (k.contains(String.valueOf(datasourceId))) {
+                try {
+                    Connection connection = v.getConnection();
+                    if (connection != null) {
+                        connection.close();
+                        CONNECTION_MAP.remove(k);
+                    }
+                } catch (SQLException e) {
+                    log.error("close connection error", e);
+                }
+            }
+        });
+    }
+
 
     public static Connection getConnection(ConnectInfo connectInfo) {
         Connection connection = connectInfo.getConnection();

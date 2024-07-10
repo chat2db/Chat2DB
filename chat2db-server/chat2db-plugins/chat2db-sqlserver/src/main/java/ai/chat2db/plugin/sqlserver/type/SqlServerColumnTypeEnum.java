@@ -98,11 +98,16 @@ public enum SqlServerColumnTypeEnum implements ColumnBuilder {
     XML("XML", false, false, true, false, false, false, true, true),
 
 
+    OTHER("OTHER", false, false, true, false, false, false, true, true),
     ;
     private ColumnType columnType;
 
     public static SqlServerColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+        SqlServerColumnTypeEnum typeEnum = COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+        if (typeEnum == null) {
+            return OTHER;
+        }
+        return typeEnum;
     }
 
     private static Map<String, SqlServerColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
@@ -255,7 +260,9 @@ public enum SqlServerColumnTypeEnum implements ColumnBuilder {
             }
             return script.toString();
         }
-
+        if(OTHER.equals(columnType)){
+            return column.getColumnType();
+        }
 
         return columnType;
     }

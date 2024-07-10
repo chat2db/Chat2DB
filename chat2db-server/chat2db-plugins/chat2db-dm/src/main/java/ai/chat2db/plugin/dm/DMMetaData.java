@@ -8,10 +8,13 @@ import ai.chat2db.spi.MetaData;
 import ai.chat2db.spi.SqlBuilder;
 import ai.chat2db.spi.jdbc.DefaultMetaService;
 import ai.chat2db.spi.model.*;
+import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.SQLExecutor;
 import ai.chat2db.spi.util.SortUtils;
 import com.google.common.collect.Lists;
 import jakarta.validation.constraints.NotEmpty;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
@@ -20,27 +23,25 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 public class DMMetaData extends DefaultMetaService implements MetaData {
 
-    private List<String> systemSchemas = Arrays.asList("CTISYS", "SYS","SYSDBA","SYSSSO","SYSAUDITOR");
+    private List<String> systemSchemas = Arrays.asList("CTISYS", "SYS", "SYSDBA", "SYSSSO", "SYSAUDITOR");
 
     @Override
     public List<Schema> schemas(Connection connection, String databaseName) {
         List<Schema> schemas = SQLExecutor.getInstance().schemas(connection, databaseName, null);
         return SortUtils.sortSchema(schemas, systemSchemas);
     }
-      private String format(String tableName){
+
+    private String format(String tableName) {
         return "\"" + tableName + "\"";
-      }
+    }
 
     private static String tableDDL = "SELECT dbms_metadata.get_ddl('TABLE', '%s','%s') as ddl FROM dual ;";
-    private static String tableComment = "select COMMENTS from dba_tab_comments where OWNER='%s' and TABLE_TYPE='TABLE' and TABLE_NAME='%s';";
-    private static String columnComment = "SELECT COLNAME,COMMENT$ FROM SYS.SYSCOLUMNCOMMENTS where SCHNAME = '%s' and TVNAME = '%s' and TABLE_TYPE = 'TABLE';";
 
-    public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName)  {
+    public String tableDDL(Connection connection, String databaseName, String schemaName, String tableName) {
         String tableDDLSql = String.format(tableDDL, tableName, schemaName);
-        String tableCommentSql = String.format(tableComment, schemaName, tableName);
-        String columnCommentSql = String.format(columnComment, schemaName, tableName);
         StringBuilder ddlBuilder = new StringBuilder();
         SQLExecutor.getInstance().execute(connection, tableDDLSql, resultSet -> {
             if (resultSet.next()) {
@@ -48,34 +49,64 @@ public class DMMetaData extends DefaultMetaService implements MetaData {
                 ddlBuilder.append(ddl).append("\n");
             }
         });
-        SQLExecutor.getInstance().execute(connection, tableCommentSql, resultSet -> {
-            if (resultSet.next()) {
-                String comments = resultSet.getString("COMMENTS");
-                if (Objects.nonNull(comments)) {
-                    ddlBuilder.append("COMMENT ON TABLE ").append(format(schemaName)).append(".").append(format(tableName))
-                            .append(" IS ").append(comments).append(";").append("\n");
+        MetaData metaData = Chat2DBContext.getMetaData();
+        List<Table> tables = metaData.tables(connection, databaseName, schemaName, tableName);
+        if (CollectionUtils.isNotEmpty(tables)) {
+            String tableComment = tables.get(0).getComment();
+            if (StringUtils.isNotBlank(tableComment)) {
+                ddlBuilder.append("COMMENT ON TABLE ").append(format(schemaName)).append(".").append(format(tableName))
+                        .append(" IS '").append(tableComment.replace("'", "''")).append("'").append(";").append("\n");
+            }
+        }
+        List<TableColumn> columns = metaData.columns(connection, databaseName, schemaName, tableName);
+        if (CollectionUtils.isNotEmpty(columns)) {
+            for (TableColumn column : columns) {
+                String columnName = column.getName();
+                String comment = column.getComment();
+                if (StringUtils.isNotBlank(comment)) {
+                    ddlBuilder.append("COMMENT ON COLUMN ").append(format(schemaName)).append(".").append(format(tableName))
+                            .append(".").append(format(columnName)).append(" IS ")
+                            .append("'").append(comment.replace("'", "''"))
+                            .append("';").append("\n");
                 }
             }
-        });
-        SQLExecutor.getInstance().execute(connection, columnCommentSql, resultSet -> {
-            while (resultSet.next()) {
-                String columnName = resultSet.getString("COLNAME");
-                String comment = resultSet.getString("COMMENT$");
-                ddlBuilder.append("COMMENT ON COLUMN ").append(format(schemaName)).append(".").append(format(tableName))
-                        .append(".").append(format(columnName)).append(" IS ").append("'").append(comment).append("';").append("\n");
+        }
+        if (tableName.startsWith("V$")){
+            return ddlBuilder.toString();
+        }
+        List<TableIndex> indexes = metaData.indexes(connection, databaseName, schemaName, tableName);
+        if (CollectionUtils.isNotEmpty(indexes)) {
+            for (TableIndex index : indexes) {
+                String indexName = index.getName();
+                if (StringUtils.isNotBlank(indexName)) {
+                    String sql = "select DBMS_METADATA.GET_DDL('INDEX','%s') as INDEX_DDL";
+                    try {
+                        SQLExecutor.getInstance().execute(connection, String.format(sql,indexName), resultSet -> {
+                            if (resultSet.next()) {
+                                ddlBuilder.append(resultSet.getString("INDEX_DDL")).append("\n");
+                            }
+                        });
+                    } catch (Exception e) {
+                        log.warn("Failed to get the DDL of the index.");
+                        for (TableIndex tableIndex : indexes) {
+                            DMIndexTypeEnum indexTypeEnum = DMIndexTypeEnum.getByType(tableIndex.getType());
+                            ddlBuilder.append("\n").append(indexTypeEnum.buildIndexScript(tableIndex)).append(";");
+                        }
+                    }
+                }
             }
-        });
+        }
         return ddlBuilder.toString();
     }
 
     private static String ROUTINES_SQL
-        = "SELECT OWNER, NAME, TEXT FROM ALL_SOURCE WHERE TYPE = '%s' AND OWNER = '%s' AND NAME = '%s' ORDER BY LINE";
+            = "SELECT OWNER, NAME, TEXT FROM ALL_SOURCE WHERE TYPE = '%s' AND OWNER = '%s' AND NAME = '%s' ORDER BY LINE";
 
     @Override
     public Function function(Connection connection, @NotEmpty String databaseName, String schemaName,
-        String functionName) {
+                             String functionName) {
 
-        String sql = String.format(ROUTINES_SQL, "PROC",schemaName, functionName);
+        String sql = String.format(ROUTINES_SQL, "PROC", schemaName, functionName);
         return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             StringBuilder sb = new StringBuilder();
             while (resultSet.next()) {
@@ -94,8 +125,8 @@ public class DMMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
-        String procedureName) {
-        String sql = String.format(ROUTINES_SQL, "PROC", schemaName,procedureName);
+                               String procedureName) {
+        String sql = String.format(ROUTINES_SQL, "PROC", schemaName, procedureName);
         return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             StringBuilder sb = new StringBuilder();
             while (resultSet.next()) {
@@ -111,8 +142,8 @@ public class DMMetaData extends DefaultMetaService implements MetaData {
     }
 
     private static String TRIGGER_SQL
-        = "SELECT OWNER, TRIGGER_NAME, TABLE_OWNER, TABLE_NAME, TRIGGERING_TYPE, TRIGGERING_EVENT, STATUS, TRIGGER_BODY "
-        + "FROM ALL_TRIGGERS WHERE OWNER = '%s' AND TRIGGER_NAME = '%s'";
+            = "SELECT OWNER, TRIGGER_NAME, TABLE_OWNER, TABLE_NAME, TRIGGERING_TYPE, TRIGGERING_EVENT, STATUS, TRIGGER_BODY "
+            + "FROM ALL_TRIGGERS WHERE OWNER = '%s' AND TRIGGER_NAME = '%s'";
 
     private static String TRIGGER_SQL_LIST = "SELECT OWNER, TRIGGER_NAME FROM ALL_TRIGGERS WHERE OWNER = '%s'";
 
@@ -134,7 +165,7 @@ public class DMMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public Trigger trigger(Connection connection, @NotEmpty String databaseName, String schemaName,
-        String triggerName) {
+                           String triggerName) {
 
         String sql = String.format(TRIGGER_SQL, schemaName, triggerName);
         return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
@@ -150,7 +181,7 @@ public class DMMetaData extends DefaultMetaService implements MetaData {
     }
 
     private static String VIEW_SQL
-        = "SELECT OWNER, VIEW_NAME, TEXT FROM ALL_VIEWS WHERE OWNER = '%s' AND VIEW_NAME = '%s'";
+            = "SELECT OWNER, VIEW_NAME, TEXT FROM ALL_VIEWS WHERE OWNER = '%s' AND VIEW_NAME = '%s'";
 
     @Override
     public Table view(Connection connection, String databaseName, String schemaName, String viewName) {

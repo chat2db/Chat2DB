@@ -45,6 +45,7 @@ public class SSHManager {
             }
 
         } catch (Exception e) {
+            log.info("getSSHSession error,sshinfo:{}",ssh.toString(), e);
             throw new ConnectionException("connection.ssh.error", null, e);
         }
         if (session != null && StringUtils.isNotBlank(ssh.getRHost()) && StringUtils.isNotBlank(ssh.getRPort())) {
@@ -59,6 +60,7 @@ public class SSHManager {
                 session.setPortForwardingL(localPort, ssh.getRHost(),
                     Integer.parseInt(ssh.getRPort()));
             } catch (Exception e) {
+                log.info("getSSHSession setPortForwardingL error,sshinfo:{}",ssh.toString(), e);
                 if (session != null && session.isConnected()) {
                     session.disconnect();
                 }

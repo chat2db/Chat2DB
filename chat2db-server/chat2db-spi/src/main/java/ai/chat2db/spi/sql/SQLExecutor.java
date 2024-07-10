@@ -26,6 +26,7 @@ import ai.chat2db.spi.util.JdbcUtils;
 import ai.chat2db.spi.util.ResultSetUtils;
 import ai.chat2db.spi.util.SqlUtils;
 import cn.hutool.core.date.TimeInterval;
+
 import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLStatement;
@@ -33,10 +34,11 @@ import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.druid.sql.parser.ParserException;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+
 import lombok.extern.slf4j.Slf4j;
+
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.bson.Document;
 import org.springframework.util.Assert;
 
 /**
@@ -92,12 +94,12 @@ public class SQLExecutor implements CommandExecutor {
     }
 
     public void execute(Connection connection, String sql, Consumer<List<Header>> headerConsumer,
-                        Consumer<List<String>> rowConsumer, ValueHandler valueHandler) {
+        Consumer<List<String>> rowConsumer, ValueHandler valueHandler) {
         execute(connection, sql, headerConsumer, rowConsumer, true, valueHandler);
     }
 
     public void execute(Connection connection, String sql, Consumer<List<Header>> headerConsumer,
-                        Consumer<List<String>> rowConsumer, boolean limitSize, ValueHandler valueHandler) {
+        Consumer<List<String>> rowConsumer, boolean limitSize, ValueHandler valueHandler) {
         Assert.notNull(sql, "SQL must not be null");
         log.info("execute:{}", sql);
         try (Statement stmt = connection.createStatement();) {
@@ -115,10 +117,10 @@ public class SQLExecutor implements CommandExecutor {
                     List<Header> headerList = Lists.newArrayListWithExpectedSize(col);
                     for (int i = 1; i <= col; i++) {
                         headerList.add(Header.builder()
-                                .dataType(JdbcUtils.resolveDataType(
-                                        resultSetMetaData.getColumnTypeName(i), resultSetMetaData.getColumnType(i)).getCode())
-                                .name(ResultSetUtils.getColumnName(resultSetMetaData, i))
-                                .build());
+                            .dataType(JdbcUtils.resolveDataType(
+                                resultSetMetaData.getColumnTypeName(i), resultSetMetaData.getColumnType(i)).getCode())
+                            .name(ResultSetUtils.getColumnName(resultSetMetaData, i))
+                            .build());
                     }
                     headerConsumer.accept(headerList);
 
@@ -146,13 +148,13 @@ public class SQLExecutor implements CommandExecutor {
      * @throws SQLException
      */
     public ExecuteResult execute(final String sql, Connection connection, ValueHandler valueHandler)
-            throws SQLException {
+        throws SQLException {
         return execute(sql, connection, true, null, null, valueHandler);
     }
 
     @Override
     public ExecuteResult executeUpdate(String sql, Connection connection, int n)
-            throws SQLException {
+        throws SQLException {
         Assert.notNull(sql, "SQL must not be null");
         log.info("execute:{}", sql);
         // connection.setAutoCommit(false);
@@ -160,10 +162,11 @@ public class SQLExecutor implements CommandExecutor {
         try (Statement stmt = connection.createStatement()) {
             int affectedRows = stmt.executeUpdate(sql);
             if (affectedRows != n) {
-                executeResult.setSuccess(false);
-                executeResult.setMessage("Update error " + sql + " update affectedRows = " + affectedRows
-                        + ", Each SQL statement should update no more than one record. Please use a unique key for "
-                        + "updates.");
+                log.info("Update error {} update affectedRows = {}", sql, affectedRows);
+//                executeResult.setSuccess(false);
+//                executeResult.setMessage("Update error " + sql + " update affectedRows = " + affectedRows
+//                    + ", Each SQL statement should update no more than one record. Please use a unique key for "
+//                    + "updates.");
                 // connection.rollback();
             }
         }
@@ -174,7 +177,7 @@ public class SQLExecutor implements CommandExecutor {
     public List<ExecuteResult> executeSelectTable(Command command) {
         MetaData metaData = Chat2DBContext.getMetaData();
         String tableName = metaData.getMetaDataName(command.getDatabaseName(), command.getSchemaName(),
-                command.getTableName());
+            command.getTableName());
         String sql = "select * from " + tableName;
         command.setScript(sql);
         return execute(command);
@@ -194,8 +197,8 @@ public class SQLExecutor implements CommandExecutor {
      * @throws SQLException If there is any SQL related error.
      */
     public ExecuteResult execute(final String sql, Connection connection, boolean limitRowSize, Integer offset,
-                                 Integer count, ValueHandler valueHandler)
-            throws SQLException {
+        Integer count, ValueHandler valueHandler)
+        throws SQLException {
         Assert.notNull(sql, "SQL must not be null");
         log.info("execute:{}", sql);
 
@@ -203,9 +206,9 @@ public class SQLExecutor implements CommandExecutor {
         ExecuteResult executeResult = ExecuteResult.builder().sql(sql).success(Boolean.TRUE).build();
         try (Statement stmt = connection.createStatement()) {
             stmt.setFetchSize(EasyToolsConstant.MAX_PAGE_SIZE);
-//            if (!DataSourceTypeEnum.MONGODB.getCode().equals(type)) {
-//                stmt.setQueryTimeout(30);
-//            }
+            //            if (!DataSourceTypeEnum.MONGODB.getCode().equals(type)) {
+            //                stmt.setQueryTimeout(30);
+            //            }
             if (offset != null && count != null) {
                 stmt.setMaxRows(offset + count);
             }
@@ -240,11 +243,11 @@ public class SQLExecutor implements CommandExecutor {
                             continue;
                         }
                         String dataType = JdbcUtils.resolveDataType(
-                                resultSetMetaData.getColumnTypeName(i), resultSetMetaData.getColumnType(i)).getCode();
+                            resultSetMetaData.getColumnTypeName(i), resultSetMetaData.getColumnType(i)).getCode();
                         headerList.add(Header.builder()
-                                .dataType(dataType)
-                                .name(name)
-                                .build());
+                            .dataType(dataType)
+                            .name(name)
+                            .build());
                     }
 
                     // Get data information
@@ -281,19 +284,20 @@ public class SQLExecutor implements CommandExecutor {
                                 Object o = rs.getObject(i);
                                 Map<String, String> row = Maps.newHashMap();
                                 dataListMap.add(row);
-                                if (o instanceof Document document) {
-                                    for (String string : document.keySet()) {
+                                LinkedHashMap<String, Object> data = DocumentUtils.convertToMap(o);
+                                if (data != null) {
+                                    for (String string : data.keySet()) {
                                         headerListMap.computeIfAbsent(string, k -> Header.builder()
-                                                .dataType("string")
-                                                .name(string)
-                                                .build());
-                                        row.put(string, Objects.toString(document.get(string)));
+                                            .dataType("string")
+                                            .name(string)
+                                            .build());
+                                        row.put(string, Objects.toString(data.get(string)));
                                     }
                                 } else {
                                     headerListMap.computeIfAbsent("_unknown", k -> Header.builder()
-                                            .dataType("string")
-                                            .name("_unknown")
-                                            .build());
+                                        .dataType("string")
+                                        .name("_unknown")
+                                        .build());
                                     row.put("_unknown", Objects.toString(o));
                                 }
                             }
@@ -363,22 +367,12 @@ public class SQLExecutor implements CommandExecutor {
 
     /**
      * Retrieves the schema names available in this database. The results are ordered by TABLE_CATALOG and TABLE_SCHEM.
-     * The schema columns are:
-     * TABLE_SCHEM String => schema name
-     * TABLE_CATALOG String => catalog name (may be null)
-     * Params:
-     * catalog – a catalog name; must match the catalog name as it is stored in the database;"" retrieves those without
-     * a catalog; null means catalog name should not be used to narrow down the search. schemaPattern – a schema name;
-     * must match the schema name as it is stored in the database; null means schema name should not be used to narrow
-     * down the search.
-     * Returns:
-     * a ResultSet object in which each row is a schema description
-     * Throws:
-     * SQLException – if a database access error occurs
-     * Since:
-     * 1.6
-     * See Also:
-     * getSearchStringEscape
+     * The schema columns are: TABLE_SCHEM String => schema name TABLE_CATALOG String => catalog name (may be null)
+     * Params: catalog – a catalog name; must match the catalog name as it is stored in the database;"" retrieves those
+     * without a catalog; null means catalog name should not be used to narrow down the search. schemaPattern – a schema
+     * name; must match the schema name as it is stored in the database; null means schema name should not be used to
+     * narrow down the search. Returns: a ResultSet object in which each row is a schema description Throws:
+     * SQLException – if a database access error occurs Since: 1.6 See Also: getSearchStringEscape
      */
     public List<Schema> schemas(Connection connection, String databaseName, String schemaName) {
         if (StringUtils.isEmpty(databaseName) && StringUtils.isEmpty(schemaName)) {
@@ -406,41 +400,43 @@ public class SQLExecutor implements CommandExecutor {
      * @return
      */
     public List<Table> tables(Connection connection, String databaseName, String schemaName, String tableName,
-                              String types[]) {
+        String types[]) {
 
         try {
             DatabaseMetaData metadata = connection.getMetaData();
             ResultSet resultSet = metadata.getTables(databaseName, schemaName, tableName,
-                    types);
-//            // If connection is mysql
-//            if ("MySQL".equalsIgnoreCase(metadata.getDatabaseProductName())) {
-//                // Get the comment of mysql table
-//                List<Table> tables = ResultSetUtils.toObjectList(resultSet, Table.class);
-//                if (CollectionUtils.isNotEmpty(tables)) {
-//                    for (Table table : tables) {
-//                        String sql = "show table status where name = '" + table.getName() + "'";
-//                        try (Statement stmt = connection.createStatement()) {
-//                            boolean query = stmt.execute(sql);
-//                            if (query) {
-//                                try (ResultSet rs = stmt.getResultSet();) {
-//                                    while (rs.next()) {
-//                                        table.setComment(rs.getString("Comment"));
-//                                    }
-//                                }
-//                            }
-//                        }
-//                    }
-//
-//                    return tables;
-//                }
-//            }
+                types);
+            //            // If connection is mysql
+            //            if ("MySQL".equalsIgnoreCase(metadata.getDatabaseProductName())) {
+            //                // Get the comment of mysql table
+            //                List<Table> tables = ResultSetUtils.toObjectList(resultSet, Table.class);
+            //                if (CollectionUtils.isNotEmpty(tables)) {
+            //                    for (Table table : tables) {
+            //                        String sql = "show table status where name = '" + table.getName() + "'";
+            //                        try (Statement stmt = connection.createStatement()) {
+            //                            boolean query = stmt.execute(sql);
+            //                            if (query) {
+            //                                try (ResultSet rs = stmt.getResultSet();) {
+            //                                    while (rs.next()) {
+            //                                        table.setComment(rs.getString("Comment"));
+            //                                    }
+            //                                }
+            //                            }
+            //                        }
+            //                    }
+            //
+            //                    return tables;
+            //                }
+            //            }
             return ResultSetUtils.toObjectList(resultSet, Table.class);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
-    /** query table names
+    /**
+     * query table names
+     *
      * @param connection
      * @param databaseName
      * @param schemaName
@@ -448,7 +444,8 @@ public class SQLExecutor implements CommandExecutor {
      * @param types
      * @return
      */
-    public List<String> tableNames(Connection connection, String databaseName, String schemaName, String tableName, String[] types) {
+    public List<String> tableNames(Connection connection, String databaseName, String schemaName, String tableName,
+        String[] types) {
         List<String> tableNames = new ArrayList<>();
         try (ResultSet resultSet = connection.getMetaData().getTables(databaseName, schemaName, tableName, types)) {
             while (resultSet.next()) {
@@ -471,10 +468,10 @@ public class SQLExecutor implements CommandExecutor {
      * @return
      */
     public List<TableColumn> columns(Connection connection, String databaseName, String schemaName, String
-            tableName,
-                                     String columnName) {
+        tableName,
+        String columnName) {
         try (ResultSet resultSet = connection.getMetaData().getColumns(databaseName, schemaName, tableName,
-                columnName)) {
+            columnName)) {
             return ResultSetUtils.toObjectList(resultSet, TableColumn.class);
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -493,22 +490,22 @@ public class SQLExecutor implements CommandExecutor {
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
         List<TableIndex> tableIndices = Lists.newArrayList();
         try (ResultSet resultSet = connection.getMetaData().getIndexInfo(databaseName, schemaName, tableName,
-                false,
-                false)) {
+            false,
+            false)) {
             List<TableIndexColumn> tableIndexColumns = ResultSetUtils.toObjectList(resultSet, TableIndexColumn.class);
             tableIndexColumns.stream().filter(c -> c.getIndexName() != null).collect(
-                            Collectors.groupingBy(TableIndexColumn::getIndexName)).entrySet()
-                    .stream().forEach(entry -> {
-                        TableIndex tableIndex = new TableIndex();
-                        TableIndexColumn column = entry.getValue().get(0);
-                        tableIndex.setName(entry.getKey());
-                        tableIndex.setTableName(column.getTableName());
-                        tableIndex.setSchemaName(column.getSchemaName());
-                        tableIndex.setDatabaseName(column.getDatabaseName());
-                        tableIndex.setUnique(!column.getNonUnique());
-                        tableIndex.setColumnList(entry.getValue());
-                        tableIndices.add(tableIndex);
-                    });
+                    Collectors.groupingBy(TableIndexColumn::getIndexName)).entrySet()
+                .stream().forEach(entry -> {
+                    TableIndex tableIndex = new TableIndex();
+                    TableIndexColumn column = entry.getValue().get(0);
+                    tableIndex.setName(entry.getKey());
+                    tableIndex.setTableName(column.getTableName());
+                    tableIndex.setSchemaName(column.getSchemaName());
+                    tableIndex.setDatabaseName(column.getDatabaseName());
+                    tableIndex.setUnique(!column.getNonUnique());
+                    tableIndex.setColumnList(entry.getValue());
+                    tableIndices.add(tableIndex);
+                });
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -524,7 +521,7 @@ public class SQLExecutor implements CommandExecutor {
      * @return List<Function>
      */
     public List<ai.chat2db.spi.model.Function> functions(Connection connection, String databaseName,
-                                                         String schemaName) {
+        String schemaName) {
         try (ResultSet resultSet = connection.getMetaData().getFunctions(databaseName, schemaName, null);) {
             return ResultSetUtils.toObjectList(resultSet, ai.chat2db.spi.model.Function.class);
         } catch (Exception e) {
@@ -534,12 +531,11 @@ public class SQLExecutor implements CommandExecutor {
 
     /**
      * Retrieves a description of all the data types supported by this database. They are ordered by DATA_TYPE and then
-     * by how closely the data type maps to the corresponding JDBC SQL type.
-     * If the database supports SQL distinct types, then getTypeInfo() will return a single row with a TYPE_NAME of
-     * DISTINCT and a DATA_TYPE of Types.DISTINCT. If the database supports SQL structured types, then getTypeInfo()
-     * will return a single row with a TYPE_NAME of STRUCT and a DATA_TYPE of Types.STRUCT.
-     * If SQL distinct or structured types are supported, then information on the individual types may be obtained from
-     * the getUDTs() method.
+     * by how closely the data type maps to the corresponding JDBC SQL type. If the database supports SQL distinct
+     * types, then getTypeInfo() will return a single row with a TYPE_NAME of DISTINCT and a DATA_TYPE of
+     * Types.DISTINCT. If the database supports SQL structured types, then getTypeInfo() will return a single row with a
+     * TYPE_NAME of STRUCT and a DATA_TYPE of Types.STRUCT. If SQL distinct or structured types are supported, then
+     * information on the individual types may be obtained from the getUDTs() method.
      *
      * @param connection connection
      * @return List<Function>
@@ -583,9 +579,9 @@ public class SQLExecutor implements CommandExecutor {
         // parse sql
         String type = Chat2DBContext.getConnectInfo().getDbType();
         DbType dbType = JdbcUtils.parse2DruidDbType(type);
-//        if ("SQLSERVER".equalsIgnoreCase(type)) {
-//            RemoveSpecialGO(param);
-//        }
+        //        if ("SQLSERVER".equalsIgnoreCase(type)) {
+        //            RemoveSpecialGO(param);
+        //        }
 
         List<String> sqlList = SqlUtils.parse(command.getScript(), dbType);
 
@@ -656,7 +652,7 @@ public class SQLExecutor implements CommandExecutor {
             executeResult.setPageNo(pageNo);
             executeResult.setPageSize(pageSize);
             executeResult.setHasNextPage(
-                    CollectionUtils.size(executeResult.getDataList()) >= executeResult.getPageSize());
+                CollectionUtils.size(executeResult.getDataList()) >= executeResult.getPageSize());
         } else {
             executeResult.setPageNo(pageNo);
             executeResult.setPageSize(CollectionUtils.size(executeResult.getDataList()));
@@ -664,14 +660,14 @@ public class SQLExecutor implements CommandExecutor {
         }
 
         List<Header> headers = executeResult.getHeaderList();
-//        if (executeResult.getSuccess() && executeResult.isCanEdit() && CollectionUtils.isNotEmpty(headers)) {
-//            headers = setColumnInfo(headers, executeResult.getTableName(), param.getSchemaName(),
-//                    param.getDatabaseName());
-//        }
+        //        if (executeResult.getSuccess() && executeResult.isCanEdit() && CollectionUtils.isNotEmpty(headers)) {
+        //            headers = setColumnInfo(headers, executeResult.getTableName(), param.getSchemaName(),
+        //                    param.getDatabaseName());
+        //        }
         Header rowNumberHeader = Header.builder()
-                .name(I18nUtils.getMessage("sqlResult.rowNumber"))
-                .dataType(DataTypeEnum.CHAT2DB_ROW_NUMBER
-                        .getCode()).build();
+            .name(I18nUtils.getMessage("sqlResult.rowNumber"))
+            .dataType(DataTypeEnum.CHAT2DB_ROW_NUMBER
+                .getCode()).build();
 
         executeResult.setHeaderList(EasyCollectionUtils.union(Arrays.asList(rowNumberHeader), headers));
         if (executeResult.getDataList() != null) {
@@ -706,14 +702,14 @@ public class SQLExecutor implements CommandExecutor {
         try {
             ValueHandler valueHandler = Chat2DBContext.getMetaData().getValueHandler();
             executeResult = SQLExecutor.getInstance().execute(sql, Chat2DBContext.getConnection(), true, offset, count,
-                    valueHandler);
+                valueHandler);
         } catch (SQLException e) {
             log.error("Execute sql: {} exception", sql, e);
             executeResult = ExecuteResult.builder()
-                    .sql(sql)
-                    .success(Boolean.FALSE)
-                    .message(e.getMessage())
-                    .build();
+                .sql(sql)
+                .success(Boolean.FALSE)
+                .message(e.getMessage())
+                .build();
         }
         return executeResult;
     }

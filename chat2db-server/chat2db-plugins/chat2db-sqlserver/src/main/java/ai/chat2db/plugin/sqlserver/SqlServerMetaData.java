@@ -91,7 +91,7 @@ public class SqlServerMetaData extends DefaultMetaService implements MetaData {
         });
     }
 
-    private static String SELECT_TABLES_SQL = "SELECT t.name AS TableName, mm.value as comment FROM sys.tables t LEFT JOIN(SELECT * from sys.extended_properties ep where ep.minor_id = 0 AND ep.name = 'MS_Description') mm ON t.object_id = mm.major_id WHERE t.schema_id= SCHEMA_ID('%S')";
+    private static String SELECT_TABLES_SQL = "SELECT t.name AS TableName, mm.value as comment FROM sys.tables t LEFT JOIN(SELECT * from sys.extended_properties ep where ep.minor_id = 0 AND ep.name = 'MS_Description') mm ON t.object_id = mm.major_id WHERE t.schema_id= SCHEMA_ID('%s')";
 
     @Override
     public List<Table> tables(Connection connection, String databaseName, String schemaName, String tableName) {
@@ -412,4 +412,5 @@ public class SqlServerMetaData extends DefaultMetaService implements MetaData {
     public List<String> getSystemSchemas() {
         return systemSchemas;
     }
+
 }

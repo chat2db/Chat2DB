@@ -67,13 +67,13 @@ public class DefaultDBManage implements DBManage {
         if (connection != null) {
             try {
                 connection.close();
-            } catch (SQLException e) {
+            } catch (Exception e) {
             }
         }
         if (session != null) {
             try {
                 session.delPortForwardingL(Integer.parseInt(ssh.getLocalPort()));
-            } catch (JSchException e) {
+            } catch (Exception e) {
             }
             try {
                 session.disconnect();

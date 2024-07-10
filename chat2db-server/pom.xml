@@ -1,5 +1,5 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
     <!-- Introduce spring startup project -->
     <parent>
@@ -81,11 +81,11 @@
                 <artifactId>chat2db-server-domain-repository</artifactId>
                 <version>${revision}</version>
             </dependency>
-<!--            <dependency>-->
-<!--                <groupId>ai.chat2db</groupId>-->
-<!--                <artifactId>chat2db-server-domain-support</artifactId>-->
-<!--                <version>${revision}</version>-->
-<!--            </dependency>-->
+            <!--            <dependency>-->
+            <!--                <groupId>ai.chat2db</groupId>-->
+            <!--                <artifactId>chat2db-server-domain-support</artifactId>-->
+            <!--                <version>${revision}</version>-->
+            <!--            </dependency>-->
             <dependency>
                 <groupId>ai.chat2db</groupId>
                 <artifactId>chat2db-server-start</artifactId>
@@ -307,12 +307,6 @@
                 <version>4.4.0</version>
             </dependency>
 
-            <!-- https://mvnrepository.com/artifact/org.mongodb/bson -->
-            <dependency>
-                <groupId>org.mongodb</groupId>
-                <artifactId>bson</artifactId>
-                <version>4.11.1</version>
-            </dependency>
             <dependency>
                 <groupId>com.github.vertical-blank</groupId>
                 <artifactId>sql-formatter</artifactId>

@@ -100,13 +100,13 @@ public class DlTemplateServiceImpl implements DlTemplateService {
         List<String> sqlList = SqlUtils.parse(param.getSql(), dbType);
         Connection connection = Chat2DBContext.getConnection();
         try {
-            connection.setAutoCommit(false);
+//            connection.setAutoCommit(false);
             for (String originalSql : sqlList) {
                 ExecuteResult executeResult = executor.executeUpdate(originalSql, connection, 1);
                 dataResult.setData(executeResult);
                 addOperationLog(executeResult);
             }
-            connection.commit();
+//            connection.commit();
         } catch (Exception e) {
             log.error("executeUpdate error", e);
             dataResult.setSuccess(false);

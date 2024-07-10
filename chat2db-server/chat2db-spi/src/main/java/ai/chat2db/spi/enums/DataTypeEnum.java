@@ -163,6 +163,7 @@ public enum DataTypeEnum implements BaseEnum<String> {
         }
         value = value.replace("\\", "\\\\");
         value = value.replace("'", "\\'");
+        value = value.replace("\"", "\\\"");
         return "'" + value + "'";
     }
 

@@ -80,10 +80,15 @@
             <version>1.19.0</version> <!-- Make sure to use the latest version -->
         </dependency>
 
-        <!-- https://mvnrepository.com/artifact/org.mongodb/bson -->
         <dependency>
-            <groupId>org.mongodb</groupId>
-            <artifactId>bson</artifactId>
+            <groupId>org.antlr</groupId>
+            <artifactId>antlr4</artifactId>
+            <version>4.9.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.oceanbase</groupId>
+            <artifactId>ob-sql-parser</artifactId>
+            <version>1.2.1</version>
         </dependency>
     </dependencies>
     <build>

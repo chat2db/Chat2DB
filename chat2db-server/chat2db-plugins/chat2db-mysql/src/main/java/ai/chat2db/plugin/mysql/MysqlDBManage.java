@@ -134,6 +134,8 @@ public class MysqlDBManage extends DefaultDBManage implements DBManage {
         } catch (Exception e) {
             connection.rollback();
             throw new RuntimeException(e);
+        }finally {
+            connection.setAutoCommit(true);
         }
 
     }

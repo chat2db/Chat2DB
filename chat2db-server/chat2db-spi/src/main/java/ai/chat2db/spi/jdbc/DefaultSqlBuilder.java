@@ -96,6 +96,7 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
         String tableName = queryResult.getTableName();
         StringBuilder stringBuilder = new StringBuilder();
         MetaData metaSchema = Chat2DBContext.getMetaData();
+        String dbType = Chat2DBContext.getDBConfig().getDbType();
         List<String> keyColumns = getPrimaryColumns(headerList);
         for (int i = 0; i < operations.size(); i++) {
             ResultOperation operation = operations.get(i);
@@ -104,14 +105,19 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
             String sql = "";
             if ("UPDATE".equalsIgnoreCase(operation.getType())) {
                 sql = getUpdateSql(tableName, headerList, row, odlRow, metaSchema, keyColumns, false);
+                if("MYSQL".equalsIgnoreCase(dbType)){
+                    sql = sql + " LIMIT 1";
+                }
             } else if ("CREATE".equalsIgnoreCase(operation.getType())) {
                 sql = getInsertSql(tableName, headerList, row, metaSchema);
             } else if ("DELETE".equalsIgnoreCase(operation.getType())) {
                 sql = getDeleteSql(tableName, headerList, odlRow, metaSchema, keyColumns);
+                if("MYSQL".equalsIgnoreCase(dbType)){
+                    sql = sql + " LIMIT 1";
+                }
             } else if ("UPDATE_COPY".equalsIgnoreCase(operation.getType())) {
                 sql = getUpdateSql(tableName, headerList, row, row, metaSchema, keyColumns, true);
             }
-
             stringBuilder.append(sql + ";\n");
         }
         return stringBuilder.toString();
