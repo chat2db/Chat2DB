@@ -317,7 +317,7 @@ function ChartItem(props: IChartItemProps) {
       <div className={styles.emptyChartBlock}>
         <Iconfont code="&#xe638;" className={styles.emptyDataImage} />
 
-        <div className={styles.emptyDataText}>No date selected</div>
+        <div className={styles.emptyDataText}>No data selected</div>
         <Button
           type="primary"
           onClick={() => {
