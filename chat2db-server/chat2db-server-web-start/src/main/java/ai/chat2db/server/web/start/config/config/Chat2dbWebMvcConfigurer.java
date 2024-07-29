@@ -190,10 +190,10 @@ public class Chat2dbWebMvcConfigurer implements WebMvcConfigurer {
         StringBuilder stringBuilder = new StringBuilder();
         Enumeration<String> headerNames = request.getHeaderNames();
         while (headerNames.hasMoreElements()) {
-            String headName = headerNames.nextElement();
-            stringBuilder.append(headName);
+            String headerName = headerNames.nextElement();
+            stringBuilder.append(headerName);
             stringBuilder.append(SymbolConstant.COLON);
-            stringBuilder.append(request.getHeader(headName));
+            stringBuilder.append(request.getHeader(headerName));
             stringBuilder.append(SymbolConstant.COMMA);
         }
         return stringBuilder.toString();
