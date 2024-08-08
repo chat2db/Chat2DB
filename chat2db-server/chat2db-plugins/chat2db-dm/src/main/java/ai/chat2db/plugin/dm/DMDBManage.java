@@ -3,6 +3,7 @@ package ai.chat2db.plugin.dm;
 import ai.chat2db.spi.DBManage;
 import ai.chat2db.spi.jdbc.DefaultDBManage;
 import ai.chat2db.spi.model.AsyncContext;
+import ai.chat2db.spi.model.Procedure;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
@@ -29,6 +30,12 @@ public class DMDBManage extends DefaultDBManage implements DBManage {
             = "SELECT OWNER, TRIGGER_NAME, TABLE_OWNER, TABLE_NAME, TRIGGERING_TYPE, TRIGGERING_EVENT, STATUS, TRIGGER_BODY "
             + "FROM ALL_TRIGGERS WHERE OWNER = '%s' AND TRIGGER_NAME = '%s'";
 
+    private static String PROCEDURE_SQL = "SELECT COUNT(*)\n" +
+            "FROM DBA_OBJECTS\n" +
+            "WHERE OBJECT_TYPE = 'PROCEDURE' \n" +
+            "AND OWNER = '%s' \n" +
+            "AND OBJECT_NAME = '%s'";
+
     @Override
     public void exportDatabase(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
         exportTables(connection, databaseName, schemaName, asyncContext);
@@ -50,11 +57,11 @@ public class DMDBManage extends DefaultDBManage implements DBManage {
 
     public void exportTable(Connection connection, String databaseName, String tableName, String schemaName, AsyncContext asyncContext) throws SQLException {
         String sql = """
-                     SELECT
-                         (SELECT comments FROM user_tab_comments WHERE table_name = '%s') AS comments,
-                         (SELECT dbms_metadata.get_ddl('TABLE', '%s', '%s') FROM dual) AS ddl
-                     FROM dual;
-                     """;
+                SELECT
+                    (SELECT comments FROM user_tab_comments WHERE table_name = '%s') AS comments,
+                    (SELECT dbms_metadata.get_ddl('TABLE', '%s', '%s') FROM dual) AS ddl
+                FROM dual;
+                """;
         try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(String.format(sql, tableName, tableName, schemaName))) {
             String formatSchemaName = format(schemaName);
             String formatTableName = format(tableName);
@@ -79,7 +86,7 @@ public class DMDBManage extends DefaultDBManage implements DBManage {
 
     private void exportTableColumnComment(Connection connection, String schemaName, String tableName, AsyncContext asyncContext) throws SQLException {
         String sql = String.format("select COLNAME,COMMENT$ from SYS.SYSCOLUMNCOMMENTS\n" +
-                                           "where SCHNAME = '%s' and TVNAME = '%s'and TABLE_TYPE = 'TABLE';", schemaName, tableName);
+                "where SCHNAME = '%s' and TVNAME = '%s'and TABLE_TYPE = 'TABLE';", schemaName, tableName);
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             while (resultSet.next()) {
                 StringBuilder sqlBuilder = new StringBuilder();
@@ -155,6 +162,44 @@ public class DMDBManage extends DefaultDBManage implements DBManage {
     }
 
     @Override
+    public void updateProcedure(Connection connection, String databaseName, String schemaName, Procedure procedure) throws SQLException {
+        try {
+            connection.setAutoCommit(false);
+            String procedureBody = procedure.getProcedureBody();
+            boolean isCreateOrReplace = procedureBody.trim().toUpperCase().startsWith("CREATE OR REPLACE ");
+
+            if (procedureBody == null || !procedureBody.trim().toUpperCase().startsWith("CREATE")) {
+                throw new IllegalArgumentException("No CREATE statement found.");
+            }
+
+            String procedureNewName = getSchemaOrProcedureName(procedureBody, schemaName, procedure);
+            if (!procedureNewName.equals(procedure.getProcedureName())) {
+                procedureBody = procedureBody.replace(procedure.getProcedureName(), procedureNewName);
+            }
+            String checkProcedureSQL = String.format(PROCEDURE_SQL, schemaName.toUpperCase(),procedure.getProcedureName().toUpperCase());
+            String finalProcedureBody = procedureBody;
+            SQLExecutor.getInstance().execute(connection, checkProcedureSQL, resultSet -> {
+                if (resultSet.next()) {
+                    int count = resultSet.getInt(1);
+                    if (count >= 1) {
+                        if (isCreateOrReplace) {
+                            SQLExecutor.getInstance().execute(connection, finalProcedureBody, resultSet2 -> {});
+                        } else {
+                            throw new SQLException("Procedure with the same name already exists.");
+                        }
+                    }
+                }
+            });
+            SQLExecutor.getInstance().execute(connection, finalProcedureBody, resultSet -> {});
+        } catch (Exception e) {
+            connection.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            connection.setAutoCommit(true);
+        }
+    }
+
+    @Override
     public void connectDatabase(Connection connection, String database) {
         ConnectInfo connectInfo = Chat2DBContext.getConnectInfo();
         if (ObjectUtils.anyNull(connectInfo) || StringUtils.isEmpty(connectInfo.getSchemaName())) {
@@ -172,5 +217,13 @@ public class DMDBManage extends DefaultDBManage implements DBManage {
     public void dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = "DROP TABLE IF EXISTS " + tableName;
         SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+    }
+
+    private static String getSchemaOrProcedureName(String procedureBody, String schemaName, Procedure procedure) {
+        if (procedureBody.toLowerCase().contains(schemaName.toLowerCase())) {
+            return procedure.getProcedureName();
+        } else {
+            return schemaName + "." + procedure.getProcedureName();
+        }
     }
 }

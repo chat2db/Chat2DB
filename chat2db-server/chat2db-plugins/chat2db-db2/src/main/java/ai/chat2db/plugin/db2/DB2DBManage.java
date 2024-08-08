@@ -4,6 +4,7 @@ import ai.chat2db.plugin.db2.constant.SQLConstant;
 import ai.chat2db.spi.DBManage;
 import ai.chat2db.spi.jdbc.DefaultDBManage;
 import ai.chat2db.spi.model.AsyncContext;
+import ai.chat2db.spi.model.Procedure;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
@@ -17,6 +18,10 @@ import java.sql.SQLException;
 
 @Slf4j
 public class DB2DBManage extends DefaultDBManage implements DBManage {
+
+    private static String PROCEDURE_SQL = "SELECT COUNT(*) AS procedure_count\n" +
+            "FROM SYSCAT.PROCEDURES\n" +
+            "WHERE PROCNAME = '%s';";
 
     @Override
     public void exportDatabase(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
@@ -93,6 +98,44 @@ public class DB2DBManage extends DefaultDBManage implements DBManage {
     }
 
     @Override
+    public void updateProcedure(Connection connection, String databaseName, String schemaName, Procedure procedure) throws SQLException {
+        try {
+            connection.setAutoCommit(false);
+            String procedureBody = procedure.getProcedureBody();
+            boolean isCreateOrReplace = procedureBody.trim().toUpperCase().startsWith("CREATE OR REPLACE ");
+
+            if (procedureBody == null || !procedureBody.trim().toUpperCase().startsWith("CREATE")) {
+                throw new IllegalArgumentException("No CREATE statement found.");
+            }
+
+            String procedureNewName = getSchemaOrProcedureName(procedureBody, schemaName, procedure);
+            if (!procedureNewName.equals(procedure.getProcedureName())) {
+                procedureBody = procedureBody.replace(procedure.getProcedureName(), procedureNewName);
+            }
+            String checkProcedureSQL = String.format(PROCEDURE_SQL, procedure.getProcedureName().toUpperCase());
+            String finalProcedureBody = procedureBody;
+            SQLExecutor.getInstance().execute(connection, checkProcedureSQL, resultSet -> {
+                if (resultSet.next()) {
+                    int count = resultSet.getInt(1);
+                    if (count >= 1) {
+                        if (isCreateOrReplace) {
+                            SQLExecutor.getInstance().execute(connection, finalProcedureBody, resultSet2 -> {});
+                        } else {
+                            throw new SQLException("Procedure with the same name already exists.");
+                        }
+                    }
+                }
+            });
+            SQLExecutor.getInstance().execute(connection, finalProcedureBody, resultSet -> {});
+        } catch (Exception e) {
+            connection.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            connection.setAutoCommit(true);
+        }
+    }
+
+    @Override
     public void connectDatabase(Connection connection, String database) {
         ConnectInfo connectInfo = Chat2DBContext.getConnectInfo();
         if (ObjectUtils.anyNull(connectInfo) || StringUtils.isEmpty(connectInfo.getSchemaName())) {
@@ -113,12 +156,20 @@ public class DB2DBManage extends DefaultDBManage implements DBManage {
     }
 
     @Override
-    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
+    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
         String sql = "CREATE TABLE " + newTableName + " LIKE " + tableName + " INCLUDING INDEXES";
         SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
-        if(copyData){
+        if (copyData) {
             sql = "INSERT INTO " + newTableName + " SELECT * FROM " + tableName;
             SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+        }
+    }
+
+    private static String getSchemaOrProcedureName(String procedureBody, String schemaName, Procedure procedure) {
+        if (procedureBody.toLowerCase().contains(schemaName.toLowerCase())) {
+            return procedure.getProcedureName();
+        } else {
+            return schemaName + "." + procedure.getProcedureName();
         }
     }
 }

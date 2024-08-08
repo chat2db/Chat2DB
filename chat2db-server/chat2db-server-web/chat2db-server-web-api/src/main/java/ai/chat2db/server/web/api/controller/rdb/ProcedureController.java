@@ -41,8 +41,14 @@ public class ProcedureController {
     }
 
     @PostMapping("/update")
-    public ActionResult update(@Valid @RequestBody ProcedureUpdateRequest request) throws SQLException {
+    public ActionResult update(@Valid ProcedureUpdateRequest request) throws SQLException {
         Procedure procedure = procedureConverter.request2param(request);
         return procedureService.update(request.getDatabaseName(), request.getSchemaName(), procedure);
+    }
+
+    @PostMapping("/delete")
+    public ActionResult delete(@Valid ProcedureUpdateRequest request) {
+        Procedure procedure = procedureConverter.request2param(request);
+        return procedureService.delete(request.getDatabaseName(), request.getSchemaName(), procedure);
     }
 }

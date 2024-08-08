@@ -82,10 +82,6 @@ public class SQLExecutor implements CommandExecutor {
         }
     }
 
-//    public void execute(Connection connection, String sql, Consumer<List<Header>> headerConsumer,
-//        Consumer<List<String>> rowConsumer, ValueHandler valueHandler) {
-//        execute(connection, sql, headerConsumer, rowConsumer, true, valueHandler);
-//    }
 
     public void execute(
             Connection connection, String sql,
