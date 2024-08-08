@@ -8,7 +8,7 @@
 
 # Chat2DB
 
-**English** | [中文](README_CN.md)· [Changelog](CHANGELOG.md) · [Doc](https://docs./) · [Report Bug](https://github.com/chat2db/Chat2DB/issues) · [PR](https://github.com/chat2db/Chat2DB/pulls)
+**English** | [中文](README_CN.md)· [Changelog](CHANGELOG.md) · [Doc](https://github.com/chat2db/Chat2db-website-old/blob/main/docs/index.md) · [Report Bug](https://github.com/chat2db/Chat2DB/issues) · [PR](https://github.com/chat2db/Chat2DB/pulls)
 
 </div>
 
@@ -65,6 +65,8 @@
 - huggingface🤗：[Chat2DB-SQL-7B](https://huggingface.co/Chat2DB/Chat2DB-SQL-7B)
 - modelscope：[Chat2DB-SQL-7B](https://modelscope.cn/models/Chat2DB/Chat2DB-SQL-7B/summary)
 
+### 🎁🎁🎁 Deploy the InternLM model on Chat2DB
+Thanks to [InternLM](https://github.com/InternLM/InternLM) for the strong support for this project. In the custom models of this project, multiple model weights from InternLM can be integrated. For more details, please refer to [chat2db-internlm-deploy](https://github.com/chat2db/chat2db-internlm-deploy)
 
 ## 🚀 Supported databases
 Chat2DB Pro supports all the following databases, including the most requested Redis feature.
