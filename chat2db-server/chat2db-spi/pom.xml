@@ -90,6 +90,11 @@
             <artifactId>ob-sql-parser</artifactId>
             <version>1.2.1</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>2.7.0</version>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

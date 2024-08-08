@@ -1,7 +1,9 @@
 package ai.chat2db.spi.jdbc;
 
+import ai.chat2db.server.tools.common.util.EasyStringUtils;
 import ai.chat2db.spi.MetaData;
 import ai.chat2db.spi.SqlBuilder;
+import ai.chat2db.spi.ValueProcessor;
 import ai.chat2db.spi.enums.DmlType;
 import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.sql.Chat2DBContext;
@@ -13,14 +15,25 @@ import net.sf.jsqlparser.statement.select.OrderByElement;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class DefaultSqlBuilder implements SqlBuilder<Table> {
 
+
+    @Override
+    public String buildTableQuerySql(String databaseName, String schemaName, String tableName) {
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append("SELECT * FROM ");
+        buildTableName(databaseName, schemaName, tableName, sqlBuilder);
+        return sqlBuilder.toString();
+    }
 
     @Override
     public String buildCreateTableSql(Table table) {
@@ -128,13 +141,13 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
         if (table == null || CollectionUtils.isEmpty(table.getColumnList()) || StringUtils.isBlank(type)) {
             return "";
         }
-        if(DmlType.INSERT.name().equalsIgnoreCase(type)) {
+        if (DmlType.INSERT.name().equalsIgnoreCase(type)) {
             return getInsertSql(table.getName(), table.getColumnList());
-        } else if(DmlType.UPDATE.name().equalsIgnoreCase(type)) {
+        } else if (DmlType.UPDATE.name().equalsIgnoreCase(type)) {
             return getUpdateSql(table.getName(), table.getColumnList());
-        } else if(DmlType.DELETE.name().equalsIgnoreCase(type)) {
+        } else if (DmlType.DELETE.name().equalsIgnoreCase(type)) {
             return getDeleteSql(table.getName(), table.getColumnList());
-        }else if(DmlType.SELECT.name().equalsIgnoreCase(type)) {
+        } else if (DmlType.SELECT.name().equalsIgnoreCase(type)) {
             return getSelectSql(table.getName(), table.getColumnList());
         }
         return "";
@@ -190,6 +203,103 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
         }
         script.deleteCharAt(script.length() - 1);
         script.append(")");
+        return script.toString();
+    }
+
+    /**
+     * Generates the base part of the INSERT SQL statement.
+     * Optionally includes column names if provided.
+     *
+     * @param databaseName
+     * @param schemaName   Name of the database schema.
+     * @param tableName    Name of the table to insert into.
+     * @param columnList   Optional list of column names.
+     * @return The base part of the INSERT SQL statement.
+     */
+    protected String buildBaseInsertSql(String databaseName, String schemaName, String tableName, List<String> columnList) {
+        StringBuilder script = new StringBuilder();
+
+        script.append("INSERT INTO ");
+
+        buildTableName(databaseName, schemaName, tableName, script);
+
+        buildColumns(columnList, script);
+
+        script.append(" VALUES ");
+        return script.toString();
+    }
+
+    protected void buildColumns(List<String> columnList, StringBuilder script) {
+        if (CollectionUtils.isNotEmpty(columnList)) {
+            script.append(" (")
+                    .append(String.join(",", columnList))
+                    .append(") ");
+        }
+    }
+
+    protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
+        if (StringUtils.isNotBlank(databaseName)) {
+            script.append(databaseName).append('.');
+        }
+        if (StringUtils.isNotBlank(schemaName)) {
+            script.append(schemaName).append('.');
+        }
+
+        script.append(tableName);
+    }
+
+    /**
+     * Generates a single INSERT SQL statement for one record.
+     *
+     * @param schemaName Name of the database schema.
+     * @param tableName  Name of the table to insert into.
+     * @param columnList Optional list of column names.
+     * @param valueList  List of values to be inserted.
+     * @return The complete INSERT SQL statement for a single record.
+     */
+    public String buildSingleInsertSql(String databaseName, String schemaName, String tableName, List<String> columnList, List<String> valueList) {
+        String baseSql = buildBaseInsertSql(databaseName, schemaName, tableName, columnList);
+        List<String> list = valueList.stream().map(EasyStringUtils::escapeLineString).toList();
+        return baseSql + "(" + String.join(",", list) + ")";
+    }
+
+    /**
+     * Generates a multi-row INSERT SQL statement.
+     *
+     * @param schemaName Name of the database schema.
+     * @param tableName  Name of the table to insert into.
+     * @param columnList Optional list of column names.
+     * @param valueLists List of lists, each inner list represents values for a row.
+     * @return The complete multi-row INSERT SQL statement.
+     */
+    public String buildMultiInsertSql(String databaseName, String schemaName, String tableName, List<String> columnList, List<List<String>> valueLists) {
+        String baseSql = buildBaseInsertSql(databaseName, schemaName, tableName, columnList);
+        String valuesPart = valueLists.stream()
+                .map(values -> "(" + String.join(",", values.stream().map(EasyStringUtils::escapeLineString).toList()) + ")")
+                .collect(Collectors.joining(",\n"));
+        return baseSql + valuesPart;
+    }
+
+
+    @Override
+    public String buildUpdateSql(String databaseName, String schemaName, String tableName, Map<String, String> row, Map<String, String> primaryKeyMap) {
+        StringBuilder script = new StringBuilder();
+        script.append("UPDATE ");
+        buildTableName(databaseName, schemaName, tableName, script);
+
+        script.append(" SET ");
+        List<String> setClauses = row.entrySet().stream()
+                .map(entry -> entry.getKey() + " = " + entry.getValue())
+                .collect(Collectors.toList());
+        script.append(String.join(",", setClauses));
+
+        if (MapUtils.isNotEmpty(primaryKeyMap)) {
+            script.append(" WHERE ");
+            List<String> whereClauses = primaryKeyMap.entrySet().stream()
+                    .map(entry -> entry.getKey() + " = " + entry.getValue())
+                    .collect(Collectors.toList());
+            script.append(String.join(" AND ", whereClauses));
+        }
         return script.toString();
     }
 
@@ -262,6 +372,8 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
         StringBuilder script = new StringBuilder();
         script.append("INSERT INTO ").append(tableName)
                 .append(" (");
+
+        ValueProcessor valueProcessor = metaSchema.getValueProcessor();
         for (int i = 1; i < row.size(); i++) {
             Header header = headerList.get(i);
             //String newValue = row.get(i);
@@ -276,7 +388,9 @@ public class DefaultSqlBuilder implements SqlBuilder<Table> {
             String newValue = row.get(i);
             //if (newValue != null) {
             Header header = headerList.get(i);
-            script.append(SqlUtils.getSqlValue(newValue, header.getDataType()))
+            SQLDataValue sqlDataValue =  new SQLDataValue();
+            String value =  valueProcessor.getSqlValueString(sqlDataValue);
+            script.append(value)
                     .append(",");
             //}
         }

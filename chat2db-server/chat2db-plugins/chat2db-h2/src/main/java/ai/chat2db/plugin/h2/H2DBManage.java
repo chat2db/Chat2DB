@@ -2,6 +2,7 @@ package ai.chat2db.plugin.h2;
 
 import ai.chat2db.spi.DBManage;
 import ai.chat2db.spi.jdbc.DefaultDBManage;
+import ai.chat2db.spi.model.AsyncContext;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
@@ -16,23 +17,23 @@ import java.util.Objects;
 
 public class H2DBManage extends DefaultDBManage implements DBManage {
     @Override
-    public String exportDatabase(Connection connection, String databaseName, String schemaName, boolean containData) throws SQLException {
-        StringBuilder sqlBuilder = new StringBuilder();
-        exportSchema(connection, schemaName, sqlBuilder, containData);
-        return sqlBuilder.toString();
+    public void exportDatabase(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
+        exportSchema(connection, schemaName, asyncContext);
     }
 
-    private void exportSchema(Connection connection, String schemaName, StringBuilder sqlBuilder, boolean containData) throws SQLException {
+    private void exportSchema(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
         String sql = String.format("SCRIPT NODATA NOPASSWORDS NOSETTINGS DROP SCHEMA %s;", schemaName);
-        if (containData) {
+        if (asyncContext.isContainsData()) {
             sql = sql.replace("NODATA", "");
         }
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             while (resultSet.next()) {
                 String script = resultSet.getString("SCRIPT");
                 if (!(script.startsWith("CREATE USER")||script.startsWith("--"))) {
+                    StringBuilder sqlBuilder = new StringBuilder();
                     sqlBuilder.append(script);
                     sqlBuilder.append("\n");
+                    asyncContext.write(sqlBuilder.toString());
                 }
             }
         }

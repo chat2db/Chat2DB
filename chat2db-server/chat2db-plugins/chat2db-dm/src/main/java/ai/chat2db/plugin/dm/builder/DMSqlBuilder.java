@@ -26,6 +26,9 @@ public class DMSqlBuilder  extends DefaultSqlBuilder {
                 continue;
             }
             DMColumnTypeEnum typeEnum = DMColumnTypeEnum.getByType(column.getColumnType());
+            if(typeEnum == null){
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
 
@@ -37,6 +40,9 @@ public class DMSqlBuilder  extends DefaultSqlBuilder {
                 continue;
             }
             DMIndexTypeEnum indexTypeEnum = DMIndexTypeEnum.getByType(tableIndex.getType());
+            if(indexTypeEnum == null){
+                continue;
+            }
             script.append("\n").append("").append(indexTypeEnum.buildIndexScript(tableIndex)).append(";");
         }
 
@@ -85,6 +91,9 @@ public class DMSqlBuilder  extends DefaultSqlBuilder {
             String editStatus = tableColumn.getEditStatus();
             if (StringUtils.isNotBlank(editStatus)) {
                 DMColumnTypeEnum typeEnum = DMColumnTypeEnum.getByType(tableColumn.getColumnType());
+                if(typeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(";\n");
                 if (StringUtils.isNotBlank(tableColumn.getComment())&&!Objects.equals(EditStatus.DELETE.toString(),editStatus)) {
                     script.append("\n").append(buildComment(tableColumn)).append(";\n");
@@ -96,6 +105,9 @@ public class DMSqlBuilder  extends DefaultSqlBuilder {
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
                 DMIndexTypeEnum mysqlIndexTypeEnum = DMIndexTypeEnum.getByType(tableIndex.getType());
+                if(mysqlIndexTypeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(mysqlIndexTypeEnum.buildModifyIndex(tableIndex)).append(";\n");
             }
         }

@@ -8,10 +8,12 @@
       "custom": false,
       "defaultDriver": true,
       "downloadJdbcDriverUrls": [
-        "https://cdn.chat2db-ai.com/lib/ojdbc8-19.3.0.0.jar",
-        "https://cdn.chat2db-ai.com/lib/orai18n-19.3.0.0.jar"
+        "https://cdn.chat2db-ai.com/lib/ojdbc11-21.5.0.0.jar",
+        "https://cdn.chat2db-ai.com/lib/orai18n-21.5.0.0.jar",
+        "https://cdn.chat2db-ai.com/lib/xmlparserv2-21.5.0.0.jar",
+        "https://cdn.chat2db-ai.com/lib/xdb-21.5.0.0.jar"
       ],
-      "jdbcDriver": "ojdbc8-19.3.0.0.jar,orai18n-19.3.0.0.jar",
+      "jdbcDriver": "ojdbc11-21.5.0.0.jar,orai18n-21.5.0.0.jar,xmlparserv2-21.5.0.0.jar,xdb-21.5.0.0.jar",
       "jdbcDriverClass": "oracle.jdbc.driver.OracleDriver"
     }
   ],

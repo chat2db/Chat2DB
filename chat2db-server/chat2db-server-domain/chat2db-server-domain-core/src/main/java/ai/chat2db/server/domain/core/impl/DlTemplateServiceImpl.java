@@ -13,7 +13,6 @@ import ai.chat2db.server.tools.base.wrapper.result.ListResult;
 import ai.chat2db.server.tools.common.util.EasyCollectionUtils;
 import ai.chat2db.spi.CommandExecutor;
 import ai.chat2db.spi.SqlBuilder;
-import ai.chat2db.spi.ValueHandler;
 import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
@@ -97,7 +96,7 @@ public class DlTemplateServiceImpl implements DlTemplateService {
         //RemoveSpecialGO(param);
         DbType dbType =
                 JdbcUtils.parse2DruidDbType(Chat2DBContext.getConnectInfo().getDbType());
-        List<String> sqlList = SqlUtils.parse(param.getSql(), dbType);
+        List<String> sqlList = SqlUtils.parse(param.getSql(), dbType,true);
         Connection connection = Chat2DBContext.getConnection();
         try {
 //            connection.setAutoCommit(false);
@@ -135,9 +134,7 @@ public class DlTemplateServiceImpl implements DlTemplateService {
         sql = PagerUtils.count(sql, dbType);
         ExecuteResult executeResult;
         try {
-            ValueHandler valueHandler = Chat2DBContext.getMetaData().getValueHandler();
-            executeResult = Chat2DBContext.getMetaData().getCommandExecutor().execute(sql, Chat2DBContext.getConnection(), true, null, null,
-                    valueHandler);
+            executeResult = Chat2DBContext.getMetaData().getCommandExecutor().execute(sql, Chat2DBContext.getConnection(), true, null, null);
         } catch (SQLException e) {
             log.warn("Execute sql: {} exception", sql, e);
             executeResult = ExecuteResult.builder()

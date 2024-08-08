@@ -20,6 +20,9 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             SqlServerColumnTypeEnum typeEnum = SqlServerColumnTypeEnum.getByType(column.getColumnType());
+            if (typeEnum == null) {
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
 
@@ -31,6 +34,9 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             SqlServerIndexTypeEnum sqlServerIndexTypeEnum = SqlServerIndexTypeEnum.getByType(tableIndex.getType());
+            if (sqlServerIndexTypeEnum == null) {
+                continue;
+            }
             script.append("\n").append(sqlServerIndexTypeEnum.buildIndexScript(tableIndex));
             if (StringUtils.isNotBlank(tableIndex.getComment())) {
                 script.append("\n").append(buildIndexComment(tableIndex));
@@ -92,6 +98,9 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus())) {
                 SqlServerColumnTypeEnum typeEnum = SqlServerColumnTypeEnum.getByType(tableColumn.getColumnType());
+                if (typeEnum == null) {
+                    continue;
+                }
                 script.append(typeEnum.buildModifyColumn(tableColumn)).append("\n");
             }
         }
@@ -100,6 +109,9 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
                 SqlServerIndexTypeEnum mysqlIndexTypeEnum = SqlServerIndexTypeEnum.getByType(tableIndex.getType());
+                if (mysqlIndexTypeEnum == null) {
+                    continue;
+                }
                 script.append("\t").append(mysqlIndexTypeEnum.buildModifyIndex(tableIndex)).append("\n");
                 if (StringUtils.isNotBlank(tableIndex.getComment())) {
                     script.append("\n").append(buildIndexComment(tableIndex)).append("\ngo");

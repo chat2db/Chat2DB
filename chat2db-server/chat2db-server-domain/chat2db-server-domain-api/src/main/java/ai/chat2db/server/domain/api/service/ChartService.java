@@ -20,7 +20,7 @@ import jakarta.validation.constraints.NotNull;
  */
 public interface ChartService {
     /**
-     * Save report
+     * Create report
      *
      * @param param
      * @return

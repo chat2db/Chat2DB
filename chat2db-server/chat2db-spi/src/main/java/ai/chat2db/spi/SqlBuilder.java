@@ -1,8 +1,12 @@
 package ai.chat2db.spi;
 
-import ai.chat2db.spi.model.*;
+import ai.chat2db.spi.model.Database;
+import ai.chat2db.spi.model.OrderBy;
+import ai.chat2db.spi.model.QueryResult;
+import ai.chat2db.spi.model.Schema;
 
 import java.util.List;
+import java.util.Map;
 
 public interface SqlBuilder<T> {
 
@@ -12,7 +16,7 @@ public interface SqlBuilder<T> {
      * @param table
      * @return
      */
-     String buildCreateTableSql(T table);
+    String buildCreateTableSql(T table);
 
 
     /**
@@ -83,9 +87,27 @@ public interface SqlBuilder<T> {
 
     /**
      * DML SQL
+     *
      * @param table
      * @param type
      * @return
      */
-    String getTableDmlSql(T table,String type);
+    String getTableDmlSql(T table, String type);
+
+    /**
+     *
+     * @param databaseName
+     * @param schemaName
+     * @param tableName
+     * @return
+     */
+    String buildTableQuerySql(String databaseName, String schemaName, String tableName);
+
+
+
+    String buildSingleInsertSql(String databaseName, String schemaName, String tableName, List<String> columnList, List<String> valueList);
+
+    String buildMultiInsertSql(String databaseName, String schemaName, String tableName, List<String> columnList, List<List<String>> valueLists);
+
+    String buildUpdateSql(String databaseName, String schemaName, String tableName, Map<String, String> row,Map<String,String> primaryKeyMap);
 }

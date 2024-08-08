@@ -27,6 +27,9 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             ClickHouseColumnTypeEnum typeEnum = ClickHouseColumnTypeEnum.getByType(column.getColumnType());
+            if (typeEnum != null){
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
 
@@ -85,6 +88,9 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType()) && StringUtils.isNotBlank(tableColumn.getName())) {
                 ClickHouseColumnTypeEnum typeEnum = ClickHouseColumnTypeEnum.getByType(tableColumn.getColumnType());
+                if(typeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(",\n");
             }
         }
@@ -92,9 +98,12 @@ public class ClickHouseSqlBuilder extends DefaultSqlBuilder {
         // append modify index
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
-                ClickHouseIndexTypeEnum mysqlIndexTypeEnum = ClickHouseIndexTypeEnum
+                ClickHouseIndexTypeEnum clickHouseIndexTypeEnum = ClickHouseIndexTypeEnum
                         .getByType(tableIndex.getType());
-                script.append("\t").append(mysqlIndexTypeEnum.buildModifyIndex(tableIndex)).append(",\n");
+                if(clickHouseIndexTypeEnum == null){
+                    continue;
+                }
+                script.append("\t").append(clickHouseIndexTypeEnum.buildModifyIndex(tableIndex)).append(",\n");
             }
         }
 

@@ -20,7 +20,7 @@ import java.io.Serializable;
 public class Function  implements Serializable {
     private static final long serialVersionUID = 1L;
     //FUNCTION_CAT String => function catalog (may be null)
-    //FUNCTION_SCHEM String => function schema (may be null)
+    //FUNCTION_SCHEME String => function schema (may be null)
     //FUNCTION_NAME String => function name. This is the name used to invoke the function
     //REMARKS String => explanatory comment on the function
     //FUNCTION_TYPE short => kind of function:

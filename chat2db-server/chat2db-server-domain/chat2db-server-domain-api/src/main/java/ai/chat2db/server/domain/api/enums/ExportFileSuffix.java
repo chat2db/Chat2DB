@@ -14,6 +14,7 @@ public enum ExportFileSuffix {
     WORD(".docx"),
     //excel
     EXCEL(".xlsx"),
+    XLS(".xls"),
     //markdown
     MARKDOWN(".md"),
     //html

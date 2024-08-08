@@ -17,6 +17,7 @@ import ai.chat2db.spi.jdbc.DefaultMetaService;
 import ai.chat2db.spi.model.*;
 import ai.chat2db.spi.sql.SQLExecutor;
 import ai.chat2db.spi.util.SortUtils;
+import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Lists;
 import jakarta.validation.constraints.NotEmpty;
 import org.apache.commons.lang3.StringUtils;
@@ -131,7 +132,9 @@ public class SqlServerMetaData extends DefaultMetaService implements MetaData {
                 column.setOldName(resultSet.getString("COLUMN_NAME"));
                 column.setName(resultSet.getString("COLUMN_NAME"));
                 //column.setColumnType(resultSet.getString("COLUMN_TYPE"));
-                column.setColumnType(resultSet.getString("DATA_TYPE").toUpperCase());
+                String dataType = resultSet.getString("DATA_TYPE").toUpperCase();
+                column.setColumnType(SqlUtils.removeDigits(dataType));
+
                 //column.setDataType(resultSet.getInt("DATA_TYPE"));
                 column.setDefaultValue(resultSet.getString("COLUMN_DEFAULT"));
                 //column.setAutoIncrement(resultSet.getString("EXTRA").contains("auto_increment"));

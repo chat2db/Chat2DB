@@ -2,6 +2,7 @@ package ai.chat2db.plugin.clickhouse;
 
 import ai.chat2db.spi.DBManage;
 import ai.chat2db.spi.jdbc.DefaultDBManage;
+import ai.chat2db.spi.model.AsyncContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
 import org.apache.commons.lang3.StringUtils;
@@ -11,43 +12,50 @@ import java.util.Objects;
 
 public class ClickHouseDBManage extends DefaultDBManage implements DBManage {
     @Override
-    public String exportDatabase(Connection connection, String databaseName, String schemaName, boolean containData) throws SQLException {
-        StringBuilder sqlBuilder = new StringBuilder();
-        exportTablesOrViewsOrDictionaries(connection, sqlBuilder, databaseName, schemaName,containData);
-        exportFunctions(connection, sqlBuilder);
-        return sqlBuilder.toString();
+    public void exportDatabase(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
+        exportTablesOrViewsOrDictionaries(connection, databaseName, schemaName,asyncContext);
+        exportFunctions(connection, asyncContext);
     }
 
-    private void exportFunctions(Connection connection, StringBuilder sqlBuilder) throws SQLException {
+    private void exportFunctions(Connection connection, AsyncContext asyncContext) throws SQLException {
         String sql ="SELECT name,create_query from system.functions where origin='SQLUserDefined'";
         try(ResultSet resultSet=connection.createStatement().executeQuery(sql)){
             while (resultSet.next()) {
+                StringBuilder sqlBuilder = new StringBuilder();
                 sqlBuilder.append("DROP FUNCTION IF EXISTS ").append(resultSet.getString("name")).append(";")
                         .append("\n")
                         .append(resultSet.getString("create_query")).append(";").append("\n");
+                asyncContext.write(sqlBuilder.toString());
             }
         }
     }
 
-    private void exportTablesOrViewsOrDictionaries(Connection connection, StringBuilder sqlBuilder, String databaseName, String schemaName, boolean containData) throws SQLException {
+    private void exportTablesOrViewsOrDictionaries(Connection connection,String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
         String sql =String.format("SELECT create_table_query, has_own_data,engine,name from system.`tables` WHERE `database`='%s'", databaseName);
         try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(sql)) {
             while (resultSet.next()) {
+
                 String ddl = resultSet.getString("create_table_query");
                 boolean dataFlag = resultSet.getInt("has_own_data") == 1;
                 String tableType = resultSet.getString("engine");
                 String tableOrViewName = resultSet.getString("name");
                 if (Objects.equals("View", tableType)) {
+                    StringBuilder sqlBuilder = new StringBuilder();
                     sqlBuilder.append("DROP VIEW IF EXISTS ").append(databaseName).append(".").append(tableOrViewName)
                             .append(";").append("\n").append(ddl).append(";").append("\n");
+                    asyncContext.write(sqlBuilder.toString());
                 } else if (Objects.equals("Dictionary", tableType)) {
+                    StringBuilder sqlBuilder = new StringBuilder();
                     sqlBuilder.append("DROP DICTIONARY IF EXISTS ").append(databaseName).append(".").append(tableOrViewName)
                             .append(";").append("\n").append(ddl).append(";").append("\n");
+                    asyncContext.write(sqlBuilder.toString());
                 } else {
+                    StringBuilder sqlBuilder = new StringBuilder();
                     sqlBuilder.append("DROP TABLE IF EXISTS ").append(databaseName).append(".").append(tableOrViewName)
                             .append(";").append("\n").append(ddl).append(";").append("\n");
-                    if (containData && dataFlag) {
-                        exportTableData(connection,schemaName, tableOrViewName, sqlBuilder);
+                    asyncContext.write(sqlBuilder.toString());
+                    if (asyncContext.isContainsData() && dataFlag) {
+                        exportTableData(connection, databaseName,schemaName, tableOrViewName, asyncContext);
                     }
                 }
             }
@@ -88,4 +96,13 @@ public class ClickHouseDBManage extends DefaultDBManage implements DBManage {
     }
 
 
+    @Override
+    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
+        String sql = "CREATE TABLE " + newTableName + " AS " + tableName + "";
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+        if(copyData){
+            sql = "INSERT INTO " + newTableName + " SELECT * FROM " + tableName;
+            SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+        }
+    }
 }

@@ -9,7 +9,6 @@ import ai.chat2db.server.domain.api.service.ConfigService;
 import ai.chat2db.server.domain.core.converter.ConfigConverter;
 import ai.chat2db.server.domain.repository.Dbutils;
 import ai.chat2db.server.domain.repository.entity.SystemConfigDO;
-import ai.chat2db.server.domain.repository.mapper.ChartMapper;
 import ai.chat2db.server.domain.repository.mapper.SystemConfigMapper;
 import ai.chat2db.server.tools.base.wrapper.result.ActionResult;
 import ai.chat2db.server.tools.base.wrapper.result.DataResult;

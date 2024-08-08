@@ -38,6 +38,6 @@ public interface CommandExecutor {
      *
      */
      ExecuteResult execute(final String sql, Connection connection, boolean limitRowSize, Integer offset,
-                                 Integer count, ValueHandler valueHandler)
+                           Integer count)
             throws SQLException;
 }

@@ -26,6 +26,9 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             KingBaseColumnTypeEnum typeEnum = KingBaseColumnTypeEnum.getByType(column.getColumnType());
+            if(typeEnum ==null){
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
         Map<Boolean, List<TableIndex>> tableIndexMap = table.getIndexList().stream()
@@ -38,6 +41,9 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
                     continue;
                 }
                 KingBaseIndexTypeEnum indexTypeEnum = KingBaseIndexTypeEnum.getByType(index.getType());
+                if(indexTypeEnum == null){
+                    continue;
+                }
                 script.append("\t").append("").append(indexTypeEnum.buildIndexScript(index));
                 script.append(",\n");
             }
@@ -58,6 +64,9 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
             }
             script.append("\n");
             KingBaseIndexTypeEnum indexTypeEnum = KingBaseIndexTypeEnum.getByType(tableIndex.getType());
+            if(indexTypeEnum == null){
+                continue;
+            }
             script.append("").append(indexTypeEnum.buildIndexScript(tableIndex)).append(";");
         }
 
@@ -70,12 +79,18 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         List<TableColumn> tableColumnList = table.getColumnList().stream().filter(v -> StringUtils.isNotBlank(v.getComment())).toList();
         for (TableColumn tableColumn : tableColumnList) {
             KingBaseColumnTypeEnum typeEnum = KingBaseColumnTypeEnum.getByType(tableColumn.getColumnType());
+            if(typeEnum == null){
+                continue;
+            }
             script.append(typeEnum.buildComment(tableColumn, typeEnum)).append("\n");
             ;
         }
         List<TableIndex> indexList = table.getIndexList().stream().filter(v -> StringUtils.isNotBlank(v.getComment())).toList();
         for (TableIndex index : indexList) {
             KingBaseIndexTypeEnum indexEnum = KingBaseIndexTypeEnum.getByType(index.getType());
+            if(indexEnum == null){
+                continue;
+            }
             script.append(indexEnum.buildIndexComment(index)).append("\n");
         }
 
@@ -109,6 +124,9 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         // append modify column
         for (TableColumn tableColumn : newTable.getColumnList()) {
             KingBaseColumnTypeEnum typeEnum = KingBaseColumnTypeEnum.getByType(tableColumn.getColumnType());
+            if(typeEnum == null){
+                continue;
+            }
             scriptModify.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(",\n");
             modify = true;
 
@@ -118,6 +136,9 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         for (TableIndex tableIndex : tableIndexMap.get(Boolean.FALSE)) {
             if (StringUtils.isNotBlank(tableIndex.getType())) {
                 KingBaseIndexTypeEnum indexTypeEnum = KingBaseIndexTypeEnum.getByType(tableIndex.getType());
+                if(indexTypeEnum == null){
+                    continue;
+                }
                 scriptModify.append("\t").append(indexTypeEnum.buildModifyIndex(tableIndex)).append(",\n");
                 modify = true;
             }
@@ -133,6 +154,9 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         for (TableIndex tableIndex : tableIndexMap.get(Boolean.TRUE)) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
                 KingBaseIndexTypeEnum indexTypeEnum = KingBaseIndexTypeEnum.getByType(tableIndex.getType());
+                if(indexTypeEnum == null){
+                    continue;
+                }
                 script.append(indexTypeEnum.buildModifyIndex(tableIndex)).append(";\n");
             }
         }
@@ -145,12 +169,18 @@ public class KingBaseSqlBuilder extends DefaultSqlBuilder {
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
             KingBaseColumnTypeEnum typeEnum = KingBaseColumnTypeEnum.getByType(tableColumn.getColumnType());
+            if(typeEnum == null){
+                continue;
+            }
             script.append(typeEnum.buildComment(tableColumn, typeEnum)).append("\n");
             ;
         }
         List<TableIndex> indexList = newTable.getIndexList().stream().filter(v -> StringUtils.isNotBlank(v.getComment())).toList();
         for (TableIndex index : indexList) {
             KingBaseIndexTypeEnum indexEnum = KingBaseIndexTypeEnum.getByType(index.getType());
+            if(indexEnum == null){
+                continue;
+            }
             script.append(indexEnum.buildIndexComment(index)).append("\n");
         }
 

@@ -6,7 +6,12 @@ import ai.chat2db.spi.jdbc.DefaultSqlBuilder;
 import ai.chat2db.spi.model.Table;
 import ai.chat2db.spi.model.TableColumn;
 import ai.chat2db.spi.model.TableIndex;
+import ai.chat2db.spi.util.SqlUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class OracleSqlBuilder extends DefaultSqlBuilder {
     @Override
@@ -20,6 +25,9 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             OracleColumnTypeEnum typeEnum = OracleColumnTypeEnum.getByType(column.getColumnType());
+            if(typeEnum == null){
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
 
@@ -31,6 +39,9 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             OracleIndexTypeEnum oracleColumnTypeEnum = OracleIndexTypeEnum.getByType(tableIndex.getType());
+            if(oracleColumnTypeEnum == null){
+                continue;
+            }
             script.append("\n").append("").append(oracleColumnTypeEnum.buildIndexScript(tableIndex)).append(";");
         }
 
@@ -78,6 +89,9 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus())) {
                 OracleColumnTypeEnum typeEnum = OracleColumnTypeEnum.getByType(tableColumn.getColumnType());
+                if(typeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(";\n");
                 if (StringUtils.isNotBlank(tableColumn.getComment())) {
                     script.append("\n").append(buildComment(tableColumn)).append(";\n");
@@ -88,8 +102,11 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         // append modify index
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
-                OracleIndexTypeEnum mysqlIndexTypeEnum = OracleIndexTypeEnum.getByType(tableIndex.getType());
-                script.append("\t").append(mysqlIndexTypeEnum.buildModifyIndex(tableIndex)).append(";\n");
+                OracleIndexTypeEnum oracleIndexTypeEnum = OracleIndexTypeEnum.getByType(tableIndex.getType());
+                if(oracleIndexTypeEnum == null){
+                    continue;
+                }
+                script.append("\t").append(oracleIndexTypeEnum.buildModifyIndex(tableIndex)).append(";\n");
             }
         }
         if (script.length() > 2) {
@@ -137,4 +154,26 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
 //        }
 //        return sqlBuilder.toString();
 //    }
+
+
+    @Override
+    protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
+        if (StringUtils.isNotBlank(databaseName)) {
+            script.append(SqlUtils.quoteObjectName(databaseName)).append('.');
+        }
+        script.append(SqlUtils.quoteObjectName(tableName));
+    }
+
+    /**
+     * @param columnList
+     * @param script
+     */
+    @Override
+    protected void buildColumns(List<String> columnList, StringBuilder script) {
+        if (CollectionUtils.isNotEmpty(columnList)) {
+            script.append(" (")
+                    .append(columnList.stream().map(SqlUtils::quoteObjectName).collect(Collectors.joining(",")))
+                    .append(") ");
+        }
+    }
 }

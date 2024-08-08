@@ -4,6 +4,7 @@ import ai.chat2db.spi.ColumnBuilder;
 import ai.chat2db.spi.enums.EditStatus;
 import ai.chat2db.spi.model.ColumnType;
 import ai.chat2db.spi.model.TableColumn;
+import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
@@ -76,7 +77,7 @@ public enum PostgreSQLColumnTypeEnum implements ColumnBuilder {
     }
 
     public static PostgreSQLColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+        return COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
     }
 
     public static List<ColumnType> getTypes() {

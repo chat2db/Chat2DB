@@ -61,7 +61,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public List<Database> databases(Connection connection) {
-        List<Database> list = SQLExecutor.getInstance().execute(connection, "SELECT name FROM system.databases;;", resultSet -> {
+        List<Database> list = SQLExecutor.getInstance().execute(connection, "SELECT name FROM system.databases;", resultSet -> {
             List<Database> databases = new ArrayList<>();
             try {
                 while (resultSet.next()) {
@@ -81,7 +81,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements MetaData {
     @Override
     public String tableDDL(Connection connection, @NotEmpty String databaseName, String schemaName,
                            @NotEmpty String tableName) {
-        String sql = "SHOW CREATE TABLE " + format(databaseName) + "."
+        String sql = "SHOW CREATE TABLE " + format(schemaName) + "."
                 + format(tableName);
         return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             if (resultSet.next()) {
@@ -112,7 +112,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements MetaData {
     @Override
     public List<Trigger> triggers(Connection connection, String databaseName, String schemaName) {
         List<Trigger> triggers = new ArrayList<>();
-        String sql = String.format(TRIGGER_SQL_LIST, databaseName);
+        String sql = String.format(TRIGGER_SQL_LIST, schemaName);
         return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             while (resultSet.next()) {
                 Trigger trigger = new Trigger();
@@ -145,7 +145,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements MetaData {
     @Override
     public Procedure procedure(Connection connection, @NotEmpty String databaseName, String schemaName,
                                String procedureName) {
-        String sql = String.format(ROUTINES_SQL, "PROCEDURE", databaseName, procedureName);
+        String sql = String.format(ROUTINES_SQL, "PROCEDURE", schemaName, procedureName);
         return SQLExecutor.getInstance().execute(connection, sql, resultSet -> {
             Procedure procedure = new Procedure();
             procedure.setDatabaseName(databaseName);
@@ -235,7 +235,7 @@ public class ClickHouseMetaData extends DefaultMetaService implements MetaData {
     @Override
     public List<TableIndex> indexes(Connection connection, String databaseName, String schemaName, String tableName) {
         StringBuilder queryBuf = new StringBuilder("SHOW INDEX FROM ");
-        queryBuf.append("`").append(tableName).append("`");
+        queryBuf.append("`").append(schemaName).append("`");
         queryBuf.append(" FROM ");
         queryBuf.append("`").append(databaseName).append("`");
         return SQLExecutor.getInstance().execute(connection, queryBuf.toString(), resultSet -> {
@@ -298,11 +298,8 @@ public class ClickHouseMetaData extends DefaultMetaService implements MetaData {
 
     @Override
     public String getMetaDataName(String... names) {
-        return Arrays.stream(names)
-                .skip(1) // 跳过第一个名称
-                .filter(StringUtils::isNotBlank)
-                .map(name -> "`" + name + "`")
-                .collect(Collectors.joining("."));
+        return Arrays.stream(names).filter(name -> StringUtils.isNotBlank(name)).map(name -> "`" + name + "`").collect(Collectors.joining("."));
+
     }
 
 

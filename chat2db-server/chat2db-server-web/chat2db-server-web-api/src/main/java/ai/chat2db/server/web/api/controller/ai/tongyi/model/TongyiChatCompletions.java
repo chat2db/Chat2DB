@@ -35,7 +35,7 @@ public class TongyiChatCompletions {
      */
     @JsonCreator
     private TongyiChatCompletions(
-        @JsonProperty(value = "id") String id,
+        @JsonProperty(value = "request_id") String id,
         @JsonProperty(value = "output") TongyiChatOutput choices,
         @JsonProperty(value = "usage") TongyiChatCompletionsUsage usage) {
         this.id = id;

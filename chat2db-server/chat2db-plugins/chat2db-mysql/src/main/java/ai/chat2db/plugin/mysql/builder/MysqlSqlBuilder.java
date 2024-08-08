@@ -8,10 +8,13 @@ import ai.chat2db.spi.model.Database;
 import ai.chat2db.spi.model.Table;
 import ai.chat2db.spi.model.TableColumn;
 import ai.chat2db.spi.model.TableIndex;
+import ai.chat2db.spi.util.SqlUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 
 public class MysqlSqlBuilder extends DefaultSqlBuilder {
@@ -30,6 +33,9 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             MysqlColumnTypeEnum typeEnum = MysqlColumnTypeEnum.getByType(column.getColumnType());
+            if (typeEnum == null) {
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
 
@@ -39,6 +45,9 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             MysqlIndexTypeEnum mysqlIndexTypeEnum = MysqlIndexTypeEnum.getByType(tableIndex.getType());
+            if (mysqlIndexTypeEnum == null) {
+                continue;
+            }
             script.append("\t").append("").append(mysqlIndexTypeEnum.buildIndexScript(tableIndex)).append(",\n");
         }
 
@@ -97,7 +106,7 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
         // 判断新增字段
         List<TableColumn> addColumnList = new ArrayList<>();
         for (TableColumn tableColumn : newTable.getColumnList()) {
-            if (tableColumn.getEditStatus() != null ?  tableColumn.getEditStatus().equals("ADD") : false) {
+            if (tableColumn.getEditStatus() != null ? tableColumn.getEditStatus().equals("ADD") : false) {
                 addColumnList.add(tableColumn);
             }
         }
@@ -110,6 +119,9 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
             if ((StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType())
                     && StringUtils.isNotBlank(tableColumn.getName())) || moveColumnList.contains(tableColumn) || addColumnList.contains(tableColumn)) {
                 MysqlColumnTypeEnum typeEnum = MysqlColumnTypeEnum.getByType(tableColumn.getColumnType());
+                if (typeEnum == null) {
+                    continue;
+                }
                 if (moveColumnList.contains(tableColumn) || addColumnList.contains(tableColumn)) {
                     script.append("\t").append(typeEnum.buildModifyColumn(tableColumn, true, findPrevious(tableColumn, newTable))).append(",\n");
                 } else {
@@ -122,18 +134,21 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
                 MysqlIndexTypeEnum mysqlIndexTypeEnum = MysqlIndexTypeEnum.getByType(tableIndex.getType());
+                if (mysqlIndexTypeEnum == null) {
+                    continue;
+                }
                 script.append("\t").append(mysqlIndexTypeEnum.buildModifyIndex(tableIndex)).append(",\n");
             }
         }
 
         // append reorder column
-       // script.append(buildGenerateReorderColumnSql(oldTable, newTable));
+        // script.append(buildGenerateReorderColumnSql(oldTable, newTable));
 
         if (script.length() > 2) {
             script = new StringBuilder(script.substring(0, script.length() - 2));
             script.append(";");
             return tableBuilder.append(script).toString();
-        }else {
+        } else {
             return StringUtils.EMPTY;
         }
 
@@ -208,7 +223,7 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
             } else if (dp[i - 1][j] >= dp[i][j - 1]) {
                 moved.add(original.get(i - 1));
                 // modified List中找到original.get(i-1)的位置
-                System.out.println("Moved elements:"+ original.get(i-1).getName() + " after " + modified.indexOf(original.get(i-1)) );
+//                System.out.println("Moved elements:"+ original.get(i-1).getName() + " after " + modified.indexOf(original.get(i-1)) );
                 i--;
             } else {
                 j--;
@@ -361,14 +376,14 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
         // 连续数据数量
         if (from < to) {
             for (int i = to; i < originalArray.length - 1; i++) {
-                if (originalArray[i+1].equals(targetArray[findIndex(targetArray, originalArray[i]) +1])) {
+                if (originalArray[i + 1].equals(targetArray[findIndex(targetArray, originalArray[i]) + 1])) {
                     continuousDataCount.set(continuousDataCount.incrementAndGet());
                 } else {
                     break;
                 }
             }
             if (continuousDataCount.get() > 0) {
-                System.arraycopy(originalArray, from + 1, newArray, from, to - from +1);
+                System.arraycopy(originalArray, from + 1, newArray, from, to - from + 1);
                 isContinuousData = true;
             } else {
                 System.arraycopy(originalArray, from + 1, newArray, from, to - from);
@@ -376,12 +391,34 @@ public class MysqlSqlBuilder extends DefaultSqlBuilder {
         } else {
             System.arraycopy(originalArray, to, newArray, to + 1, from - to);
         }
-        if (isContinuousData){
-            newArray[to+continuousDataCount.get()] = temp;
+        if (isContinuousData) {
+            newArray[to + continuousDataCount.get()] = temp;
         } else {
             newArray[to] = temp;
         }
         return newArray;
+    }
+
+
+    @Override
+    protected void buildTableName(String databaseName, String schemaName, String tableName, StringBuilder script) {
+        if (StringUtils.isNotBlank(databaseName)) {
+            script.append(SqlUtils.quoteObjectName(databaseName, "`")).append('.');
+        }
+        script.append(SqlUtils.quoteObjectName(tableName, "`"));
+    }
+
+    /**
+     * @param columnList
+     * @param script
+     */
+    @Override
+    protected void buildColumns(List<String> columnList, StringBuilder script) {
+        if (CollectionUtils.isNotEmpty(columnList)) {
+            script.append(" (")
+                    .append(columnList.stream().map(s -> SqlUtils.quoteObjectName(s, "`")).collect(Collectors.joining(",")))
+                    .append(") ");
+        }
     }
 
 }

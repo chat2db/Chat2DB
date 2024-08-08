@@ -13,7 +13,7 @@ import ai.chat2db.server.tools.common.util.ContextUtils;
 public class PermissionUtils {
 
     /**
-     * Verify whether the currently logged in user has permission to operate on the current content
+     * Verify whether the currently logged-in user has permission to operate on the current content
      *
      * @param createUserId The creator of the current content
      */

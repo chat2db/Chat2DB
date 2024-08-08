@@ -8,19 +8,17 @@ import ai.chat2db.server.tools.base.wrapper.result.PageResult;
 import ai.chat2db.server.tools.base.wrapper.result.web.WebPageResult;
 import ai.chat2db.server.tools.common.util.ContextUtils;
 import ai.chat2db.server.web.api.aspect.ConnectionInfoAspect;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 
-import java.net.MalformedURLException;
+import java.io.*;
 
 @ConnectionInfoAspect
 @RequestMapping("/api/task")
@@ -43,35 +41,42 @@ public class TaskController {
     }
 
     @GetMapping("/download/{id}")
-    public ResponseEntity<Resource> download(@PathVariable Long id) {
+    public void download(@PathVariable Long id, HttpServletResponse response) {
         DataResult<Task> task = taskService.get(id);
-        if(task.getData() == null){
+        Task data = task.getData();
+        if (data == null) {
             log.error("task is null");
             throw new RuntimeException("task is null");
         }
-        if(ContextUtils.getUserId() != task.getData().getUserId()){
+        if (!ContextUtils.getUserId().equals(data.getUserId())) {
             log.error("task is not belong to user");
             throw new RuntimeException("task is not belong to user");
         }
 
-        Resource resource = null;
-        try {
-            resource = new UrlResource("file://"+task.getData().getDownloadUrl());
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
+        File file = new File(data.getDownloadUrl());
+
+        if (!file.exists() || !file.isFile()) {
+            log.error("File not found or is not a file: {}", file.getAbsolutePath());
+            throw new RuntimeException("File not found or accessible");
         }
 
-        if (resource.exists() || resource.isReadable()) {
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .body(resource);
-        } else {
-            throw new RuntimeException("Could not read the file!");
-        }
 
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getName() + "\"");
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+
+        try (InputStream inputStream = new FileInputStream(file)) {
+            OutputStream outputStream = response.getOutputStream();
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+                outputStream.flush();
+            }
+        } catch (IOException e) {
+            log.error("Error occurred while processing file download", e);
+            throw new RuntimeException("Error in file download", e);
+        }
     }
-
 
 
 }

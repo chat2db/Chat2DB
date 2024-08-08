@@ -4,6 +4,7 @@ import ai.chat2db.spi.ColumnBuilder;
 import ai.chat2db.spi.enums.EditStatus;
 import ai.chat2db.spi.model.ColumnType;
 import ai.chat2db.spi.model.TableColumn;
+import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
@@ -61,7 +62,6 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
     NATIONAL_CHAR_VARYING("NATIONAL CHAR VARYING", true, false, true, false, false, false, true, true, false, true),
 
 
-
     NATIONAL_CHARACTER("NATIONAL CHARACTER", true, false, true, false, false, false, true, true, false, true),
 
 
@@ -87,12 +87,17 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
 
     SMALLINT("SMALLINT", false, false, true, false, false, false, true, true, false, false),
 
-    TIMESTAMP("TIMESTAMP", true, false, true, false, false, false, true, true, false, false),
+    TIMESTAMP("TIMESTAMP", false, true, true, false, false, false, true, true, false, false),
 
-    TIMESTAMP_WITH_LOCAL_TIME_ZONE("TIMESTAMP WITH LOCAL TIME ZONE", true, false, true, false, false, false, true, true, false, false),
+    TIMESTAMP_WITH_LOCAL_TIME_ZONE("TIMESTAMP WITH LOCAL TIME ZONE", false, true, true, false, false, false, true, true, false, false),
 
 
-    TIMESTAMP_WITH_TIME_ZONE("TIMESTAMP WITH TIME ZONE", true, false, true, false, false, false, true, true, false, false),
+    TIMESTAMP_WITH_TIME_ZONE("TIMESTAMP WITH TIME ZONE", false, true, true, false, false, false, true, true, false, false),
+
+
+    INTERVAL_YEAR_TO_MONTH("INTERVAL YEAR TO MONTH", true, false, true, false, false, false, true, true, false, false),
+
+    INTERVAL_DAY_TO_SECOND("INTERVAL DAY TO SECOND", true, true, true, false, false, false, true, true, false, false),
 
     UROWID("UROWID", true, false, true, false, false, false, true, true, false, false),
 
@@ -100,11 +105,13 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
 
     VARCHAR2("VARCHAR2", true, false, true, false, false, false, true, true, false, true),
 
+    XMLTYPE("XMLTYPE", false, false, true, false, false, false, true, true, false, false),
+
     ;
     private ColumnType columnType;
 
     public static OracleColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+        return COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
     }
 
     private static Map<String, OracleColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
@@ -136,7 +143,7 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
 
         script.append(buildDataType(column, type)).append(" ");
 
-        script.append(buildDefaultValue(column,type)).append(" ");
+        script.append(buildDefaultValue(column, type)).append(" ");
 
         script.append(buildNullable(column, type)).append(" ");
 
@@ -144,11 +151,11 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
     }
 
 
-    private String buildNullable(TableColumn column,OracleColumnTypeEnum type) {
-        if(!type.getColumnType().isSupportNullable()){
+    private String buildNullable(TableColumn column, OracleColumnTypeEnum type) {
+        if (!type.getColumnType().isSupportNullable()) {
             return "";
         }
-        if (column.getNullable()!=null && 1==column.getNullable()) {
+        if (column.getNullable() != null && 1 == column.getNullable()) {
             return "NULL";
         } else {
             return "NOT NULL";
@@ -156,27 +163,27 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
     }
 
     private String buildDefaultValue(TableColumn column, OracleColumnTypeEnum type) {
-        if(!type.getColumnType().isSupportDefaultValue() || StringUtils.isEmpty(column.getDefaultValue())){
+        if (!type.getColumnType().isSupportDefaultValue() || StringUtils.isEmpty(column.getDefaultValue())) {
             return "";
         }
 
-        if("EMPTY_STRING".equalsIgnoreCase(column.getDefaultValue().trim())){
+        if ("EMPTY_STRING".equalsIgnoreCase(column.getDefaultValue().trim())) {
             return StringUtils.join("DEFAULT ''");
         }
 
-        if("NULL".equalsIgnoreCase(column.getDefaultValue().trim())){
+        if ("NULL".equalsIgnoreCase(column.getDefaultValue().trim())) {
             return StringUtils.join("DEFAULT NULL");
         }
 
-        return StringUtils.join("DEFAULT ",column.getDefaultValue());
+        return StringUtils.join("DEFAULT ", column.getDefaultValue());
     }
 
     private String buildDataType(TableColumn column, OracleColumnTypeEnum type) {
         String columnType = type.columnType.getTypeName();
         if (Arrays.asList(CHAR, CHAR_VARYING, CHARACTER, CHARACTER_VARYING,
-                NVARCHAR2, VARCHAR, VARCHAR2,NATIONAL_CHAR,
-                NATIONAL_CHAR_VARYING,NATIONAL_CHARACTER,
-                NATIONAL_CHARACTER_VARYING,NCHAR,NCHAR_VARYING).contains(type)) {
+                NVARCHAR2, VARCHAR, VARCHAR2, NATIONAL_CHAR,
+                NATIONAL_CHAR_VARYING, NATIONAL_CHARACTER,
+                NATIONAL_CHARACTER_VARYING, NCHAR, NCHAR_VARYING).contains(type)) {
             StringBuilder script = new StringBuilder();
             script.append(columnType);
             if (column.getColumnSize() != null && StringUtils.isEmpty(column.getUnit())) {
@@ -187,26 +194,41 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
             return script.toString();
         }
 
-        if (Arrays.asList(DECIMAL, FLOAT, NUMBER, UROWID,RAW,TIMESTAMP).contains(type)) {
+        if (Arrays.asList(DECIMAL, FLOAT, NUMBER, UROWID, RAW).contains(type)) {
             StringBuilder script = new StringBuilder();
             script.append(columnType);
             if (column.getColumnSize() != null && column.getDecimalDigits() == null) {
                 script.append("(").append(column.getColumnSize()).append(")");
-            } else if (column.getColumnSize() != null &&  column.getDecimalDigits() != null) {
+            } else if (column.getColumnSize() != null && column.getDecimalDigits() != null) {
                 script.append("(").append(column.getColumnSize()).append(",").append(column.getDecimalDigits()).append(")");
             }
             return script.toString();
         }
-
-        if (Arrays.asList(TIMESTAMP_WITH_TIME_ZONE,TIMESTAMP_WITH_LOCAL_TIME_ZONE).contains(type)) {
-            StringBuilder script = new StringBuilder();
-            if(column.getColumnSize() == null){
-                script.append(columnType);
-            }else {
-                String [] split = columnType.split("TIMESTAMP");
-                script.append("TIMESTAMP").append("(").append(column.getColumnSize()).append(")").append(split[1]);
-            }
-            return script.toString();
+        if (Arrays.asList(TIMESTAMP).contains(type)) {
+            int decimalDigits = column.getDecimalDigits() != null ? column.getDecimalDigits() : 6;
+            String valueTemplate = "TIMESTAMP(%s)";
+            return String.format(valueTemplate, decimalDigits);
+        }
+        if (Arrays.asList(TIMESTAMP_WITH_TIME_ZONE).contains(type)) {
+            int decimalDigits = column.getDecimalDigits() != null ? column.getDecimalDigits() : 6;
+            String valueTemplate = "TIMESTAMP(%s) WITH TIME ZONE";
+            return String.format(valueTemplate, decimalDigits);
+        }
+        if (Arrays.asList(TIMESTAMP_WITH_LOCAL_TIME_ZONE).contains(type)) {
+            int decimalDigits = column.getDecimalDigits() != null ? column.getDecimalDigits() : 6;
+            String valueTemplate = "TIMESTAMP(%s) WITH LOCAL TIME ZONE";
+            return String.format(valueTemplate, decimalDigits);
+        }
+        if (Arrays.asList(INTERVAL_DAY_TO_SECOND).contains(type)) {
+            int columnSize = column.getColumnSize() != null ? column.getColumnSize() : 2;
+            int decimalDigits = column.getDecimalDigits() != null ? column.getDecimalDigits() : 6;
+            String valueTemplate = "INTERVAL DAY(%s) TO SECOND(%s)";
+            return String.format(valueTemplate, columnSize, decimalDigits);
+        }
+        if (Arrays.asList(INTERVAL_YEAR_TO_MONTH).contains(type)) {
+            int columnSize = column.getColumnSize() != null ? column.getColumnSize() : 2;
+            String valueTemplate = "INTERVAL YEAR(%s) TO MONTH";
+            return String.format(valueTemplate, columnSize);
         }
 
 
@@ -214,30 +236,29 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
     }
 
 
-
     @Override
     public String buildModifyColumn(TableColumn tableColumn) {
 
         if (EditStatus.DELETE.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append("ALTER TABLE "). append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+            script.append("ALTER TABLE ").append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
             script.append(" ").append("DROP COLUMN ").append("\"").append(tableColumn.getName()).append("\"");
             return script.toString();
         }
         if (EditStatus.ADD.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append("ALTER TABLE "). append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+            script.append("ALTER TABLE ").append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
             script.append(" ").append("ADD (").append(buildCreateColumnSql(tableColumn)).append(")");
             return script.toString();
         }
         if (EditStatus.MODIFY.name().equals(tableColumn.getEditStatus())) {
             StringBuilder script = new StringBuilder();
-            script.append("ALTER TABLE "). append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
-            script.append(" ").append("MODIFY (").append(buildModifyColumnSql(tableColumn,tableColumn.getOldColumn())).append(") \n" );
+            script.append("ALTER TABLE ").append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+            script.append(" ").append("MODIFY (").append(buildModifyColumnSql(tableColumn, tableColumn.getOldColumn())).append(") \n");
 
             if (!StringUtils.equalsIgnoreCase(tableColumn.getOldName(), tableColumn.getName())) {
                 script.append(";");
-                script.append("ALTER TABLE "). append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
+                script.append("ALTER TABLE ").append("\"").append(tableColumn.getSchemaName()).append("\".\"").append(tableColumn.getTableName()).append("\"");
                 script.append(" ").append("RENAME COLUMN ").append("\"").append(tableColumn.getOldName()).append("\"").append(" TO ").append("\"").append(tableColumn.getName()).append("\"");
 
             }
@@ -247,7 +268,7 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
         return "";
     }
 
-    public String buildModifyColumnSql(TableColumn column,TableColumn oldColumn) {
+    public String buildModifyColumnSql(TableColumn column, TableColumn oldColumn) {
         OracleColumnTypeEnum type = COLUMN_TYPE_MAP.get(column.getColumnType().toUpperCase());
         if (type == null) {
             return "";
@@ -258,16 +279,16 @@ public enum OracleColumnTypeEnum implements ColumnBuilder {
 
         script.append(buildDataType(column, type)).append(" ");
 
-        script.append(buildDefaultValue(column,type)).append(" ");
+        script.append(buildDefaultValue(column, type)).append(" ");
 
-        if(oldColumn.getNullable() != column.getNullable()) {
+        if (oldColumn.getNullable() != column.getNullable()) {
             script.append(buildNullable(column, type)).append(" ");
         }
 
         return script.toString();
     }
 
-    public static List<ColumnType> getTypes(){
+    public static List<ColumnType> getTypes() {
         return Arrays.stream(OracleColumnTypeEnum.values()).map(columnTypeEnum ->
                 columnTypeEnum.getColumnType()
         ).toList();

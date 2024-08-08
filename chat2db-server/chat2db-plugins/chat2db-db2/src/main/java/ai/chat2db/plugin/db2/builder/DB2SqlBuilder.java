@@ -22,6 +22,9 @@ public class DB2SqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             DB2ColumnTypeEnum typeEnum = DB2ColumnTypeEnum.getByType(column.getColumnType());
+            if (typeEnum == null) {
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
 
@@ -33,6 +36,9 @@ public class DB2SqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             DB2IndexTypeEnum indexTypeEnum = DB2IndexTypeEnum.getByType(tableIndex.getType());
+            if (indexTypeEnum == null) {
+                continue;
+            }
             script.append("\n").append("").append(indexTypeEnum.buildIndexScript(tableIndex)).append(";");
             if(StringUtils.isNotBlank(tableIndex.getComment())){
                 script.append("\n").append(indexTypeEnum.buildIndexComment(tableIndex)).append(";");
@@ -84,6 +90,9 @@ public class DB2SqlBuilder extends DefaultSqlBuilder {
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus())) {
                 DB2ColumnTypeEnum typeEnum = DB2ColumnTypeEnum.getByType(tableColumn.getColumnType());
+                if (typeEnum == null) {
+                    continue;
+                }
                 script.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(";\n");
                 if (StringUtils.isNotBlank(tableColumn.getComment())) {
                     script.append("\n").append(buildComment(tableColumn)).append(";\n");
@@ -95,6 +104,9 @@ public class DB2SqlBuilder extends DefaultSqlBuilder {
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
                 DB2IndexTypeEnum mysqlIndexTypeEnum = DB2IndexTypeEnum.getByType(tableIndex.getType());
+                if (mysqlIndexTypeEnum == null) {
+                    continue;
+                }
                 script.append("\t").append(mysqlIndexTypeEnum.buildModifyIndex(tableIndex)).append(";\n");
                 if(StringUtils.isNotBlank(tableIndex.getComment())) {
                     script.append("\n").append(mysqlIndexTypeEnum.buildIndexComment(tableIndex)).append(";\n");

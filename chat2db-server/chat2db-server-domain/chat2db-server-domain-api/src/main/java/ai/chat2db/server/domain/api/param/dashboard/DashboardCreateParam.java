@@ -39,7 +39,7 @@ public class DashboardCreateParam {
     private String schema;
 
     /**
-     * Whether it has been deleted, y means deleted, n means not deleted
+     * Whether it has been deleted, 'Y' means deleted, 'N' means not deleted
      */
     private String deleted;
 

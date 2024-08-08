@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.kingbase;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 
 import ai.chat2db.spi.DBManage;
 import ai.chat2db.spi.jdbc.DefaultDBManage;
@@ -63,5 +64,16 @@ public class KingBaseDBManage extends DefaultDBManage implements DBManage {
     public void dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = "drop table if exists " +tableName;
         SQLExecutor.getInstance().execute(connection,sql, resultSet -> null);
+    }
+
+    @Override
+    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
+        String sql = "";
+        if(copyData){
+            sql = "CREATE TABLE " + newTableName + " AS TABLE " + tableName + " WITH DATA";
+        }else {
+            sql = "CREATE TABLE " + newTableName + " AS TABLE " + tableName + " WITH NO DATA";
+        }
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
 }

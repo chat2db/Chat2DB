@@ -5,7 +5,6 @@ import java.util.List;
 
 import ai.chat2db.server.tools.base.wrapper.result.PageResult;
 import ai.chat2db.spi.model.*;
-import cn.hutool.db.Page;
 import jakarta.validation.constraints.NotEmpty;
 
 /**
@@ -242,7 +241,7 @@ public interface MetaData {
      * Get column builder.
      *
      */
-    ValueHandler getValueHandler();
+    ValueProcessor getValueProcessor();
 
 
     /**

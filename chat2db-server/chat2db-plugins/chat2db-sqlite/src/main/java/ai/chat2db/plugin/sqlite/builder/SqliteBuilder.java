@@ -23,11 +23,17 @@ public class SqliteBuilder extends DefaultSqlBuilder {
                 continue;
             }
             SqliteColumnTypeEnum typeEnum = SqliteColumnTypeEnum.getByType(column.getColumnType());
+            if(typeEnum == null){
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
         for (TableIndex tableIndex : table.getIndexList()) {
             if(SqliteIndexTypeEnum.PRIMARY_KEY.getName().equals( tableIndex.getType())) {
                 SqliteIndexTypeEnum sqliteIndexTypeEnum = SqliteIndexTypeEnum.getByType(tableIndex.getType());
+                if(sqliteIndexTypeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(sqliteIndexTypeEnum.buildIndexScript(tableIndex)).append(",\n");
             }
         }
@@ -41,6 +47,9 @@ public class SqliteBuilder extends DefaultSqlBuilder {
             }
             if(!SqliteIndexTypeEnum.PRIMARY_KEY.getName().equals( tableIndex.getType())) {
                 SqliteIndexTypeEnum sqliteIndexTypeEnum = SqliteIndexTypeEnum.getByType(tableIndex.getType());
+                if(sqliteIndexTypeEnum == null){
+                    continue;
+                }
                 script.append("\n").append("CREATE ").append(sqliteIndexTypeEnum.buildIndexScript(tableIndex)).append(";\n");
             }
         }
@@ -61,6 +70,9 @@ public class SqliteBuilder extends DefaultSqlBuilder {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType()) && StringUtils.isNotBlank(tableColumn.getName())) {
                 script.append("ALTER TABLE ").append("\"").append(newTable.getDatabaseName()).append("\".\"").append(newTable.getName()).append("\"").append("\n");
                 SqliteColumnTypeEnum typeEnum = SqliteColumnTypeEnum.getByType(tableColumn.getColumnType());
+                if(typeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(";\n");
             }
         }
@@ -70,6 +82,9 @@ public class SqliteBuilder extends DefaultSqlBuilder {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
                 // script.append("ALTER TABLE ").append("\"").append(newTable.getDatabaseName()).append("\".\"").append(newTable.getName()).append("\"").append("\n");
                 SqliteIndexTypeEnum sqliteIndexTypeEnum = SqliteIndexTypeEnum.getByType(tableIndex.getType());
+                if(sqliteIndexTypeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(sqliteIndexTypeEnum.buildModifyIndex(tableIndex)).append(";\n");
             }
         }

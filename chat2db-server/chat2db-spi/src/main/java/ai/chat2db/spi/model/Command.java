@@ -60,4 +60,9 @@ public class Command  implements Serializable {
      * Only available for select statements
      */
     private Boolean pageSizeAll;
+
+    /**
+     * single SQL
+     */
+    private boolean single;
 }

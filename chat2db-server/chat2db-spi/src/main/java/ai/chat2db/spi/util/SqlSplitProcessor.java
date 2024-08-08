@@ -146,6 +146,7 @@ public class SqlSplitProcessor {
 
             List<List<OrderChar>> lines = splitLine(sqlScript);
             Holder<Integer> bufferOrder = new Holder<>(0);
+            int i = 0;
             for (List<OrderChar> item : lines) {
                 if (Objects.nonNull(this.dialectType) && DbType.mysql.equals(this.dialectType)) {
                     addLineMysql(offsetStrings, buffer, bufferOrder, item);
@@ -156,6 +157,7 @@ public class SqlSplitProcessor {
                 } else {
                     throw new IllegalArgumentException("dialect type is illegal");
                 }
+                i++;
             }
             return offsetStrings;
         } finally {

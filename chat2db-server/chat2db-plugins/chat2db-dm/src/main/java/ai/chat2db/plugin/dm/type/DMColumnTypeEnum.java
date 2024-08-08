@@ -4,6 +4,7 @@ import ai.chat2db.spi.ColumnBuilder;
 import ai.chat2db.spi.enums.EditStatus;
 import ai.chat2db.spi.model.ColumnType;
 import ai.chat2db.spi.model.TableColumn;
+import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
@@ -89,7 +90,7 @@ public enum DMColumnTypeEnum implements ColumnBuilder {
     TEXT("TEXT", false, false, true, false, false, false, true, true, false, false),
 
 
-    NUMBERIC("NUMBERIC", true, true, true, false, false, false, true, true, false, false),
+    NUMERIC("NUMERIC", true, true, true, false, false, false, true, true, false, false),
 
 
     NUMBER("NUMBER", true, true, true, false, false, false, true, true, false, false),
@@ -123,11 +124,13 @@ public enum DMColumnTypeEnum implements ColumnBuilder {
 
     VARCHAR2("VARCHAR2", true, false, true, false, false, false, true, true, false, true),
 
+    DATETIME("DATETIME", false, false, true, false, false, false, true, true, false, false),
     ;
     private ColumnType columnType;
 
     public static DMColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+        String type = SqlUtils.removeDigits(dataType.toUpperCase());
+        return COLUMN_TYPE_MAP.get(type);
     }
 
     private static Map<String, DMColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();
@@ -222,7 +225,7 @@ public enum DMColumnTypeEnum implements ColumnBuilder {
             return script.toString();
         }
 
-        if (Arrays.asList(DECIMAL,DEC, FLOAT, NUMBER, TIMESTAMP, NUMBERIC).contains(type)) {
+        if (Arrays.asList(DECIMAL, DEC, FLOAT, NUMBER, TIMESTAMP, NUMERIC).contains(type)) {
             StringBuilder script = new StringBuilder();
             script.append(columnType);
             if (column.getColumnSize() != null && column.getDecimalDigits() == null) {

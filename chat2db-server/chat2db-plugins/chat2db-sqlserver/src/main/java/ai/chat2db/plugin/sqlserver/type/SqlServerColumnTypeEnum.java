@@ -4,6 +4,7 @@ import ai.chat2db.spi.ColumnBuilder;
 import ai.chat2db.spi.enums.EditStatus;
 import ai.chat2db.spi.model.ColumnType;
 import ai.chat2db.spi.model.TableColumn;
+import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
@@ -103,7 +104,7 @@ public enum SqlServerColumnTypeEnum implements ColumnBuilder {
     private ColumnType columnType;
 
     public static SqlServerColumnTypeEnum getByType(String dataType) {
-        SqlServerColumnTypeEnum typeEnum = COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+        SqlServerColumnTypeEnum typeEnum = COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
         if (typeEnum == null) {
             return OTHER;
         }

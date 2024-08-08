@@ -4,6 +4,7 @@ import ai.chat2db.spi.ColumnBuilder;
 import ai.chat2db.spi.enums.EditStatus;
 import ai.chat2db.spi.model.ColumnType;
 import ai.chat2db.spi.model.TableColumn;
+import ai.chat2db.spi.util.SqlUtils;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.StringUtils;
 
@@ -133,7 +134,7 @@ public enum DB2ColumnTypeEnum implements ColumnBuilder {
     private ColumnType columnType;
 
     public static DB2ColumnTypeEnum getByType(String dataType) {
-        return COLUMN_TYPE_MAP.get(dataType.toUpperCase());
+       return COLUMN_TYPE_MAP.get(SqlUtils.removeDigits(dataType.toUpperCase()));
     }
 
     private static Map<String, DB2ColumnTypeEnum> COLUMN_TYPE_MAP = Maps.newHashMap();

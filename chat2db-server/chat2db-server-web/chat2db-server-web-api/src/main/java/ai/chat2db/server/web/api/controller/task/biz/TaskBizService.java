@@ -19,7 +19,8 @@ import ai.chat2db.server.web.api.controller.rdb.doc.conf.ExportOptions;
 import ai.chat2db.server.web.api.controller.rdb.factory.ExportServiceFactory;
 import ai.chat2db.server.web.api.controller.rdb.request.DataExportRequest;
 import ai.chat2db.server.web.api.controller.rdb.vo.TableVO;
-import ai.chat2db.spi.jdbc.DefaultValueHandler;
+import ai.chat2db.spi.SqlBuilder;
+import ai.chat2db.spi.ValueProcessor;
 import ai.chat2db.spi.model.Table;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
@@ -33,8 +34,6 @@ import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.SQLUtils;
 import com.alibaba.druid.sql.ast.SQLStatement;
 import com.alibaba.druid.sql.ast.expr.SQLIdentifierExpr;
-import com.alibaba.druid.sql.ast.statement.SQLExprTableSource;
-import com.alibaba.druid.sql.ast.statement.SQLInsertStatement;
 import com.alibaba.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.druid.sql.visitor.VisitorFeature;
 import com.alibaba.excel.EasyExcel;
@@ -251,6 +250,7 @@ public class TaskBizService {
                     .charset(StandardCharsets.UTF_8)
                     .excelType(ExcelTypeEnum.CSV);
             excelWrapper.setExcelWriterBuilder(excelWriterBuilder);
+            ValueProcessor valueProcessor = Chat2DBContext.getMetaData().getValueProcessor();
             SQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), sql, headerList -> {
                 excelWriterBuilder.head(
                         EasyCollectionUtils.toList(headerList, header -> Lists.newArrayList(header.getName())));
@@ -260,7 +260,7 @@ public class TaskBizService {
                 List<List<String>> writeDataList = Lists.newArrayList();
                 writeDataList.add(dataList);
                 excelWrapper.getExcelWriter().write(writeDataList, excelWrapper.getWriteSheet());
-            }, false, new DefaultValueHandler());
+            }, jdbcDataValue -> valueProcessor.getJdbcValue(jdbcDataValue),false);
         } finally {
             if (excelWrapper.getExcelWriter() != null) {
                 excelWrapper.getExcelWriter().finish();
@@ -273,22 +273,19 @@ public class TaskBizService {
             throws IOException {
         try (PrintWriter printWriter = new PrintWriter(file, StandardCharsets.UTF_8.name())) {
             RdbDmlExportController.InsertWrapper insertWrapper = new RdbDmlExportController.InsertWrapper();
+            ValueProcessor valueProcessor = Chat2DBContext.getMetaData().getValueProcessor();
+            SqlBuilder sqlBuilder = Chat2DBContext.getSqlBuilder();
+            String databaseName = Chat2DBContext.getConnectInfo().getDatabaseName();
+            String schemaName = Chat2DBContext.getConnectInfo().getSchemaName();
+            List<String> headerColumns = Lists.newArrayList();
             SQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), sql,
-                    headerList -> insertWrapper.setHeaderList(
-                            EasyCollectionUtils.toList(headerList, header -> new SQLIdentifierExpr(header.getName())))
+                    headerList -> {
+                        headerList.forEach(header -> headerColumns.add(header.getName()));
+                    }
                     , dataList -> {
-                        SQLInsertStatement sqlInsertStatement = new SQLInsertStatement();
-                        sqlInsertStatement.setDbType(dbType);
-                        sqlInsertStatement.setTableSource(new SQLExprTableSource(tableName));
-                        sqlInsertStatement.getColumns().addAll(insertWrapper.getHeaderList());
-                        SQLInsertStatement.ValuesClause valuesClause = new SQLInsertStatement.ValuesClause();
-                        for (String s : dataList) {
-                            valuesClause.addValue(s);
-                        }
-                        sqlInsertStatement.setValues(valuesClause);
-
-                        printWriter.println(SQLUtils.toSQLString(sqlInsertStatement, dbType, INSERT_FORMAT_OPTION) + ";");
-                    }, false, new DefaultValueHandler());
+                        String insertSql = sqlBuilder.buildSingleInsertSql(databaseName, schemaName, tableName, headerColumns, dataList);
+                        printWriter.println(insertSql + ";");
+                    }, jdbcDataValue -> valueProcessor.getJdbcSqlValueString(jdbcDataValue), false);
         }
     }
 

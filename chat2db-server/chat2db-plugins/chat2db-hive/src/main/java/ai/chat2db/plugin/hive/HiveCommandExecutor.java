@@ -1,6 +1,5 @@
 package ai.chat2db.plugin.hive;
 
-import ai.chat2db.spi.ValueHandler;
 import ai.chat2db.spi.model.Command;
 import ai.chat2db.spi.model.ExecuteResult;
 import ai.chat2db.spi.model.Header;
@@ -51,9 +50,9 @@ public class HiveCommandExecutor extends SQLExecutor {
      */
     @Override
     public ExecuteResult execute(final String sql, Connection connection, boolean limitRowSize, Integer offset,
-                                 Integer count, ValueHandler valueHandler)
+                                 Integer count)
             throws SQLException {
-        return super.execute(sql, connection, limitRowSize, offset, count, valueHandler);
+        return super.execute(sql, connection, limitRowSize, offset, count);
     }
 
     public static String formatTableName(String tableName) {

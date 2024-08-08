@@ -20,6 +20,8 @@ public class DatabaseCreateParam {
 
     private String name;
 
+    private String newName;
+
     private String comment;
 
     private String charset;

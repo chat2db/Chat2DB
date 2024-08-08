@@ -26,6 +26,9 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             HiveColumnTypeEnum typeEnum = HiveColumnTypeEnum.getByType(column.getColumnType());
+            if(typeEnum == null){
+                continue;
+            }
             script.append("\t").append(typeEnum.buildCreateColumnSql(column)).append(",\n");
         }
 
@@ -35,6 +38,9 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
                 continue;
             }
             HiveIndexTypeEnum hiveIndexTypeEnum = HiveIndexTypeEnum.getByType(tableIndex.getType());
+            if(hiveIndexTypeEnum == null){
+                continue;
+            }
             script.append("\t").append("").append(hiveIndexTypeEnum.buildIndexScript(tableIndex)).append(",\n");
         }
 
@@ -98,6 +104,9 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus()) && StringUtils.isNotBlank(tableColumn.getColumnType()) && StringUtils.isNotBlank(tableColumn.getName())) {
                 HiveColumnTypeEnum typeEnum = HiveColumnTypeEnum.getByType(tableColumn.getColumnType());
+                if(typeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(typeEnum.buildModifyColumn(tableColumn)).append(",\n");
             }
         }
@@ -106,6 +115,9 @@ public class HiveSqlBuilder extends DefaultSqlBuilder {
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus()) && StringUtils.isNotBlank(tableIndex.getType())) {
                 HiveIndexTypeEnum hiveIndexTypeEnum = HiveIndexTypeEnum.getByType(tableIndex.getType());
+                if(hiveIndexTypeEnum == null){
+                    continue;
+                }
                 script.append("\t").append(hiveIndexTypeEnum.buildModifyIndex(tableIndex)).append(",\n");
             }
         }

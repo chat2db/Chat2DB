@@ -20,7 +20,7 @@ public class H2Triggers implements Trigger {
         // This method is called when the trigger is executed.
         // In this example, let's simply print the new values when a row is inserted.
         if (newRow != null) {
-            System.out.println("New Row Inserted: " + Arrays.toString(newRow));
+//            System.out.println("New Row Inserted: " + Arrays.toString(newRow));
         }
     }
 

@@ -1,11 +1,21 @@
 package ai.chat2db.plugin.sqlserver;
 
 import ai.chat2db.spi.DBManage;
+import ai.chat2db.spi.SqlBuilder;
+import ai.chat2db.spi.ValueProcessor;
 import ai.chat2db.spi.jdbc.DefaultDBManage;
+import ai.chat2db.spi.model.AsyncContext;
+import ai.chat2db.spi.model.JDBCDataValue;
+import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.SQLExecutor;
+import ai.chat2db.spi.util.ResultSetUtils;
 
-import java.sql.*;
-import java.util.Objects;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class SqlServerDBManage extends DefaultDBManage implements DBManage {
     private String tableDDLFunction
@@ -41,146 +51,149 @@ public class SqlServerDBManage extends DefaultDBManage implements DBManage {
             + "triggerDefinition, CASE WHEN status & 1 = 1 THEN 'Enabled' ELSE 'Disabled' END AS Status FROM sysobjects "
             + "WHERE xtype = 'TR' ";
 
+
     @Override
-    public String exportDatabaseData(Connection connection, String databaseName, String schemaName, String tableName) throws SQLException {
-        StringBuilder sqlBuilder = new StringBuilder();
-        exportTableData(connection, tableName, sqlBuilder);
-        return sqlBuilder.toString();
-    }
-    @Override
-    public String exportDatabase(Connection connection, String databaseName, String schemaName, boolean containData) throws SQLException {
-        StringBuilder sqlBuilder = new StringBuilder();
-        exportTables(connection, sqlBuilder, schemaName, containData);
-        exportViews(connection, databaseName, schemaName, sqlBuilder);
-        exportFunctions(connection, schemaName, sqlBuilder);
-        exportProcedures(connection, schemaName, sqlBuilder);
-        exportTriggers(connection, sqlBuilder);
-        return sqlBuilder.toString();
+    public void exportDatabase(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
+        exportTables(connection, databaseName, schemaName, asyncContext);
+        exportViews(connection, databaseName, schemaName, asyncContext);
+        exportFunctions(connection, schemaName, asyncContext);
+        exportProcedures(connection, schemaName, asyncContext);
+        exportTriggers(connection, asyncContext);
     }
 
-    private void exportTables(Connection connection, StringBuilder sqlBuilder, String schemaName, boolean containData) throws SQLException {
-        String sql ="SELECT name FROM SysObjects Where XType='U'";
+    private void exportTables(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
+        String sql = "SELECT name FROM SysObjects Where XType='U'";
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             while (resultSet.next()) {
                 String tableName = resultSet.getString("name");
-                exportTable(connection, tableName, schemaName, sqlBuilder, containData);
+                exportTable(connection, databaseName, schemaName, tableName, asyncContext);
             }
         }
     }
 
 
-    private void exportTable(Connection connection, String tableName, String schemaName, StringBuilder sqlBuilder, boolean containData) throws SQLException {
+    public void exportTable(Connection connection, String databaseName, String schemaName, String tableName, AsyncContext asyncContext) throws SQLException {
         try {
             SQLExecutor.getInstance().execute(connection, tableDDLFunction.replace("tableSchema", schemaName),
                                               resultSet -> null);
         } catch (Exception e) {
             //log.error("Failed to create function", e);
         }
-        String sql = String.format("SELECT %s.ufn_GetCreateTableScript('%s', '%s') as ddl",schemaName,schemaName,tableName);
+        String sql = String.format("SELECT %s.ufn_GetCreateTableScript('%s', '%s') as ddl", schemaName, schemaName, tableName);
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             if (resultSet.next()) {
+                StringBuilder sqlBuilder = new StringBuilder();
                 sqlBuilder.append("DROP TABLE IF EXISTS ").append(tableName).append(";").append("\n")
                         .append(resultSet.getString("ddl")).append("\n");
-                if (containData) {
-                    exportTableData(connection, tableName, sqlBuilder);
+                asyncContext.write(sqlBuilder.toString());
+                if (asyncContext.isContainsData()) {
+                    exportTableData(connection, databaseName, schemaName, tableName, asyncContext);
                 } else {
-                    sqlBuilder.append("go").append("\n");
+                    asyncContext.write("go \n");
                 }
             }
         }
     }
 
 
-    private void exportTableData(Connection connection, String tableName, StringBuilder sqlBuilder) throws SQLException {
-        String sql = String.format("select * from %s", tableName);
-        try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
+    public void exportTableData(Connection connection, String databaseName, String schemaName, String tableName, AsyncContext asyncContext) {
+        SqlBuilder sqlBuilder = Chat2DBContext.getSqlBuilder();
+        String tableQuerySql = sqlBuilder.buildTableQuerySql(databaseName, schemaName, tableName);
+        SQLExecutor.getInstance().execute(connection, tableQuerySql, 1000, resultSet -> {
             ResultSetMetaData metaData = resultSet.getMetaData();
+            List<String> columnList = ResultSetUtils.getRsHeader(resultSet);
+            List<String> valueList = new ArrayList<>();
             while (resultSet.next()) {
-                sqlBuilder.append("INSERT INTO ").append(tableName).append(" VALUES (");
                 for (int i = 1; i <= metaData.getColumnCount(); i++) {
-                    String value = resultSet.getString(i);
-                    if (Objects.isNull(value)) {
-                        sqlBuilder.append("NULL");
-                    } else {
-                        sqlBuilder.append("'").append(value).append("'");
-                    }
-                    if (i < metaData.getColumnCount()) {
-                        sqlBuilder.append(", ");
-                    }
+                    ValueProcessor valueProcessor = Chat2DBContext.getMetaData().getValueProcessor();
+                    JDBCDataValue jdbcDataValue = new JDBCDataValue(resultSet, metaData, i, false);
+                    String valueString = valueProcessor.getJdbcSqlValueString(jdbcDataValue);
+                    valueList.add(valueString);
                 }
-                sqlBuilder.append(");\n");
+                String insertSql = sqlBuilder.buildSingleInsertSql(databaseName, schemaName, tableName, columnList, valueList);
+                asyncContext.write(insertSql+";");
+                valueList.clear();
             }
-            sqlBuilder.append("\n");
-        }
-        sqlBuilder.append("go").append("\n");
+            asyncContext.write("go \n");
+        });
     }
 
-    private void exportViews(Connection connection, String databaseName, String schemaName, StringBuilder sqlBuilder) throws SQLException {
+    private void exportViews(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
         String sql = String.format("SELECT TABLE_NAME, VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS " +
                                            "WHERE TABLE_SCHEMA = '%s' AND TABLE_CATALOG = '%s'; ", schemaName, databaseName);
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             while (resultSet.next()) {
+                StringBuilder sqlBuilder = new StringBuilder();
                 sqlBuilder.append("DROP VIEW IF EXISTS ").append(resultSet.getString("TABLE_NAME")).append(";\n").append("go").append("\n")
                         .append(resultSet.getString("VIEW_DEFINITION")).append(";").append("\n")
                         .append("go").append("\n");
+                asyncContext.write(sqlBuilder.toString());
             }
 
         }
     }
 
-    private void exportFunctions(Connection connection, String schemaName, StringBuilder sqlBuilder) throws SQLException {
+    private void exportFunctions(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
         String sql = String.format("SELECT name FROM sys.objects WHERE type = 'FN' and SCHEMA_ID = SCHEMA_ID('%s')", schemaName);
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             while (resultSet.next()) {
                 String functionName = resultSet.getString("name");
-                exportFunction(connection, functionName, schemaName, sqlBuilder);
+                exportFunction(connection, functionName, schemaName, asyncContext);
             }
         }
     }
 
-    private void exportFunction(Connection connection, String functionName, String schemaName, StringBuilder sqlBuilder) throws SQLException {
+    private void exportFunction(Connection connection, String functionName, String schemaName, AsyncContext asyncContext) throws SQLException {
         String sql = String.format("SELECT OBJECT_DEFINITION(OBJECT_ID('%s.%s')) as ddl", schemaName, functionName);
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             if (resultSet.next()) {
+                StringBuilder sqlBuilder = new StringBuilder();
                 sqlBuilder.append(resultSet.getString("ddl")
                                           .replace("CREATE   FUNCTION", "CREATE OR ALTER FUNCTION"))
                         .append("\n").append("go").append("\n");
+                asyncContext.write(sqlBuilder.toString());
 
             }
         }
     }
 
-    private void exportProcedures(Connection connection, String schemaName, StringBuilder sqlBuilder) throws SQLException {
+    private void exportProcedures(Connection connection, String schemaName, AsyncContext asyncContext) throws SQLException {
         String sql = String.format("SELECT name FROM sys.procedures WHERE SCHEMA_ID = SCHEMA_ID('%s')", schemaName);
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             while (resultSet.next()) {
                 String procedureName = resultSet.getString("name");
-                exportProcedure(connection, procedureName, schemaName, sqlBuilder);
+
+                exportProcedure(connection, procedureName, schemaName, asyncContext);
             }
         }
     }
 
-    private void exportProcedure(Connection connection, String procedureName, String schemaName, StringBuilder sqlBuilder) throws SQLException {
+    private void exportProcedure(Connection connection, String procedureName, String schemaName, AsyncContext asyncContext) throws SQLException {
         String sql = String.format("SELECT definition FROM sys.sql_modules  WHERE object_id = (OBJECT_ID('%s.%s'));", schemaName, procedureName);
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             if (resultSet.next()) {
+                StringBuilder sqlBuilder = new StringBuilder();
                 sqlBuilder.append(resultSet.getString("definition")
                                           .replace("CREATE   PROCEDURE", "CREATE OR ALTER PROCEDURE"))
                         .append("\n").append("go").append("\n");
+                asyncContext.write(sqlBuilder.toString());
 
             }
         }
     }
 
-    private void exportTriggers(Connection connection, StringBuilder sqlBuilder) throws SQLException {
+    private void exportTriggers(Connection connection, AsyncContext asyncContext) throws SQLException {
         try (ResultSet resultSet = connection.createStatement().executeQuery(TRIGGER_SQL_LIST)) {
             while (resultSet.next()) {
+                StringBuilder sqlBuilder = new StringBuilder();
                 sqlBuilder.append(resultSet.getString("triggerDefinition")
                                           .replace("CREATE   TRIGGER", "CREATE OR ALTER TRIGGER"))
                         .append("\n").append("go").append("\n");
+                asyncContext.write(sqlBuilder.toString());
             }
         }
     }
+
     @Override
     public void connectDatabase(Connection connection, String database) {
         try {
@@ -188,5 +201,16 @@ public class SqlServerDBManage extends DefaultDBManage implements DBManage {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @Override
+    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
+        String sql = "";
+        if(copyData){
+            sql = "SELECT * INTO " + newTableName + " FROM " + tableName;
+        }else {
+            sql = "SELECT * INTO " + newTableName + " FROM " + tableName + " WHERE 1=0";
+        }
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
 }

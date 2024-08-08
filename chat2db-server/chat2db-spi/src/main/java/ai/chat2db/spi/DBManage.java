@@ -1,5 +1,6 @@
 package ai.chat2db.spi;
 
+import ai.chat2db.spi.model.AsyncContext;
 import ai.chat2db.spi.model.Procedure;
 import ai.chat2db.spi.sql.ConnectInfo;
 import jakarta.validation.constraints.NotEmpty;
@@ -121,7 +122,45 @@ public interface DBManage {
      */
     void updateProcedure(Connection connection, @NotEmpty String databaseName, String schemaName, @NotNull Procedure procedure) throws SQLException;
 
-    String exportDatabase(Connection connection, String databaseName, String schemaName,boolean containData) throws SQLException;
+    /**
+     * Export database
+     *
+     * @param databaseName
+     * @param schemaName
+     * @return
+     */
+    void exportDatabase(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException;
 
-    String exportDatabaseData(Connection connection, String databaseName, String schemaName,String tableName) throws SQLException;
+    /**
+     * Export database data
+     *
+     * @param databaseName
+     * @param schemaName
+     * @param tableName
+     * @return
+     */
+    void exportTable(Connection connection, String databaseName, String schemaName,String tableName,AsyncContext asyncContext) throws SQLException;
+
+
+    /**
+     * truncate table
+     * @param connection
+     * @param databaseName
+     * @param schemaName
+     * @param tableName
+     * @throws SQLException
+     */
+    void truncateTable(Connection connection, String databaseName, String schemaName, String tableName)throws SQLException;
+
+
+    /**
+     * copy table
+     *
+     * @param databaseName
+     * @param schemaName
+     * @param tableName
+     * @param newTableName
+     * @return
+     */
+    void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException;
 }

@@ -1,6 +1,5 @@
 package ai.chat2db.plugin.sqlserver;
 
-import ai.chat2db.spi.ValueHandler;
 import ai.chat2db.spi.model.Command;
 import ai.chat2db.spi.model.ExecuteResult;
 import ai.chat2db.spi.sql.SQLExecutor;
@@ -45,8 +44,8 @@ public class SqlServerCommandExecutor extends SQLExecutor {
      *
      */
     public ExecuteResult execute(final String sql, Connection connection, boolean limitRowSize, Integer offset,
-                                 Integer count, ValueHandler valueHandler)
+                                 Integer count)
             throws SQLException {
-        return super.execute(removeSpecialGO(sql), connection, limitRowSize, offset, count, valueHandler);
+        return super.execute(removeSpecialGO(sql), connection, limitRowSize, offset, count);
     }
 }
