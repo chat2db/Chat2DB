@@ -20,6 +20,9 @@ import java.util.List;
 @Slf4j
 public class OracleDBManage extends DefaultDBManage implements DBManage {
 
+    private static String PROCEDURE_SQL = "SELECT COUNT(*) FROM ALL_OBJECTS " +
+            "WHERE OWNER = '%s' AND OBJECT_NAME = '%s' AND OBJECT_TYPE = 'PROCEDURE'";
+
     public void exportDatabase(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
         exportTables(connection, databaseName, schemaName, asyncContext);
         exportViews(connection, asyncContext, schemaName);
@@ -110,6 +113,45 @@ public class OracleDBManage extends DefaultDBManage implements DBManage {
         asyncContext.write(function.getFunctionBody() + "\n");
     }
 
+    @Override
+    public void updateProcedure(Connection connection, String databaseName, String schemaName, Procedure procedure) throws SQLException {
+        try {
+            connection.setAutoCommit(false);
+            String procedureBody = procedure.getProcedureBody();
+            boolean isCreateOrReplace = procedureBody.trim().toUpperCase().startsWith("CREATE OR REPLACE ");
+
+            if (procedureBody == null || !procedureBody.trim().toUpperCase().startsWith("CREATE")) {
+                throw new IllegalArgumentException("No CREATE statement found.");
+            }
+
+            String procedureNewName = getSchemaOrProcedureName(procedureBody, schemaName, procedure);
+            if (!procedureNewName.equals(procedure.getProcedureName())) {
+                procedureBody = procedureBody.replace(procedure.getProcedureName(), procedureNewName);
+            }
+            String checkProcedureSQL = String.format(PROCEDURE_SQL, schemaName.toUpperCase(), procedure.getProcedureName().toUpperCase());
+            String finalProcedureBody = procedureBody;
+            SQLExecutor.getInstance().execute(connection, checkProcedureSQL, resultSet -> {
+                if (resultSet.next()) {
+                    int count = resultSet.getInt(1);
+                    if (count >= 1) {
+                        if (isCreateOrReplace) {
+                            SQLExecutor.getInstance().execute(connection, finalProcedureBody, resultSet2 -> {});
+                        } else {
+                            throw new SQLException("Procedure with the same name already exists.");
+                        }
+                    }
+                }
+            });
+
+            SQLExecutor.getInstance().execute(connection, finalProcedureBody, resultSet -> {});
+
+        } catch (Exception e) {
+            connection.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            connection.setAutoCommit(true);
+        }
+    }
 
     @Override
     public void connectDatabase(Connection connection, String database) {
@@ -140,6 +182,14 @@ public class OracleDBManage extends DefaultDBManage implements DBManage {
     public void dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = "DROP TABLE " + SqlUtils.quoteObjectName(tableName);
         SQLExecutor.getInstance().execute(connection, sql, (resultSet) -> null);
+    }
+
+    private static String getSchemaOrProcedureName(String procedureBody, String schemaName, Procedure procedure) {
+        if (procedureBody.toLowerCase().contains(schemaName.toLowerCase())) {
+            return procedure.getProcedureName();
+        } else {
+            return schemaName + "." + procedure.getProcedureName();
+        }
     }
 
 }

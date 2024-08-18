@@ -3,6 +3,8 @@ package ai.chat2db.plugin.postgresql;
 import ai.chat2db.spi.DBManage;
 import ai.chat2db.spi.jdbc.DefaultDBManage;
 import ai.chat2db.spi.model.AsyncContext;
+import ai.chat2db.spi.model.Function;
+import ai.chat2db.spi.model.Procedure;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectInfo;
 import ai.chat2db.spi.sql.SQLExecutor;
@@ -13,6 +15,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static ai.chat2db.plugin.postgresql.consts.SQLConst.ENUM_TYPE_DDL_SQL;
 
@@ -45,13 +49,13 @@ public class PostgreSQLDBManage extends DefaultDBManage implements DBManage {
                 tableNames.add(tableName);
             }
             for (String tableName : tableNames) {
-                exportTable(connection, databaseName,schemaName, tableName, asyncContext);
+                exportTable(connection, databaseName, schemaName, tableName, asyncContext);
             }
 
         }
     }
 
-    public void exportTable(Connection connection,String databaseName, String schemaName, String tableName, AsyncContext asyncContext) throws SQLException {
+    public void exportTable(Connection connection, String databaseName, String schemaName, String tableName, AsyncContext asyncContext) throws SQLException {
         String sql = String.format("select pg_get_tabledef('%s','%s',true,'COMMENTS') as ddl;", schemaName, tableName);
         try (ResultSet resultSet = connection.createStatement().executeQuery(sql)) {
             if (resultSet.next()) {
@@ -120,6 +124,33 @@ public class PostgreSQLDBManage extends DefaultDBManage implements DBManage {
     }
 
     @Override
+    public void updateProcedure(Connection connection, String databaseName, String schemaName, Procedure procedure) throws SQLException {
+        try {
+            connection.setAutoCommit(false);
+            String procedureBody = procedure.getProcedureBody();
+            boolean isCreateOrReplace = procedureBody.trim().toUpperCase().startsWith("CREATE OR REPLACE ");
+            String parameterSignature = extractParameterSignature(procedureBody);
+
+            if (procedureBody == null || !procedureBody.trim().toUpperCase().startsWith("CREATE")) {
+                throw new IllegalArgumentException("No CREATE statement found.");
+            }
+
+            String procedureNewName = getSchemaOrProcedureName(procedureBody, schemaName, procedure);
+            if (!procedureNewName.equals(procedure.getProcedureName())) {
+                procedureBody = procedureBody.replace(procedure.getProcedureName(), procedureNewName);
+            }
+            String dropSql = "DROP PROCEDURE IF EXISTS " + procedureNewName + parameterSignature;
+            SQLExecutor.getInstance().execute(connection, dropSql, resultSet -> {});
+            SQLExecutor.getInstance().execute(connection, procedureBody, resultSet -> {});
+        } catch (Exception e) {
+            connection.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            connection.setAutoCommit(true);
+        }
+    }
+
+    @Override
     public Connection getConnection(ConnectInfo connectInfo) {
         String url = connectInfo.getUrl();
         String database = connectInfo.getDatabaseName();
@@ -160,14 +191,63 @@ public class PostgreSQLDBManage extends DefaultDBManage implements DBManage {
     }
 
     @Override
-    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException {
+    public void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName, boolean copyData) throws SQLException {
         String sql = "";
-        if(copyData){
+        if (copyData) {
             sql = "CREATE TABLE " + newTableName + " AS TABLE " + tableName + " WITH DATA";
-        }else {
+        } else {
             sql = "CREATE TABLE " + newTableName + " AS TABLE " + tableName + " WITH NO DATA";
         }
         SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
     }
 
+    @Override
+    public void deleteProcedure(Connection connection, String databaseName, String schemaName, Procedure procedure) {
+        String procedureBody = procedure.getProcedureBody();
+        String parameterSignature = extractParameterSignature(procedureBody);
+        String procedureNewName = getSchemaOrProcedureName(procedureBody, schemaName, procedure);
+        String sql = "DROP PROCEDURE " + procedureNewName + parameterSignature;
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> {});
+    }
+
+    @Override
+    public void deleteFunction(Connection connection, String databaseName, String schemaName, Function function) {
+        String functionBody = function.getFunctionBody();
+        String parameterSignature = extractParameterSignature(functionBody);
+        String functionNewName = getSchemaOrFunctionName(functionBody, schemaName, function);
+        String sql = "DROP FUNCTION" + functionNewName + parameterSignature;
+        SQLExecutor.getInstance().execute(connection,sql,resultSet -> {});
+    }
+
+    private String extractParameterSignature(String input) {
+        int depth = 0, start = -1;
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (c == '(') {
+                if (depth++ == 0) start = i;
+            } else if (c == ')' && --depth == 0 && start != -1) {
+                return "(" + input.substring(start + 1, i) + ")";
+            }
+        }
+        if (depth == 0) {
+            return "";
+        }
+        return null;
+    }
+
+    private static String getSchemaOrProcedureName(String procedureBody, String schemaName, Procedure procedure) {
+        if (procedureBody.toLowerCase().contains(schemaName.toLowerCase())) {
+            return procedure.getProcedureName();
+        } else {
+            return schemaName + "." + procedure.getProcedureName();
+        }
+    }
+
+    private static String getSchemaOrFunctionName(String functionBody, String schemaName, Function function) {
+        if (functionBody.toLowerCase().contains(schemaName.toLowerCase())) {
+            return function.getFunctionName();
+        } else {
+            return schemaName + "." + function.getFunctionName();
+        }
+    }
 }

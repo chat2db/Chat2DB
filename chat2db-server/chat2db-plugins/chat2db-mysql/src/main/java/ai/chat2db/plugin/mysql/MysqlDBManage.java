@@ -3,6 +3,7 @@ package ai.chat2db.plugin.mysql;
 import ai.chat2db.spi.DBManage;
 import ai.chat2db.spi.jdbc.DefaultDBManage;
 import ai.chat2db.spi.model.AsyncContext;
+import ai.chat2db.spi.model.Function;
 import ai.chat2db.spi.model.Procedure;
 import ai.chat2db.spi.sql.SQLExecutor;
 import cn.hutool.core.date.DateUtil;
@@ -18,9 +19,13 @@ import static cn.hutool.core.date.DatePattern.NORM_DATETIME_PATTERN;
 
 @Slf4j
 public class MysqlDBManage extends DefaultDBManage implements DBManage {
+
+    private static String PROCEDURE_SQL = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ROUTINES " +
+            "WHERE ROUTINE_SCHEMA = '%s' AND ROUTINE_NAME = '%s' AND ROUTINE_TYPE = 'PROCEDURE'";
+
     @Override
     public void exportDatabase(Connection connection, String databaseName, String schemaName, AsyncContext asyncContext) throws SQLException {
-        asyncContext.write(String.format(EXPORT_TITLE, DateUtil.format(new Date(),NORM_DATETIME_PATTERN)));
+        asyncContext.write(String.format(EXPORT_TITLE, DateUtil.format(new Date(), NORM_DATETIME_PATTERN)));
         exportTables(connection, databaseName, schemaName, asyncContext);
         asyncContext.setProgress(50);
         exportViews(connection, databaseName, asyncContext);
@@ -82,9 +87,9 @@ public class MysqlDBManage extends DefaultDBManage implements DBManage {
                     exportTableData(connection, databaseName, schemaName, tableName, asyncContext);
                 }
             }
-        }catch (Exception e){
+        } catch (Exception e) {
             log.error("export table error", e);
-            asyncContext.error(String.format("export table %s error:%s", tableName,e.getMessage()));
+            asyncContext.error(String.format("export table %s error:%s", tableName, e.getMessage()));
         }
     }
 
@@ -160,9 +165,29 @@ public class MysqlDBManage extends DefaultDBManage implements DBManage {
     @Override
     public void updateProcedure(Connection connection, String databaseName, String schemaName, Procedure procedure) throws SQLException {
         try {
-            String sql = "DROP PROCEDURE " + procedure.getProcedureName();
-            SQLExecutor.getInstance().execute(connection, sql, resultSet -> {});
+            connection.setAutoCommit(false);
             String procedureBody = procedure.getProcedureBody();
+            if (procedureBody == null || !procedureBody.trim().toUpperCase().startsWith("CREATE")) {
+                throw new IllegalArgumentException("No CREATE statement found.");
+            }
+
+            String procedureNewName = getSchemaOrProcedureName(procedureBody, databaseName, procedure);
+            if (!procedureNewName.equals(procedure.getProcedureName())) {
+                procedureBody = procedureBody.replace(procedure.getProcedureName(), procedureNewName);
+            }
+            String checkProcedureSQL = String.format(PROCEDURE_SQL, databaseName, procedure.getProcedureName());
+            SQLExecutor.getInstance().execute(connection, checkProcedureSQL, resultSet -> {
+                try {
+                    if (resultSet.next()) {
+                        int count = resultSet.getInt(1);
+                        if (count >= 1) {
+                            throw new Exception("Procedure already exists");
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
             SQLExecutor.getInstance().execute(connection, procedureBody, resultSet -> {});
         } catch (Exception e) {
             connection.rollback();
@@ -190,6 +215,36 @@ public class MysqlDBManage extends DefaultDBManage implements DBManage {
     public void dropTable(Connection connection, String databaseName, String schemaName, String tableName) {
         String sql = "DROP TABLE " + format(tableName);
         SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+    }
+
+    @Override
+    public void deleteProcedure(Connection connection, String databaseName, String schemaName, Procedure procedure) {
+        String procedureNewName = getSchemaOrProcedureName(procedure.getProcedureBody(), databaseName, procedure);
+        String sql = "DROP PROCEDURE " + procedureNewName;
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+    }
+
+    @Override
+    public void deleteFunction(Connection connection, String databaseName, String schemaName, Function function) {
+        String functionNewName = getSchemaOrFunctionName(function.getFunctionBody(), databaseName, function);
+        String sql = "DROP FUNCTION " + functionNewName;
+        SQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
+    }
+
+    private static String getSchemaOrProcedureName(String procedureBody, String schemaName, Procedure procedure) {
+        if (procedureBody.toLowerCase().contains(schemaName.toLowerCase())) {
+            return procedure.getProcedureName();
+        } else {
+            return schemaName + "." + procedure.getProcedureName();
+        }
+    }
+
+    private static String getSchemaOrFunctionName(String functionBody, String schemaName, Function function) {
+        if (functionBody.toLowerCase().contains(schemaName.toLowerCase())) {
+            return function.getFunctionName();
+        } else {
+            return schemaName + "." + function.getFunctionName();
+        }
     }
 
     public static String format(String tableName) {

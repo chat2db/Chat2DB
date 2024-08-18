@@ -1,6 +1,7 @@
 package ai.chat2db.spi;
 
 import ai.chat2db.spi.model.AsyncContext;
+import ai.chat2db.spi.model.Function;
 import ai.chat2db.spi.model.Procedure;
 import ai.chat2db.spi.sql.ConnectInfo;
 import jakarta.validation.constraints.NotEmpty;
@@ -163,4 +164,22 @@ public interface DBManage {
      * @return
      */
     void copyTable(Connection connection, String databaseName, String schemaName, String tableName, String newTableName,boolean copyData) throws SQLException;
+
+    /**
+     * delete procedure
+     *
+     * @param databaseName
+     * @param schemaName
+     * @param procedure
+     */
+    void deleteProcedure(Connection connection, String databaseName, String schemaName, Procedure procedure);
+
+    /**
+     * delete function
+     *
+     * @param databaseName
+     * @param schemaName
+     * @param function
+     */
+    void deleteFunction(Connection connection, String databaseName, String schemaName, Function function);
 }

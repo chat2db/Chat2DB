@@ -20,6 +20,7 @@ public interface ProcedureService {
 
     /**
      * Querying procedure information.
+     *
      * @param databaseName
      * @param schemaName
      * @param procedureName
@@ -28,10 +29,22 @@ public interface ProcedureService {
     DataResult<Procedure> detail(String databaseName, String schemaName, String procedureName);
 
     /**
+     * Update procedure.
+     *
      * @param databaseName
      * @param schemaName
      * @param procedure
      * @return
      */
     ActionResult update(String databaseName, String schemaName, Procedure procedure) throws SQLException;
+
+    /**
+     * Delete procedure.
+     *
+     * @param databaseName
+     * @param schemaName
+     * @param procedure
+     * @return
+     */
+    ActionResult delete(String databaseName, String schemaName, Procedure procedure);
 }

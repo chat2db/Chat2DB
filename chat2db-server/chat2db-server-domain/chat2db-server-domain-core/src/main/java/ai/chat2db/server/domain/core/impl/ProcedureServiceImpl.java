@@ -27,4 +27,10 @@ public class ProcedureServiceImpl implements ProcedureService {
         Chat2DBContext.getDBManage().updateProcedure(Chat2DBContext.getConnection(), databaseName, schemaName, procedure);
         return ActionResult.isSuccess();
     }
+
+    @Override
+    public ActionResult delete(String databaseName, String schemaName, Procedure procedure) {
+        Chat2DBContext.getDBManage().deleteProcedure(Chat2DBContext.getConnection(), databaseName, schemaName, procedure);
+        return ActionResult.isSuccess();
+    }
 }
