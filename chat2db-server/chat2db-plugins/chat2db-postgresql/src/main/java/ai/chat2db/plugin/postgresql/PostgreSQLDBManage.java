@@ -138,7 +138,11 @@ public class PostgreSQLDBManage extends DefaultDBManage implements DBManage {
         String urlWithoutParams = urlAndParams[0];
 
         // Split string at "/" character in URL
-        String[] parts = urlWithoutParams.split("/");
+        String[] parts=new String[4];
+        String[] splitParts = urlWithoutParams.split("/");
+        for (int i = 0; i < splitParts.length; i++) {
+            parts[i] = splitParts[i];
+        }
 
         // Take the last part, the database name, and replace it with the new database name
         parts[parts.length - 1] = newDatabase;
