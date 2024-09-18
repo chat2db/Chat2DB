@@ -75,12 +75,12 @@ public class Chat2dbWebMvcConfigurer implements WebMvcConfigurer {
                         if (user == null) {
                             return null;
                         }
-                        boolean admin = RoleCodeEnum.ADMIN.getCode().equals(user.getRoleCode());
+                        boolean iaAdmin = RoleCodeEnum.ADMIN.getCode().equals(user.getRoleCode());
 
                         return LoginUser.builder()
                             .id(user.getId())
                             .nickName(user.getNickName())
-                            .admin(admin)
+                            .admin(iaAdmin)
                             .roleCode(user.getRoleCode())
                             .build();
                     });

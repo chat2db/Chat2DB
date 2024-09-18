@@ -87,16 +87,16 @@ public class DatabaseServiceImpl implements DatabaseService {
             log.error("get url error", e);
         }
         // If the database name contains the name of the current database, the current database is placed in the first place
-        int num = -1;
+        int targetIndex = -1;
         for (int i = 0; i < schemas.size(); i++) {
             String schema = schemas.get(i).getName();
             if (StringUtils.isNotBlank(ulr) && schema!=null && ulr.contains(schema)) {
-                num = i;
+                targetIndex = i;
                 break;
             }
         }
-        if (num != -1 && num != 0) {
-            Collections.swap(schemas, num, 0);
+        if (targetIndex != -1 && targetIndex != 0) {
+            Collections.swap(schemas, targetIndex, 0);
         }
     }
 

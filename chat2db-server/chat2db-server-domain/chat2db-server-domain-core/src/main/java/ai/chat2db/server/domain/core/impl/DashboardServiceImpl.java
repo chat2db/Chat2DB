@@ -66,8 +66,8 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     public ActionResult updateWithPermission(DashboardUpdateParam param) {
-        Dashboard data = queryExistent(param.getId()).getData();
-        PermissionUtils.checkOperationPermission(data.getUserId());
+        Dashboard dashboardData = queryExistent(param.getId()).getData();
+        PermissionUtils.checkOperationPermission(dashboardData.getUserId());
 
         param.setGmtModified(LocalDateTime.now());
         DashboardDO dashboardDO = dashboardConverter.updateParam2do(param);
@@ -106,14 +106,14 @@ public class DashboardServiceImpl implements DashboardService {
         if (CollectionUtils.isEmpty(page.getRecords())) {
             throw new DataNotFoundException();
         }
-        Dashboard data = dashboardConverter.do2model(page.getRecords().get(0));
+        Dashboard dashboardData = dashboardConverter.do2model(page.getRecords().get(0));
         LambdaQueryWrapper<DashboardChartRelationDO> dashboardChartRelationQueryWrapper = new LambdaQueryWrapper<>();
         dashboardChartRelationQueryWrapper.eq(DashboardChartRelationDO::getDashboardId, param.getId());
         List<DashboardChartRelationDO> relationDO = getMapper1().selectList(
             dashboardChartRelationQueryWrapper);
         List<Long> chartIds = relationDO.stream().map(DashboardChartRelationDO::getChartId).toList();
-        data.setChartIds(chartIds);
-        return DataResult.of(data);
+        dashboardData.setChartIds(chartIds);
+        return DataResult.of(dashboardData);
     }
 
     @Override
