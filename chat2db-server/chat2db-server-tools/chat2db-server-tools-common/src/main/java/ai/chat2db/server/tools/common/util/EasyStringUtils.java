@@ -27,7 +27,7 @@ public class EasyStringUtils {
      * @return modified job number
      */
     public static String cutUserId(String userId) {
-        if (!org.apache.commons.lang3.StringUtils.isNumeric(userId)) {
+        if (!StringUtils.isNumeric(userId)) {
             return userId;
         }
         int startIndex = 0;
