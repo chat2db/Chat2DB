@@ -20,7 +20,7 @@ public final class ZhipuChatCompletionsOptions {
     private String requestId;
 
     // sse-params
-    @JsonProperty(value = "incremental")
+    @JsonProperty(value = "stream")
     private Boolean stream = true;
 
     @JsonProperty(value = "sseFormat")
@@ -33,7 +33,7 @@ public final class ZhipuChatCompletionsOptions {
      * the behavior of the assistant, followed by alternating messages between the User and
      * Assistant roles.
      */
-    @JsonProperty(value = "prompt")
+    @JsonProperty(value = "messages")
     private List<FastChatMessage> prompt;
 
 

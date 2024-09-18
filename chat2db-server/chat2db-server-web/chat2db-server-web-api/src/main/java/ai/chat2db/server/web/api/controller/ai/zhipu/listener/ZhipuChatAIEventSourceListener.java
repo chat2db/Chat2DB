@@ -1,6 +1,5 @@
 package ai.chat2db.server.web.api.controller.ai.zhipu.listener;
 
-import ai.chat2db.server.web.api.controller.ai.fastchat.model.FastChatMessage;
 import ai.chat2db.server.web.api.controller.ai.zhipu.model.ZhipuChatCompletions;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,9 +11,9 @@ import okhttp3.ResponseBody;
 import okhttp3.sse.EventSource;
 import okhttp3.sse.EventSourceListener;
 import org.apache.commons.lang3.StringUtils;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.Objects;
 
 /**
@@ -47,7 +46,7 @@ public class ZhipuChatAIEventSourceListener extends EventSourceListener {
      */
     @SneakyThrows
     @Override
-    public void onEvent(EventSource eventSource, String id, String type, String data) {
+    public void onEvent(EventSource eventSource, String id, String type, @NotNull String data) {
         log.info("Zhipu Chat AI response data：{}", data);
         if (data.equals("[DONE]")) {
             log.info("Zhipu Chat AI closed");
@@ -60,14 +59,9 @@ public class ZhipuChatAIEventSourceListener extends EventSourceListener {
         }
 
         ZhipuChatCompletions chatCompletions = mapper.readValue(data, ZhipuChatCompletions.class);
-        String text = chatCompletions.getData();
-        if (Objects.isNull(text)) {
-            for (FastChatMessage message : chatCompletions.getBody().getChoices()) {
-                if (message != null && message.getContent() != null) {
-                    text = message.getContent();
-                }
-            }
-        }
+        String text = chatCompletions.getChoices().get(0).getDelta()==null?
+                chatCompletions.getChoices().get(0).getText()
+                :chatCompletions.getChoices().get(0).getDelta().getContent();
 
         Message message = new Message();
         message.setContent(text);
@@ -79,15 +73,7 @@ public class ZhipuChatAIEventSourceListener extends EventSourceListener {
 
     @Override
     public void onClosed(EventSource eventSource) {
-        try {
-            sseEmitter.send(SseEmitter.event()
-                .id("[DONE]")
-                .data("[DONE]"));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        sseEmitter.complete();
-        log.info("ZhipuChatAI close sse connection...");
+        log.info("Zhipu Chat AI closes sse connection closed");
     }
 
     @Override

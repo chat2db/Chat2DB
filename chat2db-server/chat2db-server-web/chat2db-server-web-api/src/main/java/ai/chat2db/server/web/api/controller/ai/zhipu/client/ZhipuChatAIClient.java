@@ -58,8 +58,8 @@ public class ZhipuChatAIClient {
 
     public static void refresh() {
         String apiKey = "";
-        String apiHost = "https://open.bigmodel.cn/api/paas/v3/model-api/";
-        String model = "chatglm_turbo";
+        String apiHost = "";
+        String model = "";
         ConfigService configService = ApplicationContextUtil.getBean(ConfigService.class);
         Config apiHostConfig = configService.find(ZHIPU_HOST).getData();
         if (apiHostConfig != null && StringUtils.isNotBlank(apiHostConfig.getContent())) {

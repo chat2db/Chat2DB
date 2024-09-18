@@ -4,6 +4,7 @@
 package ai.chat2db.server.web.api.controller.ai.zhipu.model;
 
 import ai.chat2db.server.web.api.controller.ai.baichuan.model.BaichuanChatMessage;
+import ai.chat2db.server.web.api.controller.ai.fastchat.model.FastChatChoice;
 import ai.chat2db.server.web.api.controller.ai.fastchat.model.FastChatCompletionsUsage;
 import ai.chat2db.server.web.api.controller.ai.fastchat.model.FastChatMessage;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -24,9 +25,16 @@ public final class ZhipuChatBody {
      * The log probabilities model for tokens associated with this completions choice.
      */
     @JsonProperty(value = "choices")
-    private List<FastChatMessage> choices;
+    private List<FastChatChoice> choices;
 
     @JsonProperty(value = "usage")
     private FastChatCompletionsUsage usage;
+    @JsonCreator
+    private ZhipuChatBody(
+        @JsonProperty(value = "choices") List<FastChatChoice> choices,
+        @JsonProperty(value = "usage") FastChatCompletionsUsage usage) {
+        this.choices = choices;
+        this.usage = usage;
+    }
 
 }

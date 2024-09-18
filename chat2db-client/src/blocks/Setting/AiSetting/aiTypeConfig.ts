@@ -23,8 +23,8 @@ const AIFormConfig: Record<AIType, IAiConfigBooleans> = {
   },
   [AIType.ZHIPUAI]: {
     apiKey: true,
-    apiHost: 'https://open.bigmodel.cn/api/paas/v3/model-api/',
-    model: 'chatglm_turbo',
+    apiHost: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    model: 'codegeex-4',
   },
   [AIType.BAICHUANAI]: {
     apiKey: true,

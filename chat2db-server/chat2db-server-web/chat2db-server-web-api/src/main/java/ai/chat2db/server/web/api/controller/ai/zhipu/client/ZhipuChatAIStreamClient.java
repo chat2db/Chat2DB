@@ -204,11 +204,10 @@ public class ZhipuChatAIStreamClient {
             ObjectMapper mapper = new ObjectMapper();
             mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
             String requestBody = mapper.writeValueAsString(completionsOptions);
-
-            String url = this.apiHost + "/" + this.model + "/" + "sse-invoke";
+            log.info("使用的model:{}", this.model);
             EventSource.Factory factory = EventSources.createFactory(this.okHttpClient);
             Request request = new Request.Builder()
-                .url(url)
+                .url(apiHost)
                 .post(RequestBody.create(MediaType.parse(ContentType.JSON.getValue()), requestBody))
                 .build();
             //Create event
