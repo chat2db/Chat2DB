@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { appendAgentTimeline, type AgentTimelineEntry, type AgentTraceEntry } from '../../agentEvents';
 import { getAgentActivity, splitSkillMessage, toolSummary, toolExecutions } from './presentation';
+import { timelineSections } from './timelineSections';
 import type { AgentQuestionItem } from '../../agentQuestions';
 import zh from '@/i18n/zh-CN/stream';
 import en from '@/i18n/en-US/stream';
@@ -84,3 +85,36 @@ assert.equal(mergedTool.length, 1);
 assert.equal(mergedTool[0].description, '查询数据库中的数据');
 assert.equal(mergedTool[0].completed, true);
 assert.equal(mergedTool[0].durationMs, 12);
+
+const ordered: AgentTimelineEntry[] = [
+  { sequence: 1, kind: 'text', text: 'Searching' },
+  tool(2, 'query', 'db_query'),
+  tool(3, 'question', 'askUserQuestion'),
+  { sequence: 4, kind: 'question', id: 'question-card' },
+  done(5, 'question'),
+  { sequence: 6, kind: 'text', text: 'Answer received' },
+  tool(7, 'chart', 'render_chart'),
+  { sequence: 8, kind: 'chart', id: 'chart-card' },
+  done(9, 'chart'),
+  done(10, 'query'),
+  { sequence: 11, kind: 'approval', id: 'approval-card' },
+  tool(12, 'next', 'read'),
+  done(13, 'next', true),
+];
+const sections = timelineSections(ordered);
+assert.deepEqual(sections.map(({ sequence, kind }) => [sequence, kind]), [
+  [1, 'text'], [2, 'tools'], [4, 'question'], [6, 'text'], [7, 'tools'], [8, 'chart'], [11, 'approval'], [12, 'tools'],
+]);
+assert.equal(sections[2], ordered[3], 'The question keeps its identity when an answer and result arrive');
+const groups = sections.filter((section) => section.kind === 'tools');
+assert.deepEqual(groups.map((section) => toolSummary(section.entries)?.count), [2, 1, 1]);
+assert.deepEqual(groups[0].entries.map(({ id, type }) => [id, type]), [
+  ['query', 'tool_call'], ['question', 'tool_call'], ['question', 'tool_result'], ['query', 'tool_result'],
+]);
+const beforeAnswer = timelineSections(ordered.slice(0, 4));
+assert.deepEqual(beforeAnswer.map(({ sequence, kind }) => [sequence, kind]),
+  sections.slice(0, 3).map(({ sequence, kind }) => [sequence, kind]));
+assert.equal(beforeAnswer[1].kind === 'tools' && beforeAnswer[1].entries.length, 2,
+  'Incremental grouping does not mutate a previous render');
+assert.deepEqual(timelineSections([done(1, 'historical-result')]).map((section) => section.kind), ['tools']);
+assert.deepEqual(timelineSections([{ sequence: 1, kind: 'trace', trace: { type: 'reasoning' } }]), []);

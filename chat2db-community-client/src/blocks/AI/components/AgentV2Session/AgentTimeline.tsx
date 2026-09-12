@@ -2,13 +2,14 @@ import type { ReactNode } from 'react';
 import { Alert } from 'antd';
 import QuestionCard from '@/components/QuestionCard';
 import type { QuestionResponse } from '@/types/question';
-import type { AgentApprovalItem, AgentTimelineEntry, AgentTraceEntry } from '../../agentEvents';
+import type { AgentApprovalItem, AgentTimelineEntry } from '../../agentEvents';
 import type { AgentQuestionItem } from '../../agentQuestions';
 import type { AgentChart } from '../../agentCharts';
 import AgentApprovalCard from '../AgentApprovalCard';
 import AgentChartCard from '../AgentChartCard';
 import AgentTraceGroup from './AgentTraceGroup';
 import { getAgentActivity } from './presentation';
+import { timelineSections } from './timelineSections';
 
 export interface AgentTimelineProps {
   entries: AgentTimelineEntry[];
@@ -27,16 +28,26 @@ export interface AgentTimelineProps {
 
 export default function AgentTimeline(props: AgentTimelineProps) {
   const { entries, runId } = props;
-  const activity = getAgentActivity(!!props.active, entries, runId, props.questions, props.approvals, props.cancelling);
+  const currentActivity = getAgentActivity(
+    !!props.active, entries, runId, props.questions, props.approvals, props.cancelling,
+  );
+  // Waiting is already visible on the question/approval card.
+  const activity = currentActivity?.kind === 'question' || currentActivity?.kind === 'approval'
+    ? undefined : currentActivity;
   const charts = new Map(props.charts.filter((chart) => chart.runId === runId).map((chart) => [chart.id, chart]));
-  const traces: AgentTraceEntry[] = entries.flatMap((entry) => entry.kind === 'trace'
-    && (entry.trace.type === 'tool_call' || entry.trace.type === 'tool_result') ? [entry.trace] : []);
+  const sections = timelineSections(entries);
+  const lastSection = sections.at(-1);
   const nodes: ReactNode[] = [];
-  entries.forEach((entry) => {
-    if (entry.kind === 'trace' && entry.trace.type !== 'error') return;
+  sections.forEach((entry) => {
     let content: ReactNode;
     // The discriminated union covers every event kind.
     switch (entry.kind) {
+      case 'tools':
+        content = <AgentTraceGroup entries={entry.entries} runActive={props.active}
+          activity={entry === lastSection ? activity : undefined}
+          status={entry === lastSection ? props.status : undefined} onInspect={props.onInspectTools}
+                  />;
+        break;
       case 'text':
         content = props.renderMarkdown(entry.text);
         break;
@@ -68,7 +79,6 @@ export default function AgentTimeline(props: AgentTimelineProps) {
     }
     if (content) nodes.push(<div key={entry.sequence} data-agent-sequence={entry.sequence}>{content}</div>);
   });
-  return <>{nodes}<AgentTraceGroup key="progress" entries={traces} activity={activity}
-    status={props.status} onInspect={props.onInspectTools}
-                  /></>;
+  return <>{nodes}{lastSection?.kind !== 'tools' && (activity || props.status) &&
+    <AgentTraceGroup key="progress" entries={[]} activity={activity} status={props.status} />}</>;
 }
