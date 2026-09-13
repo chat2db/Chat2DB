@@ -20,6 +20,7 @@ for (const locale of [zh, en, ja, ko, es]) {
   assert.ok(locale['setting.agent.workingDirectory.choose']);
   assert.ok(locale['setting.agent.tool.enable']);
   assert.ok(locale['setting.agent.tool.execute_sql']);
+  assert.ok(locale['setting.agent.tools.userFilesHint']);
 }
 assert.equal(toolDescription({ ...tool, name: 'custom_tool', description: 'Custom tool description' }, translate),
   'Custom tool description');

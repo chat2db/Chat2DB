@@ -9,6 +9,7 @@ import ai.chat2db.community.domain.api.model.agent.*;
 import ai.chat2db.community.domain.api.model.agent.feature.AgentWorkspaceSettings;
 import ai.chat2db.community.domain.api.model.agent.tool.AgentToolExecutionContext;
 import ai.chat2db.community.domain.api.model.agent.tool.AgentToolState;
+import ai.chat2db.community.domain.api.model.agent.tool.AgentNativePreparation;
 import ai.chat2db.community.domain.api.service.agent.*;
 import ai.chat2db.community.domain.api.service.agent.IAiAgentWorkspaceService;
 import ai.chat2db.community.domain.api.service.sys.IIdentityService;
@@ -18,6 +19,7 @@ import ai.chat2db.community.tools.enums.agent.AgentEventType;
 import ai.chat2db.community.tools.model.Context;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeEvent;
 import ai.chat2db.community.tools.model.agent.runtime.AgentToolAccess;
+import ai.chat2db.community.tools.model.agent.tool.AgentOutputReference;
 import ai.chat2db.community.tools.util.AgentTrace;
 import ai.chat2db.community.tools.util.ContextUtils;
 import ai.chat2db.community.tools.util.agent.AgentNativeTools;
@@ -46,9 +48,12 @@ public class AgentToolGatewayService implements AgentToolAccessService {
     private final AgentApprovalService approvals;
     private final List<IAiAgentWorkspaceService> workspaces;
     private final AgentGatewayAddress address;
+    private final IAiAgentOutputService outputs;
+    private final IAiAgentFileAccessService files;
 
     public AgentToolGatewayService(AgentDatabaseToolRegistry tools, AgentQuestionTool questionTool, AgentChartTool chartTool, AgentSessionStorage sessions, AgentRunStorage runs,
-            IIdentityService identity, AgentApprovalService approvals, List<IAiAgentWorkspaceService> workspaces, AgentGatewayAddress address) {
+            IIdentityService identity, AgentApprovalService approvals, List<IAiAgentWorkspaceService> workspaces, AgentGatewayAddress address,
+            IAiAgentOutputService outputs, IAiAgentFileAccessService files) {
         this.tools = tools;
         this.questionTool = questionTool;
         this.chartTool = chartTool;
@@ -58,6 +63,8 @@ public class AgentToolGatewayService implements AgentToolAccessService {
         this.approvals = approvals;
         this.workspaces = workspaces;
         this.address = address;
+        this.outputs = outputs;
+        this.files = files;
     }
 
     @Override
@@ -85,7 +92,8 @@ public class AgentToolGatewayService implements AgentToolAccessService {
         List<String> names = new ArrayList<>(tools.names());
         names.add(AgentQuestionTool.NAME);
         names.add(AgentChartTool.NAME);
-        AgentNativeTools.currentPlatform().stream().filter(this::nativeToolEnabled).forEach(names::add);
+        AgentNativeTools.currentPlatform().stream()
+                .filter(name -> isFileReader(name) || nativeToolEnabled(name)).forEach(names::add);
         return names;
     }
 
@@ -116,7 +124,8 @@ public class AgentToolGatewayService implements AgentToolAccessService {
                         || candidate.status() == AgentRunStatus.ACCEPTED
                         || candidate.status() == AgentRunStatus.WAITING_APPROVAL)
                 .findFirst().orElseThrow(() -> new IllegalStateException("Agent run is not active"));
-        if (!tools.names().contains(toolName) && !AgentQuestionTool.NAME.equals(toolName) && !AgentChartTool.NAME.equals(toolName)) return tools.execute(toolName, arguments);
+        if (!tools.names().contains(toolName) && !AgentQuestionTool.NAME.equals(toolName)
+                && !AgentChartTool.NAME.equals(toolName) && !isFileTool(toolName)) return tools.execute(toolName, arguments);
         String body = json.writeValueAsString(arguments);
         if (body.length() > 64 * 1024) throw new IllegalArgumentException("Tool arguments exceed the size limit");
         String digest = digest(toolName + "\n" + body);
@@ -150,8 +159,10 @@ public class AgentToolGatewayService implements AgentToolAccessService {
                     case AgentQuestionTool.NAME -> questionTool.execute(access.sessionId, run.id(), toolCallId,
                             access.userId, arguments, access.sink, executionContext.active());
                     case AgentChartTool.NAME -> chartTool.execute(arguments, executionContext);
+                    case "read", "grep", "ls", "find" -> files.execute(executionContext, toolName, arguments);
                     default -> tools.execute(toolName, arguments, executionContext);
                 };
+                if (!isFileTool(toolName)) result = outputs.present(result, executionContext);
             } finally {
                 if (previous == null) ContextUtils.removeContext(); else ContextUtils.setContext(previous);
             }
@@ -169,7 +180,7 @@ public class AgentToolGatewayService implements AgentToolAccessService {
     }
 
     @Override
-    public AgentWorkspaceSettings prepareNative(String ticket, String address, String toolCallId,
+    public AgentNativePreparation prepareNative(String ticket, String address, String toolCallId,
             String toolName, Map<String, Object> arguments) throws Exception {
         arguments = toolArguments(arguments);
         Access access = requireAccess(ticket, address);
@@ -183,7 +194,8 @@ public class AgentToolGatewayService implements AgentToolAccessService {
         if (body.length() > 2 * 1024 * 1024) throw new IllegalArgumentException("Tool arguments exceed the size limit");
         String argumentsDigest = digest(toolName + "\n" + body);
         String executionId = run.id() + ":" + toolCallId;
-        NativePreparation preparation = new NativePreparation(argumentsDigest, new CompletableFuture<>());
+        NativePreparation preparation = new NativePreparation(run.id(), toolCallId, toolName, UUID.randomUUID().toString(),
+                argumentsDigest, new CompletableFuture<>());
         NativePreparation existing = access.nativePreparations.putIfAbsent(executionId, preparation);
         if (existing != null) {
             if (!existing.digest.equals(argumentsDigest)) throw new IllegalArgumentException("Tool call arguments have changed");
@@ -192,6 +204,7 @@ public class AgentToolGatewayService implements AgentToolAccessService {
         try {
             if (access.nativePreparations.size() > 1000) throw new IllegalStateException("Session tool call limit reached");
             String cwd = workspaces.get(0).resolveWorkingDirectory(access.sessionId);
+            files.authorizeNative(access.sessionId, toolName, cwd, arguments);
             AgentTrace.record("tool.native.preparing", access.sessionId, run.id(),
                     Map.of("toolCallId", toolCallId, "tool", toolName, "workingDirectory", cwd,
                             "argumentsSha256", argumentsDigest));
@@ -217,7 +230,7 @@ public class AgentToolGatewayService implements AgentToolAccessService {
             }
             if (!isActive(access, run.id())) throw new IllegalStateException("Agent run has stopped");
             if (!nativeToolEnabled(toolName)) throw new IllegalStateException("Native tool has been disabled");
-            AgentWorkspaceSettings result = new AgentWorkspaceSettings(cwd);
+            AgentNativePreparation result = new AgentNativePreparation(cwd, preparation.id);
             preparation.result.complete(result);
             AgentTrace.record("tool.native.authorized", access.sessionId, run.id(),
                     Map.of("toolCallId", toolCallId, "tool", toolName, "workingDirectory", cwd));
@@ -229,6 +242,78 @@ public class AgentToolGatewayService implements AgentToolAccessService {
             throw error;
         }
     }
+
+    @Override
+    public Object output(String ticket, String address, String toolCallId, String toolName,
+            Map<String, Object> arguments) throws Exception {
+        Access access = requireAccess(ticket, address);
+        // Completion remains authorized after cancellation, but only for an already prepared invocation.
+        String preparationId = requiredString(arguments, "preparationId");
+        NativePreparation prepared = access.nativePreparations.values().stream()
+                .filter(preparation -> preparation.id.equals(preparationId) && preparation.toolCallId.equals(toolCallId)
+                        && preparation.toolName.equals(toolName)).findFirst()
+                .orElseThrow(() -> new SecurityException("Native tool output has no authorized invocation"));
+        if (!prepared.result.isDone() || prepared.result.isCompletedExceptionally()) {
+            throw new SecurityException("Native tool execution was not authorized");
+        }
+        AgentToolExecutionContext context = new AgentToolExecutionContext(access.sessionId, prepared.runId, toolCallId,
+                access.userId, access.sink, () -> isActive(access, prepared.runId));
+        String action = requiredString(arguments, "action");
+        Context previous = ContextUtils.queryThreadContext();
+        try {
+            ContextUtils.setContext(access.context);
+            return switch (action) {
+                case "begin" -> outputs.begin(context, requiredString(arguments, "format"));
+                case "append" -> {
+                    String content = requiredString(arguments, "content");
+                    if (content.length() > 96 * 1024) throw new IllegalArgumentException("Output chunk is too large");
+                    outputs.append(context, requiredString(arguments, "uploadId"), content);
+                    yield Map.of("accepted", true);
+                }
+                case "finish" -> {
+                    AgentOutputReference reference = outputs.finish(context, requiredString(arguments, "uploadId"),
+                            Boolean.TRUE.equals(arguments.get("complete")), boundedString(arguments.get("warning")));
+                    access.outputReferences.put(prepared.id, reference);
+                    yield reference;
+                }
+                case "present" -> {
+                    byte[] bytes = json.writeValueAsBytes(arguments.get("result"));
+                    if (bytes.length > 2 * 1024 * 1024) throw new IllegalArgumentException("Native result exceeds the size limit");
+                    NativeResult result = json.readValue(bytes, NativeResult.class);
+                    if (result.output() != null && bytes.length > 32 * 1024) {
+                        throw new IllegalArgumentException("Native output must contain only a bounded preview");
+                    }
+                    if (result.output() != null && result.output().artifactId() != null) {
+                        AgentOutputReference published = access.outputReferences.get(prepared.id);
+                        if (published == null || !Objects.equals(published.artifactId(), result.output().artifactId())) {
+                            throw new SecurityException("Output does not belong to this native invocation");
+                        }
+                        AgentOutputReference reference = outputs.reference(access.sessionId, access.userId, result.output().artifactId());
+                        yield new NativeResult(result.ok(), result.data(), reference, result.warning());
+                    }
+                    yield outputs.present(result, context);
+                }
+                default -> throw new IllegalArgumentException("Unknown output action");
+            };
+        } finally {
+            if (previous == null) ContextUtils.removeContext(); else ContextUtils.setContext(previous);
+        }
+    }
+
+    private static String requiredString(Map<String, Object> arguments, String key) {
+        if (!(arguments.get(key) instanceof String value) || value.isBlank()) {
+            throw new IllegalArgumentException(key + " is required");
+        }
+        return value;
+    }
+
+    private static String boundedString(Object value) {
+        if (!(value instanceof String text)) return null;
+        return text.substring(0, Math.min(1000, text.length()));
+    }
+
+    private static boolean isFileReader(String name) { return "read".equals(name) || "grep".equals(name); }
+    private static boolean isFileTool(String name) { return isFileReader(name) || "ls".equals(name) || "find".equals(name); }
 
     private static Map<String, Object> toolArguments(Map<String, Object> arguments) {
         if (!arguments.containsKey("description")) return arguments;
@@ -273,6 +358,7 @@ public class AgentToolGatewayService implements AgentToolAccessService {
         final Instant expiresAt = Instant.now().plusSeconds(7200);
         final Map<String, Execution> executions = new ConcurrentHashMap<>();
         final Map<String, NativePreparation> nativePreparations = new ConcurrentHashMap<>();
+        final Map<String, AgentOutputReference> outputReferences = new ConcurrentHashMap<>();
         Access(String sessionId, Long userId, Context context, IAgentRuntimeEventSink sink) {
             this.sessionId = sessionId;
             this.userId = userId;
@@ -281,7 +367,10 @@ public class AgentToolGatewayService implements AgentToolAccessService {
         }
     }
 
-    private record NativePreparation(String digest, CompletableFuture<AgentWorkspaceSettings> result) { }
+    private record NativePreparation(String runId, String toolCallId, String toolName, String id, String digest,
+            CompletableFuture<AgentNativePreparation> result) { }
+
+    public record NativeResult(boolean ok, Object data, AgentOutputReference output, String warning) implements IAgentToolResult<Object> { }
 
     private record Execution(String digest, CompletableFuture<IAgentToolResult<?>> result) { }
 }

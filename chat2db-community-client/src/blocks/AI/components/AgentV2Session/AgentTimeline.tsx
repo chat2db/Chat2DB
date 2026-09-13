@@ -12,6 +12,7 @@ import { getAgentActivity } from './presentation';
 import { timelineSections } from './timelineSections';
 
 export interface AgentTimelineProps {
+  sessionId?: string;
   entries: AgentTimelineEntry[];
   runId?: string;
   active?: boolean;
@@ -43,7 +44,7 @@ export default function AgentTimeline(props: AgentTimelineProps) {
     // The discriminated union covers every event kind.
     switch (entry.kind) {
       case 'tools':
-        content = <AgentTraceGroup entries={entry.entries} runActive={props.active}
+        content = <AgentTraceGroup sessionId={props.sessionId} entries={entry.entries} runActive={props.active}
           activity={entry === lastSection ? activity : undefined}
           status={entry === lastSection ? props.status : undefined} onInspect={props.onInspectTools}
                   />;

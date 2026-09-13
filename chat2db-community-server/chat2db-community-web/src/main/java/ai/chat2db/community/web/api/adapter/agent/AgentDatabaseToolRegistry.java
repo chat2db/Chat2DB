@@ -28,7 +28,6 @@ public class AgentDatabaseToolRegistry {
     private final JsonMapper json = JsonMapper.builder().disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
             .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT).build();
     private final Map<String, Entry> tools = new LinkedHashMap<>();
-    private static final int MAX_RESULT_BYTES = 512 * 1024;
 
     public AgentDatabaseToolRegistry(AgentDatabaseService service) {
         json.coercionConfigFor(LogicalType.Textual)
@@ -71,7 +70,7 @@ public class AgentDatabaseToolRegistry {
                         "Use returned column names and databaseType to generate dialect-correct SQL; inspect definition and warnings before treating it as executable DDL."),
                 describeFields, List.of("dataSourceId", "objects"), Describe.class, service::describeObjects);
         var queryFields = scopeFields(); queryFields.put("sql", text("One SQL statement or a complete SQL batch. All-SELECT batches run automatically; any other statement requires approval of the whole batch before execution. Use ORDER BY for stable query pagination.", 32768));
-        add("db_query", "Execute SQL statements in an explicit scope. A batch containing only SELECT queries runs automatically; if any statement needs approval, the entire batch waits for approval before any statement executes. Statements execute in order and stop at the first failure. Rejection or cancellation means no execution; never retry it without a new user request. Each outcome is in data.results with statementIndex, sql, success, data, page and error. Successful row results include resultId; pass that exact id to render_chart to visualize the saved data. DML/DDL outcomes include data.affectedRows when reported by the driver. page defaults to 1; pageSize defaults to 50, maximum 200. Each result has rows aligned with columns; values use database text, SQL NULL is JSON null. No 50-row preview or cell shortening is applied. hasMore/nextAction indicate another page; each page reruns the SQL, so results may change if data changes. Inspect schema before querying unknown tables.",
+        add("db_query", "Execute SQL statements in an explicit scope. A batch containing only SELECT queries runs automatically; if any statement needs approval, the entire batch waits for approval before any statement executes. Statements execute in order and stop at the first failure. Rejection or cancellation means no execution; never retry it without a new user request. Each outcome is in data.results with statementIndex, sql, success, data, page and error. Successful row results include resultId; pass that exact id to render_chart to visualize the saved data. DML/DDL outcomes include data.affectedRows when reported by the driver. page defaults to 1; pageSize defaults to 50, maximum 200. Each result has rows aligned with columns; values use database text, SQL NULL is JSON null. Large tool outputs include a bounded preview and system-managed output file references; use read or grep on the returned path to inspect more. hasMore/nextAction indicate another page; each page reruns the SQL, so results may change if data changes. Inspect schema before querying unknown tables.",
                 "Query data with typed column metadata and explicit pagination.", List.of("Check ok before using data. On error follow error.field and nextAction; never treat an error as an empty result.",
                         "Use explicit column lists and a stable ORDER BY. Check each result page.hasMore and data.cellWarnings before claiming results are complete."),
                 paged(queryFields), List.of("dataSourceId", "sql"), Query.class, service::query);
@@ -100,20 +99,6 @@ public class AgentDatabaseToolRegistry {
         } catch (RuntimeException error) {
             return DbAgentDatabaseResponse.failure("DATABASE_ERROR", null,
                     "Database operation failed: " + Objects.toString(error.getMessage(), error.getClass().getSimpleName()), null);
-        }
-        try {
-            if (json.writeValueAsBytes(result).length > MAX_RESULT_BYTES) {
-                var retry = new LinkedHashMap<>(arguments);
-                int size = retry.get("pageSize") instanceof Number number ? number.intValue() : 50;
-                retry.put("pageSize", Math.max(1, size / 2));
-                retry.put("page", 1);
-                boolean pageable = name.startsWith("db_search_") || result.data() instanceof DbAgentDatabaseResponse.SqlExecutionData execution && execution.readOnly();
-                return DbAgentDatabaseResponse.failure("RESULT_TOO_LARGE", null,
-                        "Result exceeds 512 KiB. Request fewer rows/columns or describe fewer objects; for a single large value use an explicit SQL substring. No partial result was returned. SQL may already have executed; never automatically retry a batch that can write. Changing pageSize restarts pagination at page 1.",
-                        pageable && size > 1 ? new AgentToolNextAction(name, retry) : null);
-            }
-        } catch (Exception error) {
-            return DbAgentDatabaseResponse.failure("RESULT_ENCODING_ERROR", null, "Cannot encode the database result.", null);
         }
         return result;
     }

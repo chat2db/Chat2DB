@@ -1,4 +1,5 @@
 export default {
+  "setting.agent.tools.userFilesHint": "以下のスイッチは作業ディレクトリへのアクセスを制御します。システムの結果とスキルファイルは常に読み取り専用で利用できます。",
   'setting.modelConfig.agentApi': 'Agent API プロトコル',
   "setting.agent.tool.enable": "有効にする",
   "setting.agent.workingDirectory.choose": "フォルダーを選択",

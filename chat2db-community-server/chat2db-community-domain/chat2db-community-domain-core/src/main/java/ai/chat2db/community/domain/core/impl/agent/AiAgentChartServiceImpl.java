@@ -13,7 +13,6 @@ import ai.chat2db.community.domain.api.service.agent.IAiAgentChartService;
 import ai.chat2db.community.domain.core.converter.agent.AgentChartConverter;
 import ai.chat2db.community.tools.enums.agent.AgentEventType;
 import ai.chat2db.community.tools.exception.agent.AgentChartException;
-import ai.chat2db.community.tools.exception.agent.AgentDatabaseException;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeEvent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -37,32 +37,36 @@ public class AiAgentChartServiceImpl implements IAiAgentChartService {
     public DbAgentDatabaseResponse<SqlExecutionData> captureQueryResults(
             DbAgentDatabaseResponse<SqlExecutionData> response, AgentToolExecutionContext context) {
         if (context == null || response.data() == null) return response;
-        List<DbAgentQueryResult> snapshots = new ArrayList<>();
         List<SqlResult> referenced = new ArrayList<>();
+        List<String> warnings = new ArrayList<>(response.warnings());
         for (SqlResult result : response.data().results()) {
             String id = null;
             if (result.success() && result.data() != null && !result.data().columns().isEmpty()) {
-                id = UUID.randomUUID().toString();
-                snapshots.add(AgentChartConverter.query2snapshot(id, result, response, context));
+                String generatedId = UUID.randomUUID().toString();
+                try {
+                    results.create(AgentChartConverter.query2snapshot(generatedId, result, response, context), context.userId());
+                    id = generatedId;
+                    var output = results.output(context.sessionId(), id, context.userId());
+                    if (output != null && !output.complete()) warnings.add(Objects.toString(output.warning(), "Only partial query output was saved"));
+                } catch (RuntimeException error) {
+                    warnings.add("Statement " + result.statementIndex() + " executed but its full result could not be saved. "
+                            + "Do not replay a batch that can write. " + Objects.toString(error.getMessage(), "Output storage failed"));
+                }
             }
             referenced.add(AgentChartConverter.result2reference(result, id));
         }
         var output = AgentChartConverter.results2response(response, referenced);
-        try {
-            if (json.writeValueAsBytes(output).length > 512 * 1024) {
-                throw new AgentDatabaseException("RESULT_TOO_LARGE", "sql",
-                        "Query result exceeds 512 KiB. Request fewer rows or columns. SQL already executed; do not automatically retry a batch that can write.", null);
-            }
-        } catch (JsonProcessingException error) {
-            throw new IllegalStateException("Cannot encode the Agent query result snapshot", error);
-        }
-        snapshots.forEach(snapshot -> results.create(snapshot, context.userId()));
-        return output;
+        return new DbAgentDatabaseResponse<>(output.ok(), output.scope(), output.data(), output.page(),
+                output.error(), output.nextAction(), List.copyOf(warnings));
     }
 
     @Override
     public AiAgentChart render(AiAgentChartRenderRequest request, AgentToolExecutionContext context) {
         requireActive(context);
+        var savedOutput = results.output(context.sessionId(), request.resultId(), context.userId());
+        if (savedOutput != null && !savedOutput.complete()) {
+            throw invalid("INCOMPLETE_SAVED_RESULT", "resultId", "Only partial query output was saved. Read the available file or request a smaller result before rendering.");
+        }
         DbAgentQueryResult source = results.get(context.sessionId(), request.resultId(), context.userId());
         if (source == null) throw invalid("RESULT_NOT_FOUND", "resultId", "Use a resultId returned by db_query in this conversation.");
         AiAgentChartType type;
@@ -102,6 +106,13 @@ public class AiAgentChartServiceImpl implements IAiAgentChartService {
             }
         }
         AiAgentChart chart = AgentChartConverter.request2chart(UUID.randomUUID().toString(), request, source, context, data);
+        try {
+            if (json.writeValueAsBytes(chart).length > 512 * 1024) {
+                throw invalid("CHART_TOO_LARGE", "resultId", "Selected chart data exceeds 512 KiB. Choose smaller labels or aggregate data in SQL; the saved query output remains available.");
+            }
+        } catch (JsonProcessingException error) {
+            throw invalid("CHART_ENCODING_ERROR", "resultId", "Cannot encode the selected chart data.");
+        }
         requireActive(context);
         context.eventSink().emit(new AgentRuntimeEvent(UUID.randomUUID().toString(), context.sessionId(), context.runId(),
                 AgentEventType.CHART_CREATED, Map.of("chart", chart), LocalDateTime.now()));

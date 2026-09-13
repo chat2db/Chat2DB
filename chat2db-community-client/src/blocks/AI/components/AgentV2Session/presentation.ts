@@ -12,6 +12,7 @@ export interface ToolExecution {
   arguments?: string;
   content?: string;
   durationMs?: number;
+  outputs?: AgentTraceEntry['outputs'];
   completed: boolean;
   failed: boolean;
 }
@@ -28,6 +29,7 @@ export const toolExecutions = (entries: AgentTraceEntry[]): ToolExecution[] => {
       arguments: entry.arguments || previous?.arguments,
       content: result ? entry.content : previous?.content,
       durationMs: entry.durationMs ?? previous?.durationMs,
+      ...(entry.outputs || previous?.outputs ? { outputs: entry.outputs || previous?.outputs } : {}),
       completed: result || !!previous?.completed,
       failed: result ? !!entry.failed : !!previous?.failed,
     });

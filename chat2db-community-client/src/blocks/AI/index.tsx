@@ -2292,6 +2292,7 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
   const renderMessages = () => {
     if (runtimeChoice === 'PI') {
       return <AgentV2Session
+        sessionId={currentSessionId || undefined}
         messages={messages}
         currentRoundUserMessageId={currentRoundUserMessageId}
         streamingText={streamingText}

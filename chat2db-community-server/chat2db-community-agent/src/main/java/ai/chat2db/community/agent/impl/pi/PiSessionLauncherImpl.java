@@ -80,6 +80,9 @@ public class PiSessionLauncherImpl implements IPiSessionLauncher {
             try (var resource = new ClassPathResource("agent/chat2db-tools.mjs").getInputStream()) {
                 Files.copy(resource, extension, StandardCopyOption.REPLACE_EXISTING);
             }
+            try (var resource = new ClassPathResource("agent/chat2db-output.mjs").getInputStream()) {
+                Files.copy(resource, configuration.resolve("chat2db-output.mjs"), StandardCopyOption.REPLACE_EXISTING);
+            }
             List<Path> loadedExtensions = new ArrayList<>(extensions);
             loadedExtensions.add(extension);
             process = supervisor.start(

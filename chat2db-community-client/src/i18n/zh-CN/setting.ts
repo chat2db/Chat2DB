@@ -1,4 +1,5 @@
 export default {
+  "setting.agent.tools.userFilesHint": "以下开关控制工具对用户工作目录的访问。系统结果和技能文件始终只读可用。",
   'setting.modelConfig.agentApi': 'Agent API 协议',
   "setting.agent.tool.enable": "启用",
   "setting.agent.workingDirectory.choose": "选择文件夹",

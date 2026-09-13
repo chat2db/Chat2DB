@@ -222,6 +222,7 @@ public class AgentDatabaseServiceImpl implements AgentDatabaseService {
             execute.setPageNo(page);
             execute.setPageSize(size);
             execute.setPageSizeAll(false);
+            execute.setFullResultValues(true);
             execute.setErrorContinue(false);
             List<ExecuteResponse> responses;
             try { responses = executor.execute(execute); }

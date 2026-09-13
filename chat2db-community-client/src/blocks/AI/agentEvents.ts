@@ -1,4 +1,6 @@
 import type { AgentEvent } from '@/service/agent';
+import type { AgentOutputItem } from '@/types/agentOutput';
+import { toolOutputItems } from './agentOutput';
 import { agentContextDatabaseType, agentContextSummary } from './agentContext';
 
 export interface AgentApprovalItem {
@@ -74,6 +76,7 @@ export interface AgentTraceEntry {
   failed?: boolean;
   description?: string;
   durationMs?: number;
+  outputs?: AgentOutputItem[];
   occurredAtMs?: number;
 }
 
@@ -245,18 +248,20 @@ export const agentEventTrace = (event: AgentEvent): AgentTraceEntry | undefined 
   }
   if (event.type === 'TOOL_CALL_COMPLETED' || event.type === 'TOOL_CALL_FAILED') {
     const result = payload.result as { content?: { type: string; text?: string }[];
-      details?: { data?: { chartId?: unknown }; durationMs?: unknown };
+      details?: { data?: { chartId?: unknown }; durationMs?: unknown; output?: unknown };
       durationMs?: unknown } | undefined;
     const content = Array.isArray(result?.content)
       ? result.content.filter((item) => item.type === 'text').map((item) => item.text || '')
 .join('\n')
       : JSON.stringify(payload.result || payload);
     const chartId = result?.details?.data?.chartId;
+    const outputs = toolOutputItems(content, result?.details);
     const durationCandidates = [payload.durationMs, result?.durationMs, result?.details?.durationMs];
     const durationMs = durationCandidates.find((value): value is number => typeof value === 'number'
       && Number.isFinite(value) && value >= 0);
     return { type: 'tool_result', id, name, content, ...(occurredAtMs === undefined ? {} : { occurredAtMs }),
       ...(durationMs === undefined ? {} : { durationMs }),
+      ...(outputs.length ? { outputs } : {}),
       ...(event.type === 'TOOL_CALL_FAILED' ? { failed: true } : {}),
       ...(name === 'render_chart' && typeof chartId === 'string' ? { chartId } : {}) };
   }

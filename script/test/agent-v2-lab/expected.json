@@ -1,0 +1,482 @@
+{
+  "dataset": "fixed-2026-six-months",
+  "schema": "agent_v2_lab",
+  "scope_schema": "agent_v2_scope_lab",
+  "table_rows": {
+    "customers": 48,
+    "products": 12,
+    "orders": 324,
+    "order_items": 972,
+    "payments": 289,
+    "refunds": 23,
+    "event_log": 600,
+    "output_documents": 4,
+    "value_edges": 6,
+    "approval_sandbox": 2,
+    "idempotency_probe": 0,
+    "_lab_manifest": 1
+  },
+  "order_status_counts": {
+    "CANCELLED": 32,
+    "COMPLETED": 160,
+    "PAID": 33,
+    "PENDING": 33,
+    "SHIPPED": 66
+  },
+  "payment_status_counts": {
+    "FAILED": 30,
+    "SUCCESS": 259
+  },
+  "refund_status_counts": {
+    "PENDING": 9,
+    "SUCCESS": 14
+  },
+  "gross_revenue": "32265.51",
+  "successful_refunds": "442.11",
+  "net_revenue": "31823.40",
+  "monthly_paid": [
+    {
+      "month": "2026-01",
+      "revenue": "2201.77",
+      "paid_orders": 19
+    },
+    {
+      "month": "2026-02",
+      "revenue": "3354.52",
+      "paid_orders": 29
+    },
+    {
+      "month": "2026-03",
+      "revenue": "4731.98",
+      "paid_orders": 39
+    },
+    {
+      "month": "2026-04",
+      "revenue": "5947.80",
+      "paid_orders": 48
+    },
+    {
+      "month": "2026-05",
+      "revenue": "7223.87",
+      "paid_orders": 57
+    },
+    {
+      "month": "2026-06",
+      "revenue": "8805.57",
+      "paid_orders": 67
+    }
+  ],
+  "monthly_all_orders": [
+    {
+      "month": "2026-01",
+      "order_count": 24
+    },
+    {
+      "month": "2026-02",
+      "order_count": 36
+    },
+    {
+      "month": "2026-03",
+      "order_count": 48
+    },
+    {
+      "month": "2026-04",
+      "order_count": 60
+    },
+    {
+      "month": "2026-05",
+      "order_count": 72
+    },
+    {
+      "month": "2026-06",
+      "order_count": 84
+    }
+  ],
+  "category_paid_item_revenue": [
+    {
+      "category": "数码配件",
+      "revenue": "7168.43"
+    },
+    {
+      "category": "家居生活",
+      "revenue": "7780.43"
+    },
+    {
+      "category": "运动户外",
+      "revenue": "8348.80"
+    },
+    {
+      "category": "办公文具",
+      "revenue": "8887.35"
+    }
+  ],
+  "region_paid_revenue": [
+    {
+      "region": "华东",
+      "revenue": "8487.37"
+    },
+    {
+      "region": "华南",
+      "revenue": "8635.84"
+    },
+    {
+      "region": "华北",
+      "revenue": "7838.06"
+    },
+    {
+      "region": "西南",
+      "revenue": "7304.24"
+    }
+  ],
+  "provider_success_count": [
+    {
+      "provider": "ALIPAY",
+      "payment_count": 87
+    },
+    {
+      "provider": "CARD",
+      "payment_count": 86
+    },
+    {
+      "provider": "WECHAT",
+      "payment_count": 86
+    }
+  ],
+  "funnel": [
+    {
+      "stage": "创建订单",
+      "stage_order": 1,
+      "orders": 324
+    },
+    {
+      "stage": "支付成功",
+      "stage_order": 2,
+      "orders": 259
+    },
+    {
+      "stage": "已经发货",
+      "stage_order": 3,
+      "orders": 226
+    },
+    {
+      "stage": "交易完成",
+      "stage_order": 4,
+      "orders": 160
+    }
+  ],
+  "customer_scatter": [
+    {
+      "customer_id": 1,
+      "order_count": 6,
+      "total_spend": "750.81"
+    },
+    {
+      "customer_id": 2,
+      "order_count": 6,
+      "total_spend": "884.11"
+    },
+    {
+      "customer_id": 3,
+      "order_count": 5,
+      "total_spend": "623.29"
+    },
+    {
+      "customer_id": 4,
+      "order_count": 6,
+      "total_spend": "687.22"
+    },
+    {
+      "customer_id": 5,
+      "order_count": 6,
+      "total_spend": "736.61"
+    },
+    {
+      "customer_id": 6,
+      "order_count": 5,
+      "total_spend": "764.68"
+    },
+    {
+      "customer_id": 7,
+      "order_count": 5,
+      "total_spend": "616.56"
+    },
+    {
+      "customer_id": 8,
+      "order_count": 6,
+      "total_spend": "648.00"
+    },
+    {
+      "customer_id": 9,
+      "order_count": 6,
+      "total_spend": "865.02"
+    },
+    {
+      "customer_id": 10,
+      "order_count": 5,
+      "total_spend": "487.70"
+    },
+    {
+      "customer_id": 11,
+      "order_count": 6,
+      "total_spend": "719.86"
+    },
+    {
+      "customer_id": 12,
+      "order_count": 6,
+      "total_spend": "686.66"
+    },
+    {
+      "customer_id": 13,
+      "order_count": 5,
+      "total_spend": "633.88"
+    },
+    {
+      "customer_id": 14,
+      "order_count": 5,
+      "total_spend": "730.05"
+    },
+    {
+      "customer_id": 15,
+      "order_count": 6,
+      "total_spend": "733.34"
+    },
+    {
+      "customer_id": 16,
+      "order_count": 6,
+      "total_spend": "683.59"
+    },
+    {
+      "customer_id": 17,
+      "order_count": 5,
+      "total_spend": "604.66"
+    },
+    {
+      "customer_id": 18,
+      "order_count": 5,
+      "total_spend": "768.31"
+    },
+    {
+      "customer_id": 19,
+      "order_count": 5,
+      "total_spend": "617.56"
+    },
+    {
+      "customer_id": 20,
+      "order_count": 5,
+      "total_spend": "546.90"
+    },
+    {
+      "customer_id": 21,
+      "order_count": 5,
+      "total_spend": "712.71"
+    },
+    {
+      "customer_id": 22,
+      "order_count": 5,
+      "total_spend": "487.17"
+    },
+    {
+      "customer_id": 23,
+      "order_count": 6,
+      "total_spend": "718.60"
+    },
+    {
+      "customer_id": 24,
+      "order_count": 6,
+      "total_spend": "683.04"
+    },
+    {
+      "customer_id": 25,
+      "order_count": 5,
+      "total_spend": "636.77"
+    },
+    {
+      "customer_id": 26,
+      "order_count": 5,
+      "total_spend": "733.54"
+    },
+    {
+      "customer_id": 27,
+      "order_count": 5,
+      "total_spend": "621.96"
+    },
+    {
+      "customer_id": 28,
+      "order_count": 6,
+      "total_spend": "679.93"
+    },
+    {
+      "customer_id": 29,
+      "order_count": 5,
+      "total_spend": "604.13"
+    },
+    {
+      "customer_id": 30,
+      "order_count": 6,
+      "total_spend": "907.86"
+    },
+    {
+      "customer_id": 31,
+      "order_count": 6,
+      "total_spend": "751.87"
+    },
+    {
+      "customer_id": 32,
+      "order_count": 5,
+      "total_spend": "550.91"
+    },
+    {
+      "customer_id": 33,
+      "order_count": 5,
+      "total_spend": "716.06"
+    },
+    {
+      "customer_id": 34,
+      "order_count": 5,
+      "total_spend": "488.17"
+    },
+    {
+      "customer_id": 35,
+      "order_count": 6,
+      "total_spend": "714.83"
+    },
+    {
+      "customer_id": 36,
+      "order_count": 5,
+      "total_spend": "564.08"
+    },
+    {
+      "customer_id": 37,
+      "order_count": 6,
+      "total_spend": "752.22"
+    },
+    {
+      "customer_id": 38,
+      "order_count": 6,
+      "total_spend": "888.60"
+    },
+    {
+      "customer_id": 39,
+      "order_count": 5,
+      "total_spend": "623.84"
+    },
+    {
+      "customer_id": 40,
+      "order_count": 4,
+      "total_spend": "456.80"
+    },
+    {
+      "customer_id": 41,
+      "order_count": 5,
+      "total_spend": "605.13"
+    },
+    {
+      "customer_id": 42,
+      "order_count": 6,
+      "total_spend": "903.27"
+    },
+    {
+      "customer_id": 43,
+      "order_count": 5,
+      "total_spend": "617.10"
+    },
+    {
+      "customer_id": 44,
+      "order_count": 5,
+      "total_spend": "550.41"
+    },
+    {
+      "customer_id": 45,
+      "order_count": 6,
+      "total_spend": "869.37"
+    },
+    {
+      "customer_id": 46,
+      "order_count": 6,
+      "total_spend": "592.38"
+    },
+    {
+      "customer_id": 47,
+      "order_count": 4,
+      "total_spend": "479.25"
+    },
+    {
+      "customer_id": 48,
+      "order_count": 5,
+      "total_spend": "566.70"
+    }
+  ],
+  "large_fields": {
+    "text_octets": 2097152,
+    "text_characters": 629175,
+    "text_sha256": "901aa0fce6a5ac96137ac9d55384347a34f0d9ca44c44edc388732900edc6c35",
+    "text_tail": "NEEDLE_TEXT_TAIL_9F2A",
+    "json_body_characters": 2097152,
+    "json_body_sha256": "6932fd31e5daf4739b9fa78ff777b2831b0995cc1d0b0093cac80601902013bc",
+    "json_tail": "NEEDLE_JSON_TAIL_7B3C",
+    "multiline_rows": 2400,
+    "multiline_sha256": "3ffdae35ac94e8e793ac876cdffb3da1ab5d31a549a187fc4add64a1b042f777",
+    "escaped_hex": "E9A696E8A18C0D0AE6ACA1E8A18C0922E5BC95E58FB7225CE58F8DE6969CE69DA0F09F99820AE69CABE8A18C00E7BB93E69D9F"
+  },
+  "event_log": {
+    "rows": 600,
+    "message_octets_each": 4096,
+    "total_message_octets": 2457600,
+    "level_counts": {
+      "ERROR": 20,
+      "WARN": 80,
+      "INFO": 500
+    },
+    "pages": [
+      {
+        "page": 1,
+        "first_id": 1,
+        "last_id": 200,
+        "rows": 200,
+        "hasMore": true
+      },
+      {
+        "page": 2,
+        "first_id": 201,
+        "last_id": 400,
+        "rows": 200,
+        "hasMore": true
+      },
+      {
+        "page": 3,
+        "first_id": 401,
+        "last_id": 600,
+        "rows": 200,
+        "hasMore": false
+      }
+    ]
+  },
+  "value_edges": {
+    "decimal_text": [
+      "9007199254740993.1234567890",
+      "0.0000000001",
+      "-9007199254740993.1234567890",
+      null,
+      "12345678901234567890.1234567890",
+      "1.2300000000"
+    ],
+    "null_text_ids": [
+      4
+    ],
+    "empty_text_ids": [
+      5
+    ],
+    "duplicate_display_ids": [
+      1,
+      2
+    ],
+    "binary_hex": "0001027FFF"
+  },
+  "scope_rows": {
+    "customers": 2,
+    "orders": 2,
+    "total_amount": "3.33",
+    "scope_marker": "scope_b"
+  },
+  "estimated_payload_bytes": 7018375
+}

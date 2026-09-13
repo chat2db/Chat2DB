@@ -39,6 +39,12 @@ class AgentGatewayServerTest {
             var otherApi = client.send(HttpRequest.newBuilder(URI.create(first.baseUrl() + "/api/connection/datasource/list"))
                     .header("Authorization", "Bearer valid").build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(404, otherApi.statusCode());
+            var output = client.send(HttpRequest.newBuilder(URI.create(first.baseUrl() + "/api/v3/ai/agent-tools/output"))
+                    .header("Authorization", "Bearer valid").POST(HttpRequest.BodyPublishers.ofString(
+                            "{\"toolCallId\":\"call\",\"toolName\":\"bash\",\"arguments\":{\"action\":\"begin\",\"preparationId\":\"prepared\"}}"))
+                    .build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, output.statusCode());
+            assertTrue(output.body().contains("upload-fixture"));
         }
         assertThrows(IllegalStateException.class, first::baseUrl);
         assertThrows(IllegalStateException.class, second::baseUrl);
@@ -62,9 +68,15 @@ class AgentGatewayServerTest {
     private AgentGatewayServer server(AgentGatewayAddress address) {
         AgentToolAccessService tools = (AgentToolAccessService) Proxy.newProxyInstance(getClass().getClassLoader(),
                 new Class<?>[] {AgentToolAccessService.class}, (proxy, method, args) -> {
-                    assertEquals("activeTools", method.getName());
                     assertEquals("valid", args[0]);
                     assertEquals("127.0.0.1", args[1]);
+                    if (method.getName().equals("output")) {
+                        assertEquals("call", args[2]);
+                        assertEquals("bash", args[3]);
+                        assertEquals(Map.of("action", "begin", "preparationId", "prepared"), args[4]);
+                        return Map.of("uploadId", "upload-fixture");
+                    }
+                    assertEquals("activeTools", method.getName());
                     return List.of("db_query");
                 });
         IAgentModelGateway models = new IAgentModelGateway() {

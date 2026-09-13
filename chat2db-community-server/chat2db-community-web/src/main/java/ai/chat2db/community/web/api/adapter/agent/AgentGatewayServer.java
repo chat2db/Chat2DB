@@ -72,8 +72,9 @@ public final class AgentGatewayServer implements AutoCloseable {
             boolean catalog = (TOOLS + "catalog").equals(path) && "GET".equals(method);
             boolean execute = (TOOLS + "execute").equals(path) && "POST".equals(method);
             boolean nativeTool = (TOOLS + "prepare-native").equals(path) && "POST".equals(method);
+            boolean output = (TOOLS + "output").equals(path) && "POST".equals(method);
             boolean model = path.startsWith(MODEL) && "POST".equals(method);
-            if (!catalog && !execute && !nativeTool && !model) {
+            if (!catalog && !execute && !nativeTool && !output && !model) {
                 writeJson(exchange, 404, Map.of("success", false, "errorMessage", "Unknown Agent endpoint"));
                 return;
             }
@@ -118,7 +119,8 @@ public final class AgentGatewayServer implements AutoCloseable {
                     || request.toolName().length() > 100 || request.arguments() == null) {
                 throw new IllegalArgumentException("Invalid Agent tool request");
             }
-            Object result = nativeTool
+            Object result = output ? Map.of("success", true, "data", tools.get().output(ticket, remote,
+                    request.toolCallId(), request.toolName(), request.arguments())) : nativeTool
                     ? tools.get().prepareNative(ticket, remote, request.toolCallId(), request.toolName(), request.arguments())
                     : Map.of("success", true, "data", tools.get().execute(ticket, remote,
                             request.toolCallId(), request.toolName(), request.arguments()));

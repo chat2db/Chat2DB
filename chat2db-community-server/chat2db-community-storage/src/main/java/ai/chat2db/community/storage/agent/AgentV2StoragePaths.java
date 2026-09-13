@@ -5,6 +5,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.io.IOException;
+import ai.chat2db.community.tools.exception.storage.StorageException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -23,7 +27,19 @@ public class AgentV2StoragePaths {
     }
 
     AgentV2StoragePaths(Path root) {
-        this.root = Objects.requireNonNull(root, "root").toAbsolutePath().normalize();
+        this.root = canonicalRoot(Objects.requireNonNull(root, "root"));
+    }
+
+    private static Path canonicalRoot(Path root) {
+        Path absolute = root.toAbsolutePath().normalize();
+        Path existing = absolute;
+        while (existing != null && !Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) existing = existing.getParent();
+        if (existing == null) throw new StorageException("Agent storage has no existing filesystem ancestor");
+        try {
+            return existing.toRealPath().resolve(existing.relativize(absolute));
+        } catch (IOException exception) {
+            throw new StorageException("Failed to resolve the agent storage directory", exception);
+        }
     }
 
     static Path resolveRoot(Path environmentBasePath) {
@@ -61,6 +77,15 @@ public class AgentV2StoragePaths {
     public Path resourceFile(String sessionId, String resourceName, String resourceId) {
         validatePathId(resourceId, "resourceId");
         return resourceDirectory(sessionId, resourceName).resolve(resourceId + ".json");
+    }
+
+    public Path toolResultsDirectory(String sessionId) {
+        return sessionDirectory(sessionId).resolve("tool-results");
+    }
+
+    public Path toolResultsDirectory(String sessionId, String runId) {
+        validatePathId(runId, "runId");
+        return toolResultsDirectory(sessionId).resolve(runId);
     }
 
     public Path eventFile(String sessionId, long sequence) {

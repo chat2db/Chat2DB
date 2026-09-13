@@ -48,7 +48,8 @@ class AgentNativeToolApprovalTest {
                 AgentSessionStatus.RUNNING, "test", 1, now, now);
         AgentRun run = new AgentRun("run", "session", AgentRunStatus.RUNNING, new AgentModelSnapshot("model", 1, "OPENAI", "model", null, null), "message", "request", "run", 1, 1, null, null);
         AgentSessionStorage sessions = proxy(AgentSessionStorage.class, (method, args) -> session);
-        AgentRunStorage runs = proxy(AgentRunStorage.class, (method, args) -> method.equals("list") ? List.of(run) : run);
+        AtomicBoolean runActive = new AtomicBoolean(true);
+        AgentRunStorage runs = proxy(AgentRunStorage.class, (method, args) -> method.equals("list") ? List.of(run) : runActive.get() ? run : null);
         AgentApprovalService approvals = proxy(AgentApprovalService.class, (method, args) -> {
             decisions.incrementAndGet();
             ((Runnable) args[2]).run();
@@ -57,14 +58,30 @@ class AgentNativeToolApprovalTest {
             return ((BooleanSupplier) args[3]).getAsBoolean();
         });
         AgentDatabaseService database = proxy(AgentDatabaseService.class, (method, args) -> null);
+        var outputReference = new ai.chat2db.community.tools.model.agent.tool.AgentOutputReference(
+                "file", "output", "/managed/output.txt", "text", 10, false, true, "cancelled");
         var gateway = new AgentToolGatewayService(new AgentDatabaseToolRegistry(database), new AgentQuestionTool(null), new AgentChartTool(null, null, null),
-                sessions, runs, () -> 1L, approvals, List.of(workspace), address());
+                sessions, runs, () -> 1L, approvals, List.of(workspace), address(),
+                proxy(IAiAgentOutputService.class, (method, args) -> switch (method) {
+                    case "present" -> args[0];
+                    case "begin" -> new ai.chat2db.community.domain.api.model.agent.output.AgentOutputUpload("upload");
+                    case "append" -> null;
+                    case "finish" -> {
+                        assertFalse(((ai.chat2db.community.domain.api.model.agent.tool.AgentToolExecutionContext) args[0]).active().getAsBoolean());
+                        yield outputReference;
+                    }
+                    case "reference" -> outputReference;
+                    default -> throw new AssertionError(method);
+                }),
+                proxy(IAiAgentFileAccessService.class, (method, args) -> null));
         var events = new ArrayList<AgentRuntimeEvent>();
         try {
             ContextUtils.setContext(new Context());
             var access = gateway.issue("session", events::add);
             String shell = AgentNativeTools.currentPlatform().get(0);
-            assertFalse(gateway.activeTools(access.ticket(), "127.0.0.1").contains("read"));
+            assertTrue(gateway.activeTools(access.ticket(), "127.0.0.1").contains("read"));
+            assertThrows(SecurityException.class, () -> gateway.output(access.ticket(), "127.0.0.1", "not-prepared", shell,
+                    Map.of("action", "begin", "format", "text", "preparationId", "not-authorized")));
             assertThrows(IllegalArgumentException.class, () -> gateway.prepareNative(access.ticket(), "127.0.0.1", "disabled", "read", Map.of("path", "a.csv")));
             enabledTools.addAll(AgentNativeTools.currentPlatform());
             assertTrue(gateway.activeTools(access.ticket(), "127.0.0.1").containsAll(AgentNativeTools.currentPlatform()));
@@ -74,6 +91,20 @@ class AgentNativeToolApprovalTest {
             assertEquals(0, decisions.get());
             var prepared = gateway.prepareNative(access.ticket(), "127.0.0.1", "shell", shell, Map.of("command", "pwd"));
             assertEquals("/first", prepared.workingDirectory());
+            assertThrows(SecurityException.class, () -> gateway.output(access.ticket(), "127.0.0.1", "shell", shell,
+                    Map.of("action", "present", "preparationId", prepared.preparationId(), "result",
+                            Map.of("ok", true, "data", "preview", "output", Map.of("artifactId", "other-invocation")))));
+            runActive.set(false);
+            gateway.output(access.ticket(), "127.0.0.1", "shell", shell,
+                    Map.of("action", "begin", "format", "text", "preparationId", prepared.preparationId()));
+            assertEquals(outputReference, gateway.output(access.ticket(), "127.0.0.1", "shell", shell,
+                    Map.of("action", "finish", "uploadId", "upload", "complete", false, "preparationId", prepared.preparationId())));
+            var completed = (AgentToolGatewayService.NativeResult) gateway.output(access.ticket(), "127.0.0.1", "shell", shell,
+                    Map.of("action", "present", "preparationId", prepared.preparationId(), "result",
+                            Map.of("ok", false, "data", "prefix", "output", Map.of("artifactId", "output"))));
+            assertFalse(completed.ok());
+            assertEquals(outputReference, completed.output());
+            runActive.set(true);
             assertEquals("/first", events.get(0).payload().get("workingDirectory"));
             assertEquals(prepared, gateway.prepareNative(access.ticket(), "127.0.0.1", "shell", shell, Map.of("command", "pwd")));
             assertEquals(1, decisions.get());
@@ -81,7 +112,7 @@ class AgentNativeToolApprovalTest {
             assertThrows(IllegalArgumentException.class, () -> gateway.prepareNative(access.ticket(), "127.0.0.1", "shell", shell, Map.of("command", "changed")));
             assertThrows(SecurityException.class, () -> gateway.prepareNative(access.ticket(), "192.0.2.1", "outside", "read", Map.of()));
             enabledTools.remove("read");
-            assertFalse(gateway.activeTools(access.ticket(), "127.0.0.1").contains("read"));
+            assertTrue(gateway.activeTools(access.ticket(), "127.0.0.1").contains("read"));
             assertThrows(IllegalArgumentException.class, () -> gateway.prepareNative(access.ticket(), "127.0.0.1", "read", "read", Map.of("path", "a.csv")));
             disableWhileWaiting.set(true);
             assertThrows(IllegalStateException.class, () -> gateway.prepareNative(access.ticket(), "127.0.0.1", "disabled-pending", shell, Map.of("command", "pwd")));

@@ -9,6 +9,8 @@ public interface AgentToolAccessService extends IAgentToolAccessProvider {
     List<String> activeTools(String ticket, String address);
     ai.chat2db.community.tools.agent.tool.IAgentToolResult<?> execute(
             String ticket, String address, String toolCallId, String toolName, java.util.Map<String, Object> arguments) throws Exception;
-    ai.chat2db.community.domain.api.model.agent.feature.AgentWorkspaceSettings prepareNative(
+    ai.chat2db.community.domain.api.model.agent.tool.AgentNativePreparation prepareNative(
             String ticket, String address, String toolCallId, String toolName, java.util.Map<String, Object> arguments) throws Exception;
+    Object output(String ticket, String address, String toolCallId, String toolName,
+            java.util.Map<String, Object> arguments) throws Exception;
 }

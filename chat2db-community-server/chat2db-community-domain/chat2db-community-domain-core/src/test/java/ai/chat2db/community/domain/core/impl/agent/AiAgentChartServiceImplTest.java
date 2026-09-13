@@ -58,6 +58,34 @@ class AiAgentChartServiceImplTest {
     }
 
     @Test
+    void largeUnselectedColumnsRemainSavedAndDoNotPreventAChart() {
+        var body = "大字段".repeat(200000);
+        var data = new QueryData(List.of(new QueryColumn("month", "VARCHAR"), new QueryColumn("amount", "DECIMAL"),
+                new QueryColumn("body", "TEXT")), List.of(List.of("Jan", "12.30", body)), "database-text", 1L, List.of(), null);
+        var result = new SqlResult(1, "SELECT ...", true, data, new Page(1, 50, 1, null, false, null), null);
+        var response = service.captureQueryResults(DbAgentDatabaseResponse.success(new Scope("1", "MYSQL", "db", null),
+                new SqlExecutionData(List.of(result), 1, true), result.page(), null, List.of()), context);
+        String id = response.data().results().get(0).resultId();
+        assertEquals(body, saved.get(id).data().rows().get(0).get(2));
+        assertEquals(new BigDecimal("12.30"), service.render(request(id, "Column", "month", "amount"), context).data().get(0).get("amount"));
+    }
+
+    @Test
+    void storageFailureDoesNotRewriteAnAlreadyExecutedSqlOutcome() {
+        var failing = new AiAgentChartServiceImpl(new IAgentQueryResultStorage() {
+            @Override public void create(DbAgentQueryResult result, Long userId) { throw new IllegalStateException("disk full"); }
+            @Override public DbAgentQueryResult get(String sessionId, String resultId, Long userId) { return null; }
+        });
+        var result = result(List.of(List.of("Jan", "5")), false);
+        var response = failing.captureQueryResults(DbAgentDatabaseResponse.success(new Scope("1", "MYSQL", "db", null),
+                new SqlExecutionData(List.of(result), 1, true), result.page(), null, List.of()), context);
+        assertTrue(response.ok());
+        assertNull(response.data().results().get(0).resultId());
+        assertEquals(result.data(), response.data().results().get(0).data());
+        assertTrue(response.warnings().get(0).contains("disk full"));
+    }
+
+    @Test
     void rejectsUnknownResultsWrongFieldsAndNonNumericMetricsWithoutCreatingAChart() {
         assertCode("RESULT_NOT_FOUND", () -> service.render(request("unknown", "Line", "month", "amount"), context));
         String id = capture(List.of(List.of("Jan", "text")), false);

@@ -48,7 +48,11 @@ class AgentToolGatewayServiceTest {
                         method.getName().equals("list") ? List.of(run) : run);
         AgentToolGatewayService gateway = new AgentToolGatewayService(
                 new AgentDatabaseToolRegistry(domainTools), new AgentQuestionTool(null), new AgentChartTool(null, null, null), sessions, runs, () -> 1L,
-                null, List.of(), address());
+                null, List.of(), address(), (IAiAgentOutputService) Proxy.newProxyInstance(getClass().getClassLoader(),
+                        new Class<?>[]{IAiAgentOutputService.class}, (proxy, method, args) -> {
+                            assertSame(owner, ContextUtils.queryThreadContext());
+                            return args[0];
+                        }), null);
         try {
             ContextUtils.setContext(owner);
             var access = gateway.issue("session", event -> {});
@@ -61,6 +65,7 @@ class AgentToolGatewayServiceTest {
             ContextUtils.setContext(caller);
             assertTrue(gateway.activeTools(access.ticket(), "127.0.0.1").contains("db_search_datasources"));
             assertFalse(gateway.activeTools(access.ticket(), "127.0.0.1").contains("bash"));
+            assertTrue(gateway.activeTools(access.ticket(), "127.0.0.1").containsAll(List.of("read", "grep")));
             assertThrows(SecurityException.class, () -> gateway.activeTools(access.ticket(), "192.0.2.1"));
             assertEquals(List.of("database-list"), gateway.execute(
                     access.ticket(), "127.0.0.1", "call", "db_search_datasources",

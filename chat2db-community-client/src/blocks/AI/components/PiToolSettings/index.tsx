@@ -111,6 +111,7 @@ export default function PiToolSettings(props: { open?: boolean; onOpenChange?: (
                 onSelect={() => void chooseDirectory()} onClear={() => void saveDirectory('')}
               />
             </div>
+            <p className={styles.hint}>{i18n('setting.agent.tools.userFilesHint')}</p>
             <div className={styles.tools}>
               {tools.filter((tool) => tool.category === 'BUILTIN').map((tool) =>
                   <div className={styles.row} key={tool.name}>

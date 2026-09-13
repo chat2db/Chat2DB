@@ -14,7 +14,11 @@ const imports = {
   "node:fs": { readFileSync: () => JSON.stringify({ baseUrl: "http://127.0.0.1", ticket: "fixture", tools: [{ name: "askUserQuestion" }] }), realpathSync: value => value },
   "node:path": { join: (...parts) => parts.join("/") },
   "node:http": { request: () => request },
-  "@earendil-works/pi-coding-agent": Object.fromEntries(["Read", "Edit", "Write", "Grep", "Find", "Ls", "Bash", "PowerShell"].map(name => ["create" + name + "Tool", () => ({ name: name.toLowerCase() })])),
+  "./chat2db-output.mjs": { executeShell: () => { throw new Error("Unexpected shell execution"); }, presentNative: () => {}, checkedMutationPath: () => {}, cleanupOutputSpools: () => {} },
+  "@earendil-works/pi-coding-agent": {
+    ...Object.fromEntries(["Read", "Edit", "Write", "Grep", "Find", "Ls", "Bash", "PowerShell"].map(name => ["create" + name + "Tool", () => ({ name: name.toLowerCase(), parameters: { type: "object", properties: {} } })])),
+    createLocalBashOperations: () => {}, createLocalPowerShellOperations: () => {},
+  },
 };
 const source = readFileSync(new URL("../../main/resources/agent/chat2db-tools.mjs", import.meta.url), "utf8");
 const module = new vm.SourceTextModule(source, { context });

@@ -1,10 +1,12 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { createReadTool, createEditTool, createWriteTool, createGrepTool, createFindTool, createLsTool,
-  createBashTool, createPowerShellTool } from "@earendil-works/pi-coding-agent";
+  createBashTool, createPowerShellTool, createLocalBashOperations, createLocalPowerShellOperations } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import { request as httpRequest } from "node:http";
+import { executeShell, presentNative, checkedMutationPath, cleanupOutputSpools } from "./chat2db-output.mjs";
 
 export default function (pi) {
+  cleanupOutputSpools();
   const callDescription = {
     type: "string", minLength: 1, maxLength: 240,
     description: "Briefly explain what you are doing with this tool and what the result will provide to the user.",
@@ -104,9 +106,8 @@ export default function (pi) {
     });
   }
 
-  const hostTools = new Set(access.tools.map(tool => tool.name));
   pi.on("tool_result", event => {
-    if (hostTools.has(event.toolName) && typeof event.details?.ok === "boolean") {
+    if (typeof event.details?.ok === "boolean") {
       return { isError: !event.details.ok };
     }
   });
@@ -116,11 +117,28 @@ export default function (pi) {
     ...(process.platform === "win32" ? { powershell: createPowerShellTool } : { bash: createBashTool }) };
   for (const [name, createTool] of Object.entries(factories)) {
     const definition = createTool(process.cwd());
+    const fileReader = name === "read" || name === "grep";
+    const fileListing = name === "ls" || name === "find";
+    const parameters = fileReader ? {
+      ...definition.parameters,
+      properties: { ...definition.parameters.properties,
+        cursor: { type: "string", description: "Continue from nextCursor returned by the preceding read or search." } },
+    } : definition.parameters;
     const executions = new Map();
     pi.on("before_agent_start", () => executions.clear());
     pi.registerTool({
       ...definition,
-      parameters: withCallDescription(definition.parameters),
+      ...(fileReader ? {
+        description: "Read or search a UTF-8 file in bounded pages. System tool-result and loaded skill files are always readable; user files require the corresponding tool permission. Use the exact output.path and nextCursor from results.",
+        promptSnippet: name === "read" ? "Read a file in bounded pages" : "Search file contents in bounded pages",
+        promptGuidelines: ["Read/search output.path when a result is previewTruncated. Reuse nextCursor to continue; do not rerun a command merely to recover its full output."],
+      } : fileListing ? {
+        description: `${name === "ls" ? "List directory entries" : "Find entries by glob pattern"} within the permitted user directory, without following symlinks. Explicit limit bounds entries and returns hasMore; otherwise large listings are saved as JSONL with a preview and output.path.`,
+        promptSnippet: name === "ls" ? "List directory entries" : "Find entries by glob pattern",
+      } : name === "bash" || name === "powershell" ? {
+        description: `Execute a ${name} command in the configured working directory after user approval. Large stdout/stderr is saved with output.path and a bounded preview, including failed commands. Read or grep the saved file for more output.`,
+      } : {}),
+      parameters: withCallDescription(parameters),
       async execute(toolCallId, args, signal, onUpdate) {
         const nativeArgs = toolArguments(args);
         const serialized = JSON.stringify(nativeArgs);
@@ -130,16 +148,64 @@ export default function (pi) {
           return previous.result;
         }
         const result = (async () => {
-          const { workingDirectory } = await waitForUser("/prepare-native", {
+          let preparationId;
+          const invoke = async (path, arguments_, requestSignal = signal) => {
+            const response = await waitForUser(path, {
+              method: "POST", body: JSON.stringify({ toolCallId, toolName: name,
+                arguments: path === "/output" ? { ...arguments_, preparationId } : arguments_ }), signal: requestSignal,
+            });
+            return response.data;
+          };
+          const render = output => ({ content: [{ type: "text", text: JSON.stringify(output) }], details: output });
+          if (fileReader || fileListing) return render(await invoke("/execute", nativeArgs));
+          const prepared = await waitForUser("/prepare-native", {
             method: "POST", body: JSON.stringify({ toolCallId, toolName: name, arguments: toolArguments(args) }), signal,
           });
+          const { workingDirectory } = prepared;
+          preparationId = prepared.preparationId;
           signal?.throwIfAborted();
           if (realpathSync(workingDirectory) !== workingDirectory) {
             throw new Error("The working directory changed after authorization");
           }
-          const native = createTool(workingDirectory);
-          const output = await native.execute(toolCallId, nativeArgs, signal, onUpdate);
-          return { ...output, details: { ...output.details, workingDirectory } };
+          const publish = async (chunks, complete, warning, format = "text") => {
+            // Finishing cancelled commands must not reuse the already-aborted execution signal.
+            const finishSignal = AbortSignal.timeout(60000);
+            const upload = await invoke("/output", { action: "begin", format }, finishSignal);
+            try {
+              for await (const chunk of chunks) {
+                await invoke("/output", { action: "append", uploadId: upload.uploadId, content: chunk.toString("base64") }, finishSignal);
+              }
+            } catch {
+              complete = false;
+              warning = "Uploading output was interrupted; this file contains only the captured prefix.";
+            }
+            return invoke("/output", { action: "finish", uploadId: upload.uploadId, complete, warning }, AbortSignal.timeout(10000));
+          };
+          let output;
+          if (name === "bash" || name === "powershell") {
+            output = await executeShell({
+              operations: name === "bash" ? createLocalBashOperations() : createLocalPowerShellOperations(),
+              command: nativeArgs.command, timeout: nativeArgs.timeout, cwd: workingDirectory, signal, onUpdate, publish,
+            });
+          } else {
+            nativeArgs.path = checkedMutationPath(workingDirectory, nativeArgs.path);
+            const native = createTool(workingDirectory);
+            let nativeOutput;
+            let ok = true;
+            try { nativeOutput = await native.execute(toolCallId, nativeArgs, signal); }
+            catch (error) {
+              ok = false;
+              nativeOutput = { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }] };
+            }
+            output = await presentNative(nativeOutput, publish, ok);
+          }
+          try {
+            return render(await invoke("/output", { action: "present", result: output }, AbortSignal.timeout(10000)));
+          } catch {
+            // A stopped runtime may revoke its ticket while output finishes. Preserve the execution outcome.
+            output.warning = "Output finalization was unavailable; do not repeat the operation just to recover its output.";
+            return render(output);
+          }
         })();
         executions.set(toolCallId, { args: serialized, result });
         return result;

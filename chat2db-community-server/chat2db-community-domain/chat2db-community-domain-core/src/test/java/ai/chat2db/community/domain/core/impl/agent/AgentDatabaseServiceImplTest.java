@@ -95,6 +95,7 @@ class AgentDatabaseServiceImplTest {
         assertEquals("INTEGER", data.columns().get(0).type());
         assertEquals(2, f.executed.getPageNo());
         assertEquals(75, f.executed.getPageSize());
+        assertTrue(f.executed.isFullResultValues());
         assertEquals(3, result.page().nextPage());
         assertEquals(3, result.nextAction().arguments().get("page"));
         assertEquals("7", result.scope().dataSourceId());

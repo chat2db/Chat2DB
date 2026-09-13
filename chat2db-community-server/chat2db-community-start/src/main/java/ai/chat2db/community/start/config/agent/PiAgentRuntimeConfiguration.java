@@ -56,6 +56,25 @@ public class PiAgentRuntimeConfiguration {
     }
 
     @Bean
+    public ai.chat2db.community.domain.api.service.agent.IAiAgentFileAccessService agentFileAccess(
+            List<IAiAgentWorkspaceService> workspaces,
+            ai.chat2db.community.domain.api.service.agent.IAiAgentSkillService skills,
+            ai.chat2db.community.domain.api.service.agent.IAiAgentOutputService outputs) {
+        return new ai.chat2db.community.domain.core.impl.agent.AiAgentFileAccessServiceImpl(workspaces, skills, outputs);
+    }
+
+    @Bean
+    public ai.chat2db.community.domain.api.service.agent.IAgentOutputDownloadService agentOutputDownload(
+            ai.chat2db.community.domain.api.service.agent.IAiAgentOutputService outputs) {
+        return new ai.chat2db.community.storage.agent.AgentOutputFileExport(outputs, name -> {
+            if (!ConfigUtils.isDesktop()) throw new IllegalStateException("Desktop file saving is unavailable");
+            return ai.chat2db.community.jcef.utils.OSOperateUtil.openNativeSaveFileChooser(
+                    ai.chat2db.community.jcef.context.JcefContext.getInstance().getFrame_(),
+                    ai.chat2db.community.jcef.menus.MenuI18n.getString("fileChooser.select.file.title"), name);
+        });
+    }
+
+    @Bean
     public PiRuntimePaths piRuntimePaths() {
         return new PiRuntimePaths();
     }

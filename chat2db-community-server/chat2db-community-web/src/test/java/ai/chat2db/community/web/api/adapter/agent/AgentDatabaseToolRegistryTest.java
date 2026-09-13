@@ -42,29 +42,15 @@ class AgentDatabaseToolRegistryTest {
     }
 
     @Test
-    void oversizedResultsRemainValidStructuredErrors() throws Exception {
-        var registry = registry(new AtomicReference<>(), DbAgentDatabaseResponse.success(null, "x".repeat(600000), null, null, List.of()));
+    void forwardsLargeResultsWithoutRetryingOrLosingTheOriginalOutcome() {
+        String body = "x".repeat(600000);
+        var expected = DbAgentDatabaseResponse.success(null, body, null, null, List.of());
+        var registry = registry(new AtomicReference<>(), expected);
         var result = registry.execute("db_query", Map.of("dataSourceId", "7", "sql", "SELECT body FROM samples", "pageSize", 100));
-        assertFalse(result.ok());
-        assertEquals("RESULT_TOO_LARGE", result.error().code());
-        assertNull(result.nextAction(), "Unknown SQL outcomes must not suggest automatically replaying writes");
-        String json = new ObjectMapper().writeValueAsString(result);
-        assertFalse(new ObjectMapper().readTree(json).get("ok").asBoolean());
-        assertFalse(json.contains("Output truncated"));
-        for (String name : registry.names().stream().filter(n -> n.startsWith("db_search_")).toList()) {
-            Map<String, Object> args = new LinkedHashMap<>(Map.of("page", 3, "pageSize", 100));
-            switch (name) {
-                case "db_search_datasources" -> args.put("search", "sales");
-                case "db_search_databases" -> args.put("databasePattern", "sales%");
-                case "db_search_schemas" -> args.put("schemaPattern", "sales%");
-                default -> args.put("tablePattern", "orders%");
-            }
-            var oversized = registry.execute(name, args);
-            assertEquals("RESULT_TOO_LARGE", oversized.error().code());
-            assertEquals(name, oversized.nextAction().tool());
-            args.put("page", 1); args.put("pageSize", 50);
-            assertEquals(args, oversized.nextAction().arguments());
-        }
+        assertSame(expected, result);
+        assertTrue(result.ok());
+        assertEquals(body, result.data());
+        assertNull(result.nextAction());
     }
     @Test
     void objectDefinitionsUseTypedNamesWithinAnExplicitSharedScope() {
