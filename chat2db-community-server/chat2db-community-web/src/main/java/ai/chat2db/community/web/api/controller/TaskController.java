@@ -62,6 +62,9 @@ public class TaskController {
 
     @PostMapping("/import")
     public DataResult<TaskSubmitResponse> submitImport(@Valid @RequestBody TaskImportRequest request) {
+        if (StringUtils.isBlank(request.getFileId())) {
+            throw new ai.chat2db.community.tools.exception.ParamBusinessException("fileId");
+        }
         Long taskId = importTaskSubmissionService.submit(
                 taskWebConverter.importRequest2spec(request), request.getFileId());
         return DataResult.of(new TaskSubmitResponse(taskId));

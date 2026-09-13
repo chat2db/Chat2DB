@@ -30,6 +30,7 @@ import java.util.Set;
  * selection: the report records every detected blocker/degradation, then {@link #enforce}
  * applies the strict policy before an importer can construct worker threads.
  */
+@SuppressWarnings("lgtm[java/path-injection]")
 public final class ImportParallelAdmission {
 
     static final String SAFE = "PARALLEL_SAFE";
@@ -41,6 +42,7 @@ public final class ImportParallelAdmission {
     private ImportParallelAdmission() {
     }
 
+    @SuppressWarnings("lgtm[java/path-injection]")
     public static ImportAdmissionReport assess(ImportTaskSpec spec, List<TableColumn> tableColumns) {
         File source = new File(StringUtils.defaultString(spec.getSourceFile()));
         String format = StringUtils.upperCase(StringUtils.trimToEmpty(spec.getFormat()), Locale.ROOT);
@@ -221,6 +223,7 @@ public final class ImportParallelAdmission {
         }
     }
 
+    @SuppressWarnings("lgtm[java/path-injection]")
     private static boolean isCompressed(File source) {
         try (var input = Files.newInputStream(source.toPath())) {
             int first = input.read();

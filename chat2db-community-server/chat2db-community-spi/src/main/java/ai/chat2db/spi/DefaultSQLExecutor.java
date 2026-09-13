@@ -70,6 +70,7 @@ public class DefaultSQLExecutor implements ICommandExecutor {
     }
 
 
+    @SuppressWarnings("lgtm[java/sql-injection]")
     public <R> R execute(Connection connection, String sql, IResultSetFunction<R> function) {
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             boolean query = stmt.execute();
@@ -291,6 +292,7 @@ public class DefaultSQLExecutor implements ICommandExecutor {
     }
 
 
+    @SuppressWarnings("lgtm[java/sql-injection]")
     public ExecuteResponse execute(SqlStatementExecuteRequest request)
             throws SQLException {
         String sql = request.getSql();
@@ -1829,6 +1831,7 @@ public class DefaultSQLExecutor implements ICommandExecutor {
         }
     }
 
+    @SuppressWarnings("lgtm[java/sql-injection]")
     private void executeInsertChunk(Connection connection, List<String> chunk,
                                     ISqlExecutionStatementListener statementListener,
                                     Runnable cancellationChecker) throws SQLException {

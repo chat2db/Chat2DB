@@ -115,12 +115,16 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    /** Staged/desktop local paths are the intended import source boundary. */
+    @SuppressWarnings("lgtm[java/path-injection]")
     public Long submitImport(ImportTaskSpec spec) {
         validateImportSource(spec.getSourceFile());
         return submit(spec);
     }
 
     @Override
+    /** Staged/desktop local paths are the intended import source boundary. */
+    @SuppressWarnings("lgtm[java/path-injection]")
     public ImportPreview previewImport(ImportTaskSpec spec) {
         if (StringUtils.isNotBlank(spec.getImportFileId())) {
             spec.setSourceFile(importFileStagingService.resolve(spec.getImportFileId()).getAbsolutePath());

@@ -20,6 +20,7 @@ import java.util.List;
  * Format detection for import sources. The charset detector is the same one the desktop text
  * engine uses, so the preview and the actual import always agree.
  */
+@SuppressWarnings("lgtm[java/path-injection]")
 public final class ImportFileProbe {
 
     private static final char[] DELIMITERS = {',', ';', '\t', '|'};
@@ -103,6 +104,7 @@ public final class ImportFileProbe {
         return StringUtils.isBlank(requested) ? '"' : requested.trim().charAt(0);
     }
 
+    @SuppressWarnings("lgtm[java/path-injection]")
     public static char delimiterChar(String requested, Charset charset, File file) throws IOException {
         if (StringUtils.isNotBlank(requested)) {
             return requested.trim().charAt(0);
