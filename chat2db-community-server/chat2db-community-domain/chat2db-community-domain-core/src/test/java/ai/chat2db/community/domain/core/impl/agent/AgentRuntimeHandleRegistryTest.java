@@ -69,6 +69,7 @@ class AgentRuntimeHandleRegistryTest {
     private static final class RecordingHandle implements IAgentRuntimeSessionHandle {
 
         private final AgentRuntimeSessionRef session;
+        private final CompletableFuture<Void> termination = new CompletableFuture<>();
         private boolean closed;
 
         private RecordingHandle(String externalSessionId) {
@@ -100,6 +101,11 @@ class AgentRuntimeHandleRegistryTest {
         public void close() {
             closed = true;
         }
+
+        @Override
+        public CompletionStage<Void> termination() {
+            return termination;
+        }
     }
 
     @Test
@@ -115,5 +121,17 @@ class AgentRuntimeHandleRegistryTest {
         assertSame(active, registry.get("active"));
         registry.register("new", new RecordingHandle("new"));
         assertEquals(2, registry.size());
+    }
+
+    @Test
+    void removesAndClosesHandleWhenItsRuntimeTerminates() {
+        AgentRuntimeHandleRegistry registry = new AgentRuntimeHandleRegistry();
+        RecordingHandle handle = new RecordingHandle("external-one");
+        registry.register("session-one", handle);
+
+        handle.termination.complete(null);
+
+        assertEquals(0, registry.size());
+        assertTrue(handle.closed);
     }
 }

@@ -25,11 +25,14 @@ export default function (pi) {
       await ctx.modelRegistry.refresh(AbortSignal.timeout(10000));
     },
   });
-  const access = JSON.parse(readFileSync(join(process.env.PI_CODING_AGENT_DIR, "tools.json"), "utf8"));
-  const headers = { Authorization: `Bearer ${access.ticket}`, "Content-Type": "application/json" };
+  const accessFile = join(process.env.PI_CODING_AGENT_DIR, "tools.json");
+  const readAccess = () => JSON.parse(readFileSync(accessFile, "utf8"));
+  const access = readAccess();
 
   // A user decision can outlast fetch's transport timeout. Cancellation still uses the tool signal.
   function waitForUser(path, options) {
+    const access = readAccess();
+    const headers = { Authorization: `Bearer ${access.ticket}`, "Content-Type": "application/json" };
     return new Promise((resolve, reject) => {
       const cleanup = () => options.signal?.removeEventListener("abort", abort);
       const fail = error => { cleanup(); reject(error); };
@@ -67,6 +70,8 @@ export default function (pi) {
   }
 
   async function request(path, options = {}) {
+    const access = readAccess();
+    const headers = { Authorization: `Bearer ${access.ticket}`, "Content-Type": "application/json" };
     const response = await fetch(access.baseUrl + path, { ...options, headers });
     const body = await response.json();
     if (response.status === 403 && String(body.errorMessage || "").toLowerCase().includes("ticket")) {

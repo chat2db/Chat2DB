@@ -31,6 +31,11 @@ public class AgentRuntimeHandleRegistry {
             handle.close();
             throw new IllegalStateException("Agent runtime session is already active: " + id);
         }
+        handle.termination().whenComplete((ignored, error) -> {
+            if (handles.remove(id, handle)) {
+                handle.close();
+            }
+        });
         if (closed.get() && handles.remove(id, handle)) {
             handle.close();
             throw new IllegalStateException("Agent runtime handle registry is closed");

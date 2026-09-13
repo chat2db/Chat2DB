@@ -5,6 +5,7 @@ import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeRunRef;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeRunRequest;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeSessionRef;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeSnapshot;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 public interface IAgentRuntimeSessionHandle extends AutoCloseable {
@@ -16,6 +17,11 @@ public interface IAgentRuntimeSessionHandle extends AutoCloseable {
     CompletionStage<Void> cancel(AgentRuntimeCancelRequest request);
 
     CompletionStage<AgentRuntimeSnapshot> snapshot();
+
+    /** Completes when the underlying runtime process or transport terminates. */
+    default CompletionStage<Void> termination() {
+        return new CompletableFuture<>();
+    }
 
     @Override
     void close();

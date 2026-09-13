@@ -51,17 +51,16 @@ const useStyles = createStyles(({ css, token }) => ({
     margin-left: 21px;
     > summary {
       display: grid;
-      grid-template-columns: 14px minmax(0, 1fr) 6em 8ch;
+      grid-template-columns: 14px minmax(0, 1fr) 8ch;
       align-items: start;
       width: 100%;
       margin: 0;
       padding: 2px 0;
       line-height: 20px;
-      > svg { margin-top: 3px; }
     }
   `,
+  toolIcon: css`display: inline-flex; margin-top: 3px;`,
   toolText: css`min-width: 0; overflow-wrap: anywhere;`,
-  toolState: css`min-width: 0; overflow-wrap: anywhere;`,
   duration: css`
     min-width: 0;
     overflow-wrap: anywhere;
@@ -111,16 +110,18 @@ export default function AgentTraceGroup({ entries, activity, status, runActive =
       </summary>
       {tools.map((tool) => {
         const state = tool.failed ? 'failed' : tool.completed ? 'completed' : runActive ? 'running' : 'stopped';
+        const stateLabel = i18n(`stream.tool.${state}`);
         return <details key={tool.id} className={styles.tool} data-agent-tool={tool.id}>
           <summary className={tool.failed ? styles.failed : undefined}>
-            {state === 'failed' ? <CircleX size={14} aria-hidden="true" />
-              : state === 'completed' ? <Check size={14} aria-hidden="true" />
-              : state === 'running' ? <LoaderCircle size={14} className={styles.spinner} aria-hidden="true" />
-              : <Clock3 size={14} aria-hidden="true" />}
+            <span className={styles.toolIcon} role="img" aria-label={stateLabel} title={stateLabel}>
+              {state === 'failed' ? <CircleX size={14} aria-hidden="true" />
+                : state === 'completed' ? <Check size={14} aria-hidden="true" />
+                : state === 'running' ? <LoaderCircle size={14} className={styles.spinner} aria-hidden="true" />
+                : <Clock3 size={14} aria-hidden="true" />}
+            </span>
             <span className={styles.toolText}>
               {tool.description || tool.name || i18n('stream.trace.unknownTool')}
             </span>
-            <span className={styles.toolState}>{i18n(`stream.tool.${state}`)}</span>
             <span className={styles.duration}>
               {tool.durationMs !== undefined && `${tool.durationMs}ms`}
             </span>

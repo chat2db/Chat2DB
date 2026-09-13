@@ -38,6 +38,7 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
     private final IAgentRuntimeEventSink eventSink;
     private final ObjectMapper objectMapper;
     private final Runnable closeHook;
+    private final Runnable refreshToolAccess;
     private final IPiModelConfiguration modelConfiguration;
     private String modelConfigurationError;
     private AgentRuntimeHealth health = AgentRuntimeHealth.READY;
@@ -57,6 +58,21 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
             ObjectMapper objectMapper,
             Runnable closeHook,
             IPiModelConfiguration modelConfiguration) {
+        this(sessionId, session, process, rpc, eventConverter, eventSink, objectMapper,
+                closeHook, modelConfiguration, () -> { });
+    }
+
+    public AgentRuntimeSessionHandleImpl(
+            String sessionId,
+            AgentRuntimeSessionRef session,
+            PiProcessHandle process,
+            IPiRpcTransport rpc,
+            PiEventConverter eventConverter,
+            IAgentRuntimeEventSink eventSink,
+            ObjectMapper objectMapper,
+            Runnable closeHook,
+            IPiModelConfiguration modelConfiguration,
+            Runnable refreshToolAccess) {
         this.sessionId = sessionId;
         this.session = session;
         this.process = process;
@@ -66,6 +82,7 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
         this.objectMapper = objectMapper;
         this.closeHook = closeHook;
         this.modelConfiguration = modelConfiguration;
+        this.refreshToolAccess = refreshToolAccess;
         rpc.termination().whenComplete((ignored, error) -> runtimeTerminated(error));
     }
 
@@ -81,6 +98,11 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
         }
         if (health != AgentRuntimeHealth.READY) {
             return CompletableFuture.failedFuture(new IllegalStateException("Pi runtime session is not ready"));
+        }
+        try {
+            refreshToolAccess.run();
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
         }
         AgentModelAccess modelAccess = modelConfiguration.prepare(request.model());
         modelConfigurationError = null;
@@ -128,6 +150,11 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
     @Override
     public synchronized CompletionStage<AgentRuntimeSnapshot> snapshot() {
         return CompletableFuture.completedFuture(new AgentRuntimeSnapshot(session, health, activeExternalRunId));
+    }
+
+    @Override
+    public CompletionStage<Void> termination() {
+        return rpc.termination();
     }
 
     public synchronized void accept(JsonNode rawEvent) {

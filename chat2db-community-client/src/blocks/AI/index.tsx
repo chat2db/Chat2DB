@@ -330,7 +330,7 @@ function MarkdownCodeBlock({ className, children }: { className?: string; childr
 
 /** is sent each time AI The maximum number of historical rounds carried (one round = (one question and one answer) */
 const MAX_HISTORY_ROUNDS = 5;
-const SCROLL_BOTTOM_THRESHOLD = 24;
+const SCROLL_BOTTOM_THRESHOLD = 1;
 const INITIAL_VIEWPORT_ANIMATION_MS = 260;
 const PROGRAMMATIC_SCROLL_LOCK_MS = 120;
 const MESSAGE_TOP_ALIGNMENT_GAP = 20;
@@ -616,7 +616,6 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
   const chatInputRef = useRef<ChatInputPropsRef>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const messageContentRef = useRef<HTMLDivElement>(null);
-  const bottomSentinelRef = useRef<HTMLDivElement>(null);
   const messageElementMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const pendingViewportAnchorRef = useRef<string | null>(null);
   const currentRoundBlockRef = useRef<HTMLDivElement | null>(null);
@@ -694,7 +693,7 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
         }, INITIAL_VIEWPORT_ANIMATION_MS);
       } else {
         requestAnimationFrame(() => {
-          correctMessageTopAlignment(messageId);
+          if (suppressScrollTrackingRef.current) correctMessageTopAlignment(messageId);
         });
       }
 
@@ -709,16 +708,11 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
       if (!container) {
         return;
       }
+      const bottom = Math.max(container.scrollHeight - container.clientHeight, 0);
+      if (Math.abs(bottom - container.scrollTop) <= SCROLL_BOTTOM_THRESHOLD) return;
       lockScrollTracking(behavior);
-      if (bottomSentinelRef.current) {
-        bottomSentinelRef.current.scrollIntoView({
-          block: 'end',
-          behavior,
-        });
-        return;
-      }
       container.scrollTo({
-        top: container.scrollHeight,
+        top: bottom,
         behavior,
       });
     },
@@ -796,6 +790,19 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
     }
     const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= SCROLL_BOTTOM_THRESHOLD;
     setAutoFollow(isAtBottom);
+  }, [setAutoFollow]);
+
+  const interruptMessageAutoScroll = useCallback(() => {
+    setAutoFollow(false);
+    suppressScrollTrackingRef.current = false;
+    pendingInitialBottomSyncRef.current = false;
+    pendingViewportAnchorRef.current = null;
+    initialViewportAnimatingRef.current = false;
+    for (const timer of [programmaticScrollTimerRef, topAlignmentTimerRef,
+      initialBottomSyncTimerRef, initialViewportAnimationTimerRef]) {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+      timer.current = null;
+    }
   }, [setAutoFollow]);
 
   const setMessageElement = useCallback(
@@ -1389,26 +1396,9 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
         pendingViewportAnchorRef.current = null;
       }
     }
-    if (initialViewportAnimatingRef.current) {
-      return;
-    }
-    if (!isCurrentRoundOverflowingViewport()) {
-      return;
-    }
-    if (!autoFollowRef.current) {
-      return;
-    }
-    scrollMessageListToBottom();
   }, [
     messages,
-    streamingText,
-    streamTraceEntries.length,
-    agentApprovals,
-    agentQuestions,
     currentRoundUserMessageId,
-    messageListContentHeight,
-    isCurrentRoundOverflowingViewport,
-    scrollMessageListToBottom,
     scrollMessageToTop,
   ]);
 
@@ -2634,10 +2624,17 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
                 items={userMessageNavigationItems}
                 onNavigate={handleNavigateToUserMessage}
               />
-              <div className={styles.messageList} ref={messageListRef} onScroll={handleMessageListScroll}>
+              <div className={styles.messageList} ref={messageListRef} onScroll={handleMessageListScroll}
+                onWheelCapture={(event) => {
+                  if (event.ctrlKey || !event.deltaY) return;
+                  interruptMessageAutoScroll();
+                  if (event.deltaY > 0) handleMessageListScroll();
+                }}
+                onTouchMoveCapture={interruptMessageAutoScroll}
+                onTouchEndCapture={handleMessageListScroll}
+              >
                 <div className={styles.contentWidth} ref={messageContentRef}>
                   {renderMessages()}
-                  <div ref={bottomSentinelRef} aria-hidden="true" />
                 </div>
               </div>
             </div>

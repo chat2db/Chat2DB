@@ -13,6 +13,7 @@ import ai.chat2db.community.tools.model.agent.runtime.AgentModelSnapshot;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeSkill;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeSessionRef;
 import ai.chat2db.community.tools.model.agent.runtime.AgentToolAccess;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -66,8 +67,11 @@ public class PiSessionLauncherImpl implements IPiSessionLauncher {
             IAgentRuntimeEventSink eventSink) {
         IPiModelConfiguration modelConfiguration = null;
         AgentToolAccess toolAccess = null;
+        PiProcessHandle process = null;
+        PiRpcTransportImpl rpc = null;
         try {
             toolAccess = toolAccessService.issue(sessionId, eventSink);
+            AtomicReference<AgentToolAccess> toolAccessRef = new AtomicReference<>(toolAccess);
             Path configuration = supervisor.prepareConfigurationDirectory(sessionId);
             modelConfiguration = new PiModelConfigurationImpl(sessionId, configuration, modelAccessService, objectMapper);
             AgentModelAccess modelAccess = modelConfiguration.prepare(model);
@@ -78,17 +82,24 @@ public class PiSessionLauncherImpl implements IPiSessionLauncher {
             }
             List<Path> loadedExtensions = new ArrayList<>(extensions);
             loadedExtensions.add(extension);
-            PiProcessHandle process = supervisor.start(
+            process = supervisor.start(
                     sessionId, externalSessionId, loadedExtensions, modelAccess, systemPrompt, skills);
             AtomicReference<AgentRuntimeSessionHandleImpl> handleReference = new AtomicReference<>();
-            PiRpcTransportImpl rpc = new PiRpcTransportImpl(process.stdout(), process.stdin(), event -> {
-                AgentRuntimeSessionHandleImpl handle = handleReference.get();
-                if (handle == null) {
-                    throw new PiRpcException("Pi emitted an event before session initialization");
+            Object eventLock = new Object();
+            List<JsonNode> earlyEvents = new ArrayList<>();
+            rpc = new PiRpcTransportImpl(process.stdout(), process.stdin(), event -> {
+                synchronized (eventLock) {
+                    AgentRuntimeSessionHandleImpl handle = handleReference.get();
+                    if (handle == null) {
+                        // The Pi process can emit its initial session event immediately after
+                        // startup. Buffer it until the handle is fully wired so the transport
+                        // reader cannot fail the whole session during this small startup window.
+                        earlyEvents.add(event);
+                        return;
+                    }
+                    handle.accept(event);
                 }
-                handle.accept(event);
             });
-            String toolTicket = toolAccess.ticket();
             AgentRuntimeSessionHandleImpl handle = new AgentRuntimeSessionHandleImpl(
                     sessionId,
                     new AgentRuntimeSessionRef(externalSessionId, resumeReference),
@@ -97,18 +108,50 @@ public class PiSessionLauncherImpl implements IPiSessionLauncher {
                     eventConverter,
                     eventSink,
                     objectMapper,
-                    () -> toolAccessService.revoke(toolTicket),
-                    modelConfiguration);
-            handleReference.set(handle);
+                    () -> toolAccessService.revoke(toolAccessRef.get().ticket()),
+                    modelConfiguration,
+                    () -> refreshToolAccess(sessionId, eventSink, configuration, toolAccessService,
+                            objectMapper, toolAccessRef));
+            synchronized (eventLock) {
+                handleReference.set(handle);
+                for (JsonNode event : earlyEvents) {
+                    handle.accept(event);
+                }
+                earlyEvents.clear();
+            }
             return handle;
         } catch (IOException error) {
+            if (rpc != null) rpc.close();
+            if (process != null) process.close();
             if (modelConfiguration != null) modelConfiguration.close();
             if (toolAccess != null) toolAccessService.revoke(toolAccess.ticket());
             throw new PiRpcException("Cannot start Pi runtime process", error);
         } catch (RuntimeException error) {
+            if (rpc != null) rpc.close();
+            if (process != null) process.close();
             if (modelConfiguration != null) modelConfiguration.close();
             if (toolAccess != null) toolAccessService.revoke(toolAccess.ticket());
             throw error;
+        }
+    }
+
+    private void refreshToolAccess(
+            String sessionId,
+            IAgentRuntimeEventSink eventSink,
+            Path configuration,
+            IAgentToolAccessProvider provider,
+            ObjectMapper mapper,
+            AtomicReference<AgentToolAccess> current) {
+        AgentToolAccess previous = current.get();
+        AgentToolAccess next = provider.issue(sessionId, eventSink);
+        try {
+            mapper.writeValue(configuration.resolve("tools.json").toFile(), next);
+            current.set(next);
+            provider.revoke(previous.ticket());
+        } catch (IOException | RuntimeException error) {
+            provider.revoke(next.ticket());
+            throw error instanceof RuntimeException runtime
+                    ? runtime : new PiRpcException("Cannot refresh Pi tool access", error);
         }
     }
 

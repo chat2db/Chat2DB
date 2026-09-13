@@ -221,6 +221,23 @@ class AgentRuntimeSessionHandleImplTest {
         assertEquals(count, transport.commands.size());
     }
 
+    @Test
+    void reportsUnexpectedRuntimeTerminationAndMarksHandleFailed() {
+        transport.termination.completeExceptionally(new RuntimeException("Pi exited"));
+
+        assertEquals(AgentRuntimeHealth.FAILED, handle.snapshot().toCompletableFuture().join().health());
+        assertTrue(events.isEmpty());
+    }
+
+    @Test
+    void emitsUnknownOutcomeWhenRuntimeTerminatesDuringRun() {
+        handle.startRun(runRequest());
+        transport.termination.completeExceptionally(new RuntimeException("Pi exited"));
+
+        assertEquals(AgentEventType.RUN_OUTCOME_UNKNOWN, events.get(0).type());
+        assertEquals(AgentRuntimeHealth.FAILED, handle.snapshot().toCompletableFuture().join().health());
+    }
+
     private static final class FakeTransport implements IPiRpcTransport {
         private String command;
         private JsonNode payload;
