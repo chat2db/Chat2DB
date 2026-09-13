@@ -23,7 +23,33 @@ const done = (sequence: number, id: string, failed = false): AgentTimelineEntry 
   sequence, kind: 'trace', trace: { type: 'tool_result', id, failed },
 });
 const activity = (entries: AgentTimelineEntry[], active = true) => getAgentActivity(active, entries, 'run', [], []);
-assert.equal(activity([]), undefined);
+assert.deepEqual(activity([]), { kind: 'starting' });
+assert.deepEqual(getAgentActivity(true, [], undefined, [], []), { kind: 'starting' },
+  'A send shows thinking before the server has assigned a run id');
+assert.equal(activity([], false), undefined);
+const beforeToken = appendAgentTimeline([], [
+  { id: 'accepted', sessionId: 'session', runId: 'run', sequence: 1,
+    type: 'RUN_ACCEPTED', payload: {}, occurredAt: '' },
+  { id: 'message', sessionId: 'session', runId: 'run', sequence: 2,
+    type: 'ASSISTANT_MESSAGE_STARTED', payload: {}, occurredAt: '' },
+  { id: 'empty', sessionId: 'session', runId: 'run', sequence: 3,
+    type: 'ASSISTANT_REASONING_DELTA', payload: { delta: '' }, occurredAt: '' },
+]);
+assert.deepEqual(activity(beforeToken), { kind: 'starting' },
+  'Run metadata, message start and an empty delta do not count as a first token');
+for (const type of ['ASSISTANT_TEXT_DELTA', 'ASSISTANT_REASONING_DELTA']) {
+  const afterToken = appendAgentTimeline(beforeToken, [
+    { id: 'token', sessionId: 'session', runId: 'run', sequence: 4,
+      type, payload: { delta: '查' }, occurredAt: '' },
+  ]);
+  assert.equal(activity(afterToken), undefined, `${type} ends the initial thinking indicator`);
+  const nextMessage = appendAgentTimeline(afterToken, [
+    { id: 'next', sessionId: 'session', runId: 'run', sequence: 5,
+      type: 'ASSISTANT_MESSAGE_STARTED', payload: {}, occurredAt: '' },
+  ]);
+  assert.equal(activity(nextMessage), undefined, 'Another model message in the same run does not restart thinking');
+}
+assert.deepEqual(activity([]), { kind: 'starting' }, 'A fresh run starts thinking again after the timeline resets');
 const calls = [tool(1, 'first', 'db_query'), tool(2, 'second', 'read')];
 const described = [{ sequence: 1, kind: 'trace' as const, trace: { type: 'tool_call' as const, id: 'described', name: 'db_query', description: '查询数据库中的数据' } }];
 assert.deepEqual(getAgentActivity(true, described, 'run', [], []), { kind: 'tool', tool: { name: 'db_query', description: '查询数据库中的数据' } });
@@ -36,6 +62,8 @@ assert.deepEqual(toolSummary(completedTool), { count: 1, durationMs: 12 });
 assert.deepEqual(activity(calls), { kind: 'tool', tool: { name: 'read' } });
 assert.deepEqual(activity([...calls, done(3, 'second')]), { kind: 'tool', tool: { name: 'db_query' } });
 assert.equal(activity([...calls, done(3, 'second'), done(4, 'first', true)]), undefined);
+assert.equal(activity([done(1, 'restored-result')]), undefined,
+  'A restored completed result must not look like a run waiting for its first token');
 assert.equal(activity(calls, false), undefined);
 assert.equal(activity([{ sequence: 5, kind: 'text', text: 'Answer' }]), undefined);
 const question: AgentQuestionItem = { id: 'q', sessionId: 'session', runId: 'run', question: 'Which one?', options: [], status: 'pending' };
@@ -46,14 +74,28 @@ assert.deepEqual(getAgentActivity(true, calls, 'run', [{ ...question, status: 'a
 assert.equal(getAgentActivity(false, calls, 'run', [question], []), undefined);
 assert.deepEqual(getAgentActivity(true, [], 'run', [], [{ id: 'a', sessionId: 'session', runId: 'run',
   toolName: 'SQL', command: 'UPDATE t SET x=1', workingDirectory: '', status: 'pending' }]), { kind: 'approval' });
-assert.equal(getAgentActivity(true, [], 'other', [question], []), undefined);
+assert.deepEqual(getAgentActivity(true, [], 'other', [question], []), { kind: 'starting' },
+  'A pending question from an older run does not suppress the new run indicator');
+assert.deepEqual(getAgentActivity(true, [], 'run', [question], [], true), { kind: 'cancelling' });
+assert.equal(getAgentActivity(false, [], 'run', [question], [], true), undefined,
+  'A terminal run does not keep a thinking, waiting or cancelling indicator');
+for (const kind of ['question', 'approval', 'chart'] as const) {
+  assert.equal(activity([{ sequence: 1, kind, id: 'card' }]), undefined,
+    'Existing interaction and result cards are not pre-token waiting states');
+}
+assert.equal(activity([{ sequence: 1, kind: 'trace', trace: { type: 'error', content: 'Failed' } }]), undefined);
 const live = appendAgentTimeline([], [{ id: 'start', sessionId: 'session', runId: 'run', sequence: 1,
   type: 'TOOL_CALL_RUNNING', payload: { toolCallId: 'call', toolName: 'read', args: { description: '读取技能文件' } }, occurredAt: '' }]);
 assert.deepEqual(activity(live), { kind: 'tool', tool: { name: 'read', description: '读取技能文件' } });
 const finished = appendAgentTimeline(live, [{ id: 'end', sessionId: 'session', runId: 'run', sequence: 2,
   type: 'TOOL_CALL_COMPLETED', payload: { toolCallId: 'call', toolName: 'read', result: {} }, occurredAt: '' }]);
 assert.equal(activity(finished), undefined);
+const nextTool = appendAgentTimeline(finished, [{ id: 'next-tool', sessionId: 'session', runId: 'run', sequence: 3,
+  type: 'TOOL_CALL_RUNNING', payload: { toolCallId: 'query', toolName: 'db_query', args: { description: '统计每月支付金额' } }, occurredAt: '' }]);
+assert.deepEqual(activity(nextTool), { kind: 'tool', tool: { name: 'db_query', description: '统计每月支付金额' } },
+  'Progress switches from the completed tool to the current tool request description');
 for (const locale of [zh, en, ja, ko, es]) {
+  assert.ok(locale['stream.activity.starting']);
   assert.ok(locale['stream.activity.tool']);
   assert.ok(locale['stream.activity.responding']);
 }

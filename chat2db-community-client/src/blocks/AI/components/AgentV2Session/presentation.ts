@@ -67,9 +67,9 @@ export const getAgentActivity = (
   if (current?.kind === 'trace') return { kind: 'tool', tool: {
     name: current.trace.name || '', ...(current.trace.description ? { description: current.trace.description } : {}),
   } };
-  // Input loading communicates that the run is active; a static "starting"
-  // row here would look like a stuck thinking state after a tool completes.
-  return undefined;
+  const receivedContent = entries.some((entry) => entry.kind === 'text' ? !!entry.text
+    : entry.kind === 'trace' && entry.trace.type === 'reasoning' ? !!entry.trace.content : true);
+  return receivedContent ? undefined : { kind: 'starting' };
 };
 
 export const splitSkillMessage = (content: string) => {

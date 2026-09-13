@@ -16,7 +16,7 @@ export default {
   "stream.output.downloadFailed": "結果ファイルをダウンロードできません",
   "stream.output.unavailable": "完全な結果を保存できませんでした",
 
-  "stream.activity.starting": "タスクを開始しています…",
+  "stream.activity.starting": "考え中",
   "stream.activity.cancelling": "停止しています…",
   "stream.trace.toolsCount": "{1} 個のツールを呼び出し",
   "stream.tool.running": "実行中",

@@ -16,7 +16,7 @@ export default {
   "stream.output.downloadFailed": "无法下载结果文件",
   "stream.output.unavailable": "完整结果未能保存",
 
-  "stream.activity.starting": "正在开始任务…",
+  "stream.activity.starting": "正在思考",
   "stream.activity.cancelling": "正在停止…",
   "stream.trace.toolsCount": "调用了 {1} 个工具",
   "stream.tool.running": "执行中",

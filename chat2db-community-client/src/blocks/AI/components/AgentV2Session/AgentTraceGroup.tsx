@@ -1,7 +1,7 @@
 import { createStyles } from 'antd-style';
 import i18n from '@/i18n';
 import type { AgentTraceEntry } from '../../agentEvents';
-import { Check, ChevronRight, CircleX, Clock3, LoaderCircle, Wrench } from 'lucide-react';
+import { Check, ChevronRight, CircleX, Clock3, Wrench } from 'lucide-react';
 import AgentActivityIndicator from './AgentActivityIndicator';
 import AgentToolOutput from './AgentToolOutput';
 import { formatOutputPreview } from '../../agentOutput';
@@ -69,11 +69,6 @@ const useStyles = createStyles(({ css, token }) => ({
     text-align: right;
     font-variant-numeric: tabular-nums;
   `,
-  spinner: css`
-    animation: toolSpin 1s linear infinite;
-    @keyframes toolSpin { to { transform: rotate(360deg); } }
-    @media (prefers-reduced-motion: reduce) { animation: none; }
-  `,
 }));
 
 const formatJson = (value: string) => {
@@ -119,11 +114,12 @@ export default function AgentTraceGroup({ entries, activity, status, runActive =
             <span className={styles.toolIcon} role="img" aria-label={stateLabel} title={stateLabel}>
               {state === 'failed' ? <CircleX size={14} aria-hidden="true" />
                 : state === 'completed' ? <Check size={14} aria-hidden="true" />
-                : state === 'running' ? <LoaderCircle size={14} className={styles.spinner} aria-hidden="true" />
+                : state === 'running' ? <Wrench size={14} aria-hidden="true" />
                 : <Clock3 size={14} aria-hidden="true" />}
             </span>
             <span className={styles.toolText}>
-              {tool.description || tool.name || i18n('stream.trace.unknownTool')}
+              {state === 'running' ? <AgentActivityIndicator activity={{ kind: 'tool', tool }} />
+                : tool.description || tool.name || i18n('stream.trace.unknownTool')}
             </span>
             <span className={styles.duration}>
               {tool.durationMs !== undefined && `${tool.durationMs}ms`}

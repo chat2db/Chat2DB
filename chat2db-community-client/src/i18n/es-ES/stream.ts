@@ -16,7 +16,7 @@ export default {
   "stream.output.downloadFailed": "No se puede descargar el archivo de resultados",
   "stream.output.unavailable": "No se pudo guardar el resultado completo",
 
-  "stream.activity.starting": "Iniciando tarea…",
+  "stream.activity.starting": "Pensando",
   "stream.activity.cancelling": "Deteniendo…",
   "stream.trace.toolsCount": "Se llamaron {1} herramientas",
   "stream.tool.running": "En ejecución",

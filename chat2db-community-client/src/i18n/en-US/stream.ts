@@ -16,7 +16,7 @@ export default {
   "stream.output.downloadFailed": "Unable to download the result file",
   "stream.output.unavailable": "The full result could not be saved",
 
-  "stream.activity.starting": "Starting task…",
+  "stream.activity.starting": "Thinking",
   "stream.activity.cancelling": "Stopping…",
   "stream.trace.toolsCount": "Called {1} tool(s)",
   "stream.tool.running": "Running",

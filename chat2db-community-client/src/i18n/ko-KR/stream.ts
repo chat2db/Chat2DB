@@ -16,7 +16,7 @@ export default {
   "stream.output.downloadFailed": "결과 파일을 다운로드할 수 없습니다",
   "stream.output.unavailable": "전체 결과를 저장하지 못했습니다",
 
-  "stream.activity.starting": "작업 시작 중…",
+  "stream.activity.starting": "생각 중",
   "stream.activity.cancelling": "중지 중…",
   "stream.trace.toolsCount": "{1}개 도구 호출",
   "stream.tool.running": "실행 중",

@@ -51,7 +51,7 @@ export default function AgentV2Session(props: AgentV2SessionProps) {
     content: string, timeline: AgentTimelineEntry[] = [], runId?: string, active = false, error?: string, status?: AgentV2Message['status'],
   ) => (
     <div className={styles.assistantRow}>
-      <div className={cx(styles.assistantBadge, active && styles.assistantBadgeLoading)} aria-hidden="true">
+      <div className={styles.assistantBadge} aria-hidden="true">
         <div className={styles.aiIconWrap}><span className={styles.aiSpark}>✦</span></div>
       </div>
       <div className={styles.assistantContent} aria-busy={active}>
