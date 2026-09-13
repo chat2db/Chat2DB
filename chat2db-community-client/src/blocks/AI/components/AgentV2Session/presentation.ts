@@ -51,11 +51,23 @@ export const getAgentActivity = (
   if (cancelling) return { kind: 'cancelling' };
   if (questions.some((item) => item.runId === runId && item.status === 'pending')) return { kind: 'question' };
   if (approvals.some((item) => item.runId === runId && item.status === 'pending')) return { kind: 'approval' };
-  const current = [...entries].reverse().find((entry) => entry.kind === 'trace' && entry.trace.type === 'tool_call');
+  // A completed tool must not remain shown as the current activity while the
+  // runtime is waiting for the next model event. Track unresolved calls by id
+  // so the indicator reflects the tool that is actually running.
+  const completed = new Set<string>();
+  for (const entry of entries) {
+    if (entry.kind === 'trace' && entry.trace.type === 'tool_result' && entry.trace.id) {
+      completed.add(entry.trace.id);
+    }
+  }
+  const current = [...entries].reverse().find((entry) => entry.kind === 'trace'
+    && entry.trace.type === 'tool_call' && (!entry.trace.id || !completed.has(entry.trace.id)));
   if (current?.kind === 'trace') return { kind: 'tool', tool: {
     name: current.trace.name || '', ...(current.trace.description ? { description: current.trace.description } : {}),
   } };
-  return { kind: 'starting' };
+  // Input loading communicates that the run is active; a static "starting"
+  // row here would look like a stuck thinking state after a tool completes.
+  return undefined;
 };
 
 export const splitSkillMessage = (content: string) => {

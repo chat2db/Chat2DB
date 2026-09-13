@@ -202,7 +202,9 @@ export const buildAgentTranscript = (events: AgentEvent[]): AgentTranscriptMessa
 };
 
 export const isTerminalAgentEvent = (event: AgentEvent) =>
-  ['RUN_COMPLETED', 'RUN_FAILED', 'RUN_CANCELLED', 'RUN_SUSPENDED', 'RUN_OUTCOME_UNKNOWN'].includes(event.type);
+  // SUSPENDED is a resumable state (for questions/approvals), not a terminal
+  // run. Keep polling so an answer can continue the same operation.
+  ['RUN_COMPLETED', 'RUN_FAILED', 'RUN_CANCELLED', 'RUN_OUTCOME_UNKNOWN'].includes(event.type);
 
 export const agentErrorText = (error: unknown): string => {
   if (typeof error === 'string') return error;

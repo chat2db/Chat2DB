@@ -4,7 +4,7 @@ import esApprovals from '@/i18n/es-ES/stream';
 import enApprovals from '@/i18n/en-US/stream';
 import zhApprovals from '@/i18n/zh-CN/stream';
 import assert from 'node:assert/strict';
-import { appendAgentTimeline, agentEventTrace, buildAgentTranscript, mergeAgentEvents, updateAgentApprovals } from './agentEvents';
+import { appendAgentTimeline, agentEventTrace, buildAgentTranscript, isTerminalAgentEvent, mergeAgentEvents, updateAgentApprovals } from './agentEvents';
 import type { AgentEvent } from '@/service/agent';
 
 const event = (sequence: number, type: AgentEvent['type'], payload: Record<string, unknown> = {}): AgentEvent => ({
@@ -36,6 +36,8 @@ const recoveredTranscript = buildAgentTranscript([
   event(3, 'RUN_COMPLETED'),
 ]);
 assert.equal(recoveredTranscript[1].status, undefined);
+assert.equal(isTerminalAgentEvent(event(4, 'RUN_SUSPENDED')), false);
+assert.equal(isTerminalAgentEvent(event(5, 'RUN_COMPLETED')), true);
 
 const requested = event(4, 'APPROVAL_REQUESTED', {
   approvalId: 'approval-1', toolName: 'bash', command: "printf 'line 1\\nline 2'", workingDirectory: '/folder with spaces',
