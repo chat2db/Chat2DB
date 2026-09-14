@@ -65,7 +65,7 @@ public class NamespaceStorage extends SmallDataStorage<Namespace> {
         Node node = new Node();
         node.setId(namespace.getId());
         node.setType(NodeTypeEnum.NAMESPACE.name());
-        TreeNodeStorage.INSTANCE.updatePosition(dropToNode, node, 2);
+        TreeNodeStorage.INSTANCE.insertNode(dropToNode, node);
         return id;
     }
     public void delete(Long id) {

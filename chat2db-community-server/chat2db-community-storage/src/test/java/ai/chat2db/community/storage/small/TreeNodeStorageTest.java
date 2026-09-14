@@ -149,6 +149,76 @@ class TreeNodeStorageTest {
         assertEquals(expected, new TreeNodeStorage(storageFile).getNodes());
     }
 
+    @Test
+    void firstInsertionPersistsWithoutRetainingCallerOrHydratedData() {
+        TreeNodeStorage storage = newStorage("first-insert.json");
+        Node node = dataSourceNode(1L);
+        node.setData("hydrated metadata");
+
+        storage.insertNode(null, node);
+        node.setId(99L);
+
+        List<Node> expected = List.of(dataSourceNode(1L));
+        assertEquals(expected, storage.getNodes());
+        assertEquals(expected, newStorage("first-insert.json").getNodes());
+    }
+
+    @Test
+    void duplicateInsertionDoesNotDuplicateOrRelocateExistingNode() {
+        TreeNodeStorage storage = newStorage("duplicate-insert.json");
+        List<Node> expected = List.of(namespaceNode(1L, dataSourceNode(2L)));
+        storage.createTree(expected);
+
+        storage.insertNode(null, dataSourceNode(2L));
+
+        assertEquals(expected, storage.getNodes());
+        assertEquals(expected, newStorage("duplicate-insert.json").getNodes());
+    }
+
+    @Test
+    void movingMissingSourceDoesNotInsertIt() throws Exception {
+        String fileName = "missing-source.json";
+        TreeNodeStorage storage = newStorage(fileName);
+        List<Node> expected = List.of(dataSourceNode(1L));
+        storage.createTree(expected);
+        Path path = new File(tempDir, fileName).toPath();
+        String originalFile = Files.readString(path);
+
+        storage.updatePosition(null, dataSourceNode(99L), 2);
+
+        assertEquals(expected, storage.getNodes());
+        assertEquals(originalFile, Files.readString(path));
+    }
+
+    @Test
+    void failedFirstInsertionDoesNotPublishTree() throws Exception {
+        File storageFile = new File(tempDir, "failed-first-insert.json");
+        TreeNodeStorage failing = new FailingTreeNodeStorage(storageFile);
+        String originalFile = Files.readString(storageFile.toPath());
+
+        assertThrows(RuntimeException.class, () -> failing.insertNode(null, dataSourceNode(1L)));
+
+        assertTrue(failing.getNodes().isEmpty());
+        assertEquals(originalFile, Files.readString(storageFile.toPath()));
+        assertTrue(new TreeNodeStorage(storageFile).getNodes().isEmpty());
+    }
+
+    @Test
+    void failedNestedInsertionKeepsMemoryAndPersistedTree() throws Exception {
+        File storageFile = new File(tempDir, "failed-nested-insert.json");
+        List<Node> expected = List.of(namespaceNode(1L, dataSourceNode(2L)));
+        new TreeNodeStorage(storageFile).createTree(expected);
+        String originalFile = Files.readString(storageFile.toPath());
+        TreeNodeStorage failing = new FailingTreeNodeStorage(storageFile);
+
+        assertThrows(RuntimeException.class,
+                () -> failing.insertNode(namespaceNode(1L), dataSourceNode(3L)));
+
+        assertEquals(expected, failing.getNodes());
+        assertEquals(originalFile, Files.readString(storageFile.toPath()));
+        assertEquals(expected, new TreeNodeStorage(storageFile).getNodes());
+    }
+
     private void assertInvalidDropPreservesTree(String fileName, Node dropToNode, Node dragNode) {
         TreeNodeStorage storage = newStorage(fileName);
         List<Node> expected = List.of(

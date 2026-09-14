@@ -49,8 +49,7 @@ public class TreeNodeStorage extends SmallDataStorage<TreeNode> {
         if (nodes == null) {
             return;
         }
-        PropertyFilter filter = (object, name, value) -> !"data".equals(name);
-        List<Node> newNodes = copyNodes(nodes, filter);
+        List<Node> newNodes = copyNodes(nodes);
 
         List<TreeNode> treeNodes = getDataList();
         if (CollectionUtils.isEmpty(treeNodes)) {
@@ -73,6 +72,23 @@ public class TreeNodeStorage extends SmallDataStorage<TreeNode> {
         dataMap.put(replacement.getId(), replacement);
     }
 
+    synchronized void insertNode(Node parentNode, Node newNode) {
+        if (newNode == null) {
+            return;
+        }
+        List<Node> nodes = getNodes();
+        List<Node> updatedNodes = nodes == null ? new ArrayList<>() : copyNodes(nodes);
+        if (findNode(updatedNodes, newNode) != null) {
+            return;
+        }
+        if (parentNode == null) {
+            updatedNodes.add(newNode);
+        } else if (!addNode(updatedNodes, parentNode, newNode, 2)) {
+            return;
+        }
+        createTree(updatedNodes);
+    }
+
 
     public synchronized ActionResult updatePosition(Node dropToNode, Node dragNode, Integer dropPosition) {
         if (dragNode == null) {
@@ -87,8 +103,7 @@ public class TreeNodeStorage extends SmallDataStorage<TreeNode> {
         if (nodes == null) {
             return ActionResult.isSuccess();
         }
-        PropertyFilter filter = (object, name, value) -> !"data".equals(name);
-        List<Node> updatedNodes = copyNodes(nodes, filter);
+        List<Node> updatedNodes = copyNodes(nodes);
         Node sourceNode = findNode(updatedNodes, dragNode);
         if (sourceNode == null) {
             return ActionResult.isSuccess();
@@ -112,7 +127,8 @@ public class TreeNodeStorage extends SmallDataStorage<TreeNode> {
         return ActionResult.isSuccess();
     }
 
-    private List<Node> copyNodes(List<Node> nodes, PropertyFilter filter) {
+    private List<Node> copyNodes(List<Node> nodes) {
+        PropertyFilter filter = (object, name, value) -> !"data".equals(name);
         String json = JSON.toJSONString(nodes, filter);
         return JSON.parseArray(json, Node.class);
     }
@@ -173,8 +189,7 @@ public class TreeNodeStorage extends SmallDataStorage<TreeNode> {
         if (nodes == null || dragNode == null) {
             return ActionResult.isSuccess();
         }
-        PropertyFilter filter = (object, name, value) -> !"data".equals(name);
-        List<Node> updatedNodes = copyNodes(nodes, filter);
+        List<Node> updatedNodes = copyNodes(nodes);
         if (!removeNode(updatedNodes, dragNode, true)) {
             return ActionResult.isSuccess();
         }

@@ -238,7 +238,7 @@ public class DataSourceStorage extends SmallDataStorage<DataSource> {
         Node node = new Node();
         node.setId(datasourceId);
         node.setType(NodeTypeEnum.DATA_SOURCE.name());
-        TreeNodeStorage.INSTANCE.updatePosition(dropToNode, node, 2);
+        TreeNodeStorage.INSTANCE.insertNode(dropToNode, node);
     }
 
     public void delete(Long id) {
