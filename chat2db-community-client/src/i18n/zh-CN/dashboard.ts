@@ -1,4 +1,6 @@
 export default {
+  'dashboard.list.loadFailed': '仪表盘列表加载失败',
+  'dashboard.list.retry': '重试',
   'dashboard.title': '仪表盘',
   'dashboard.edit': '编辑',
   'dashboard.modal.editTitle': '编辑仪表盘',
