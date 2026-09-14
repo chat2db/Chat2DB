@@ -1813,87 +1813,32 @@ public class DefaultSQLExecutor implements ICommandExecutor {
         }
     }
 
-    /** Executes a fast-import row batch atomically when this method owns the transaction. */
-    public void executeAtomicBatchInsert(Connection connection, List<String> sqls,
-                                         ISqlExecutionStatementListener statementListener,
-                                         Runnable cancellationChecker) {
+    /** Executes a JDBC batch using the connection's existing transaction settings. */
+    public void executeJdbcBatchInsert(Connection connection, List<String> sqls,
+                                      ISqlExecutionStatementListener statementListener,
+                                      Runnable cancellationChecker) {
         if (sqls == null || sqls.isEmpty()) {
             return;
         }
-        final boolean manageTransaction;
+        checkTaskCancellation(cancellationChecker);
         try {
-            manageTransaction = connection.getAutoCommit();
+            Statement statement = connection.createStatement();
+            try {
+                try (statement) {
+                    notifyStatementCreated(statementListener, statement);
+                    checkTaskCancellation(cancellationChecker);
+                    for (String sql : sqls) {
+                        statement.addBatch(sql);
+                    }
+                    statement.executeBatch();
+                    checkTaskCancellation(cancellationChecker);
+                }
+            } finally {
+                notifyStatementClosed(statementListener, statement);
+            }
         } catch (SQLException e) {
+            checkTaskCancellation(cancellationChecker);
             throw new RuntimeException(e);
-        }
-        boolean transactionStarted = false;
-        boolean discardRequired = false;
-        Exception failure = null;
-        try {
-            if (manageTransaction) {
-                transactionStarted = true;
-                connection.setAutoCommit(false);
-            }
-            checkTaskCancellation(cancellationChecker);
-            executeInsertBatch(connection, sqls, statementListener, cancellationChecker);
-            checkTaskCancellation(cancellationChecker);
-            if (manageTransaction) {
-                connection.commit();
-            }
-        } catch (Exception e) {
-            failure = e;
-        }
-        if (failure != null && transactionStarted) {
-            try {
-                connection.rollback();
-            } catch (SQLException rollbackFailure) {
-                failure.addSuppressed(rollbackFailure);
-                discardRequired = true;
-            }
-        }
-        if (transactionStarted && !discardRequired) {
-            try {
-                connection.setAutoCommit(true);
-            } catch (SQLException restoreFailure) {
-                if (failure == null) {
-                    failure = restoreFailure;
-                } else {
-                    failure.addSuppressed(restoreFailure);
-                }
-                discardRequired = true;
-            }
-        }
-        if (discardRequired) {
-            discardConnection(connection, failure);
-        }
-        if (failure != null) {
-            try {
-                checkTaskCancellation(cancellationChecker);
-            } catch (RuntimeException cancellation) {
-                if (cancellation != failure) {
-                    cancellation.addSuppressed(failure);
-                }
-                throw cancellation;
-            }
-            throw failure instanceof RuntimeException runtime ? runtime : new RuntimeException(failure);
-        }
-    }
-
-    private void executeInsertBatch(Connection connection, List<String> sqls,
-                                    ISqlExecutionStatementListener statementListener,
-                                    Runnable cancellationChecker) throws SQLException {
-        Statement statement = connection.createStatement();
-        try {
-            try (statement) {
-                notifyStatementCreated(statementListener, statement);
-                checkTaskCancellation(cancellationChecker);
-                for (String sql : sqls) {
-                    statement.addBatch(sql);
-                }
-                statement.executeBatch();
-            }
-        } finally {
-            notifyStatementClosed(statementListener, statement);
         }
     }
 }

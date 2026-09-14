@@ -26,14 +26,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DefaultSQLExecutorAtomicBatchTest {
+class DefaultSQLExecutorJdbcBatchTest {
 
     @Test
-    void atomicBatchExecutesEveryStatement() throws Exception {
-        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:atomic_legacy_batch;DB_CLOSE_DELAY=-1")) {
+    void batchExecutesEveryStatementWithoutTransactionControl() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:jdbc_batch_legacy_batch;DB_CLOSE_DELAY=-1")) {
             createTable(connection);
 
-            DefaultSQLExecutor.getInstance().executeAtomicBatchInsert(connection, List.of(
+            DefaultSQLExecutor.getInstance().executeJdbcBatchInsert(withoutTransactionControl(connection), List.of(
                     "INSERT INTO records VALUES (1)",
                     "INSERT INTO records VALUES (2)"), null, null);
 
@@ -42,33 +42,33 @@ class DefaultSQLExecutorAtomicBatchTest {
     }
 
     @Test
-    void cancellationBeforeCommitRollsBackTheBatch() throws Exception {
-        // The cancellation checker fires after execution and before commit.
+    void cancellationAfterExecutionKeepsCommittedRows() throws Exception {
+        // The cancellation checker fires after the driver has executed the batch.
         List<String> sqls = new java.util.ArrayList<>();
         for (int value = 1; value <= 501; value++) {
             sqls.add("INSERT INTO records VALUES (" + value + ")");
         }
-        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:atomic_cancel_batch;DB_CLOSE_DELAY=-1")) {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:jdbc_batch_cancel_batch;DB_CLOSE_DELAY=-1")) {
             createTable(connection);
             AtomicInteger checks = new AtomicInteger();
             CountingStatementListener listener = new CountingStatementListener();
 
             assertThrows(CancellationException.class,
-                    () -> DefaultSQLExecutor.getInstance().executeAtomicBatchInsert(connection, sqls,
+                    () -> DefaultSQLExecutor.getInstance().executeJdbcBatchInsert(connection, sqls,
                             listener, () -> {
                                 if (checks.incrementAndGet() >= 3) {
-                                    throw new CancellationException("cancelled before commit");
+                                    throw new CancellationException("cancelled after execution");
                                 }
                             }));
 
-            assertEquals(0, countRows(connection));
+            assertEquals(501, countRows(connection));
             assertEquals(1, listener.created.get());
             assertEquals(1, listener.closed.get());
         }
     }
 
     @Test
-    void stopCancelsExecutingAtomicBatch() throws Exception {
+    void stopCancelsExecutingJdbcBatch() throws Exception {
         List<String> sqls = new java.util.ArrayList<>();
         for (int value = 1; value <= 501; value++) {
             sqls.add("INSERT INTO records VALUES (" + value + ")");
@@ -79,10 +79,10 @@ class DefaultSQLExecutorAtomicBatchTest {
         TestCancellation cancellation = new TestCancellation();
         ExecutorService executor = Executors.newSingleThreadExecutor();
 
-        try (Connection real = DriverManager.getConnection("jdbc:h2:mem:atomic_cancel_running;DB_CLOSE_DELAY=-1")) {
+        try (Connection real = DriverManager.getConnection("jdbc:h2:mem:jdbc_batch_cancel_running;DB_CLOSE_DELAY=-1")) {
             createTable(real);
             Connection connection = (Connection) Proxy.newProxyInstance(
-                    DefaultSQLExecutorAtomicBatchTest.class.getClassLoader(),
+                    DefaultSQLExecutorJdbcBatchTest.class.getClassLoader(),
                     new Class<?>[]{Connection.class}, (proxy, method, args) -> {
                         Object value = method.invoke(real, args);
                         if ("createStatement".equals(method.getName()) && value instanceof Statement statement) {
@@ -93,7 +93,7 @@ class DefaultSQLExecutorAtomicBatchTest {
                     });
 
             var execution = executor.submit(
-                    () -> DefaultSQLExecutor.getInstance().executeAtomicBatchInsert(connection, sqls,
+                    () -> DefaultSQLExecutor.getInstance().executeJdbcBatchInsert(connection, sqls,
                             cancellation, cancellation::checkCancelled));
             assertTrue(executeStarted.await(5, TimeUnit.SECONDS), "batch did not start executing");
 
@@ -102,7 +102,7 @@ class DefaultSQLExecutorAtomicBatchTest {
             assertThrows(ExecutionException.class, () -> execution.get(10, TimeUnit.SECONDS));
             assertEquals(1, createCalls.get(), "the batch must use one statement");
             assertEquals(1, cancelCalls.get());
-            assertEquals(0, countRows(real), "the cancelled chunk rolls back with its transaction");
+            assertEquals(0, countRows(real), "the cancelled statement was not executed");
         } finally {
             executor.shutdownNow();
         }
@@ -110,7 +110,7 @@ class DefaultSQLExecutorAtomicBatchTest {
 
     @Test
     void statementCloseNotificationFollowsJdbcClose() throws Exception {
-        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:atomic_close_notification;DB_CLOSE_DELAY=-1")) {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:jdbc_batch_close_notification;DB_CLOSE_DELAY=-1")) {
             createTable(connection);
             try (Statement statement = connection.createStatement()) {
                 statement.execute("INSERT INTO records VALUES (1)");
@@ -134,7 +134,7 @@ class DefaultSQLExecutorAtomicBatchTest {
             };
 
             assertThrows(RuntimeException.class, () -> DefaultSQLExecutor.getInstance()
-                    .executeAtomicBatchInsert(connection, List.of("INSERT INTO records VALUES (1)"), listener, null));
+                    .executeJdbcBatchInsert(connection, List.of("INSERT INTO records VALUES (1)"), listener, null));
 
             assertEquals(1, notifications.get());
             assertTrue(statementClosed.get());
@@ -143,10 +143,10 @@ class DefaultSQLExecutorAtomicBatchTest {
 
     @Test
     void callerOwnedTransactionKeepsAutoCommitDisabled() throws Exception {
-        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:atomic_caller_owned")) {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:jdbc_batch_caller_owned")) {
             createTable(connection);
             connection.setAutoCommit(false);
-            DefaultSQLExecutor.getInstance().executeAtomicBatchInsert(connection,
+            DefaultSQLExecutor.getInstance().executeJdbcBatchInsert(withoutTransactionControl(connection),
                     List.of("INSERT INTO records VALUES (1)"), null, null);
             assertFalse(connection.getAutoCommit());
             connection.rollback();
@@ -157,14 +157,14 @@ class DefaultSQLExecutorAtomicBatchTest {
     @Test
     void failedBatchDoesNotRollbackCallerOwnedWork() throws Exception {
         try (Connection connection = DriverManager.getConnection(
-                "jdbc:h2:mem:atomic_caller_owned_failure")) {
+                "jdbc:h2:mem:jdbc_batch_caller_owned_failure")) {
             createTable(connection);
             connection.setAutoCommit(false);
             try (Statement statement = connection.createStatement()) {
                 statement.execute("INSERT INTO records VALUES (99)");
             }
             assertThrows(RuntimeException.class,
-                    () -> DefaultSQLExecutor.getInstance().executeAtomicBatchInsert(connection,
+                    () -> DefaultSQLExecutor.getInstance().executeJdbcBatchInsert(connection,
                             List.of("INSERT INTO records VALUES (1)",
                                     "INSERT INTO records VALUES (1)"), null, null));
             assertFalse(connection.getAutoCommit());
@@ -176,6 +176,37 @@ class DefaultSQLExecutorAtomicBatchTest {
             }
             connection.rollback();
         }
+    }
+
+    @Test
+    void failedBatchKeepsRowsCommittedByTheDriver() throws Exception {
+        try (Connection connection = DriverManager.getConnection("jdbc:h2:mem:jdbc_batch_partial_failure")) {
+            createTable(connection);
+
+            assertThrows(RuntimeException.class,
+                    () -> DefaultSQLExecutor.getInstance().executeJdbcBatchInsert(
+                            withoutTransactionControl(connection),
+                            List.of("INSERT INTO records VALUES (1)", "INSERT INTO records VALUES (1)",
+                                    "INSERT INTO records VALUES (2)"), null, null));
+
+            // H2 continues a JDBC batch after this constraint violation while auto-commit is on.
+            assertEquals(2, countRows(connection));
+            assertTrue(connection.getAutoCommit());
+        }
+    }
+
+    private static Connection withoutTransactionControl(Connection connection) {
+        return (Connection) Proxy.newProxyInstance(DefaultSQLExecutorJdbcBatchTest.class.getClassLoader(),
+                new Class<?>[]{Connection.class}, (proxy, method, args) -> {
+                    if (List.of("getAutoCommit", "setAutoCommit", "commit", "rollback").contains(method.getName())) {
+                        throw new AssertionError("Batch execution must not control transactions: " + method.getName());
+                    }
+                    try {
+                        return method.invoke(connection, args);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
     }
 
     private static void createTable(Connection connection) throws SQLException {
@@ -196,7 +227,7 @@ class DefaultSQLExecutorAtomicBatchTest {
             CountDownLatch executeStarted) {
         CountDownLatch cancelled = new CountDownLatch(1);
         return (Statement) Proxy.newProxyInstance(
-                DefaultSQLExecutorAtomicBatchTest.class.getClassLoader(),
+                DefaultSQLExecutorJdbcBatchTest.class.getClassLoader(),
                 new Class<?>[]{Statement.class}, (proxy, method, args) -> {
                     if ("executeBatch".equals(method.getName())) {
                         executeStarted.countDown();

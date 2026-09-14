@@ -251,33 +251,32 @@ class ImportRowBatcherParallelTest {
     }
 
     @Test
-    void failedFinalBatchRollsBackAndPropagatesWorkerFailure() throws Exception {
+    void failedFinalBatchPropagatesWorkerFailureAndKeepsCommittedRows() throws Exception {
         System.setProperty(PARALLELISM_PROPERTY, "2");
         ImportTaskSpec spec = csvSpec(writeCsv("1,ok", "1,duplicate", "2,ok"));
         TaskExecutionContextImpl context = contextFor(spec);
 
         assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, context));
 
-        assertEquals(List.of(), importedIds(), "healthy rows in the failed batch must not be replayed");
+        assertEquals(List.of(1, 2), importedIds(), "H2 commits successful statements in the failed JDBC batch");
         assertNull(context.artifactDraft());
         assertTrue(storage.events.stream().anyMatch(event -> "IMPORT_BATCH_FAILED".equals(event.getCode())));
         assertFalse(storage.events.stream().anyMatch(event -> "IMPORT_SUMMARY".equals(event.getCode())));
     }
 
     @Test
-    void failedParallelBatchesNeverReplayTheirHealthyRows() throws Exception {
+    void failedParallelBatchesReportFailureWithPartialWrites() throws Exception {
         System.setProperty(PARALLELISM_PROPERTY, "2");
         String[] lines = new String[80_000];
         for (int index = 0; index < lines.length; index++) {
-            // Every batch contains constraint violations; replay would otherwise insert rows.
+            // Every batch contains constraint violations, so the task must report failure.
             lines[index] = (index % 2) + ",ok";
         }
         ImportTaskSpec spec = csvSpec(writeCsv(lines));
 
         assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, contextFor(spec)));
 
-        assertEquals(List.of(), importedIds());
-        assertEquals(0, ImportRowBatcher.lastTuningSnapshot().rows());
+        assertEquals(List.of(0, 1), importedIds());
         assertFalse(storage.events.stream().anyMatch(event -> "IMPORT_SUMMARY".equals(event.getCode())));
     }
 

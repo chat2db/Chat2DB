@@ -96,14 +96,14 @@ class CsvImportPipelineTest {
     }
 
     @Test
-    void failsBadBatchWithoutRetryingHealthyRowsOrCreatingOutput() throws Exception {
+    void failedBatchPreservesCommittedRowsWithoutCreatingOutput() throws Exception {
         Path csv = writeCsv("ROW_ID,ROW_NAME,EXTRA\n1,ok,ignored\n2,this-value-is-too-long,x\n");
         ImportTaskSpec spec = csvSpec(csv);
         TaskExecutionContextImpl context = contextFor(spec);
 
         assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, context));
 
-        assertEquals(List.of(), importedIds(), "the failed batch must roll back without row retries");
+        assertEquals(List.of(1), importedIds(), "the executor must preserve rows already committed by the driver");
         assertNull(context.artifactDraft());
         assertFailedWithoutSummary();
     }
@@ -118,7 +118,10 @@ class CsvImportPipelineTest {
 
         assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, contextFor(spec)));
 
-        assertEquals(java.util.stream.IntStream.rangeClosed(1, 20_000).boxed().toList(), importedIds());
+        List<Integer> ids = importedIds();
+        assertTrue(ids.containsAll(java.util.stream.IntStream.rangeClosed(1, 20_000).boxed().toList()));
+        assertTrue(ids.contains(20_001), "the failed batch can leave committed rows");
+        assertTrue(ids.stream().allMatch(id -> id <= 40_000), "a later batch must not be submitted");
         assertEquals(1, storage.events.stream().filter(event -> "BATCH_EXECUTED".equals(event.getCode())).count());
         assertFailedWithoutSummary();
     }
@@ -132,7 +135,7 @@ class CsvImportPipelineTest {
 
         assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(legacySpec, contextFor(legacySpec)));
 
-        assertEquals(List.of(), importedIds());
+        assertEquals(List.of(1), importedIds());
         assertFailedWithoutSummary();
     }
 

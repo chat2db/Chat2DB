@@ -281,7 +281,7 @@ public final class ImportRowBatcher implements AutoCloseable {
         long started = System.nanoTime();
         int rows = batch.sqls().size();
         try {
-            DefaultSQLExecutor.getInstance().executeAtomicBatchInsert(
+            DefaultSQLExecutor.getInstance().executeJdbcBatchInsert(
                     Chat2DBContext.getConnection(), batch.sqls(), context, context::checkCancelled);
             importedCount.add(rows);
             context.logInfo("BATCH_EXECUTED", "SQL batch executed",
