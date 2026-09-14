@@ -1,4 +1,5 @@
 export default {
+  'connection.message.testSshTimeout': 'SSH 연결 테스트 시간이 초과되었습니다. 호스트와 네트워크를 확인한 후 다시 시도하세요.',
   'connection.title': '연결',
   'connection.title.connections': '연결',
   'connection.title.createConnection': '새 연결',
