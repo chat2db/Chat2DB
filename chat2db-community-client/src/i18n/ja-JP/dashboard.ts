@@ -1,4 +1,6 @@
 export default {
+  'dashboard.list.loadFailed': 'ダッシュボード一覧を読み込めませんでした',
+  'dashboard.list.retry': '再試行',
   'dashboard.title': 'ダッシュボード',
   'dashboard.edit': '編集',
   'dashboard.modal.editTitle': 'ダッシュボードを編集',

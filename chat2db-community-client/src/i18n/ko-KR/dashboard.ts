@@ -1,4 +1,6 @@
 export default {
+  'dashboard.list.loadFailed': '대시보드 목록을 불러오지 못했습니다',
+  'dashboard.list.retry': '다시 시도',
   'dashboard.title': '대시보드',
   'dashboard.edit': '편집',
   'dashboard.modal.editTitle': '대시보드 편집',

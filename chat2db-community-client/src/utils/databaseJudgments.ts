@@ -38,6 +38,9 @@ const databaseJudgments: Record<DatabaseCapability, DatabaseCapabilityJudgment> 
   [DatabaseCapability.DATABASE_CREATE]: {
     implementedByDefaultExcept: [DatabaseTypeCode.H2],
   },
+  [DatabaseCapability.DATABASE_CREATE_COMMENT]: {
+    implementedByDefaultExcept: [DatabaseTypeCode.MYSQL, DatabaseTypeCode.REDSHIFT],
+  },
   [DatabaseCapability.DATABASE_CREATE_CHARSET]: {
     implementedBy: [DatabaseTypeCode.MYSQL],
   },
@@ -46,6 +49,9 @@ const databaseJudgments: Record<DatabaseCapability, DatabaseCapabilityJudgment> 
   },
   [DatabaseCapability.SCHEMA_CREATE]: {
     implementedByDefaultExcept: [DatabaseTypeCode.ORACLE, DatabaseTypeCode.OSCAR],
+  },
+  [DatabaseCapability.SCHEMA_CREATE_COMMENT]: {
+    implementedByDefaultExcept: [DatabaseTypeCode.MYSQL],
   },
   [DatabaseCapability.IMPORT_EXPORT]: {
     implementedByDefaultExcept: [

@@ -3,9 +3,11 @@ package ai.chat2db.community.domain.core.impl.task;
 import ai.chat2db.community.domain.api.service.task.TaskCancelable;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -27,10 +29,13 @@ final class RunningTask {
 
     private final Long taskId;
 
+    private final Executor cancellationExecutor;
+
     private final CancellationToken cancellationToken = new CancellationToken();
 
-    // Several shard workers register statements concurrently; cancellation must reach all of them.
-    private final Set<TaskCancelable> cancelables = ConcurrentHashMap.newKeySet();
+    private final Object cancellationLock = new Object();
+
+    private final Set<TaskCancelable> cancelables = new HashSet<>();
 
     private final ReentrantLock completionLock = new ReentrantLock();
 
@@ -41,7 +46,12 @@ final class RunningTask {
     private volatile boolean closed;
 
     RunningTask(Long taskId) {
+        this(taskId, CANCELLATION_EXECUTOR);
+    }
+
+    RunningTask(Long taskId, Executor cancellationExecutor) {
         this.taskId = taskId;
+        this.cancellationExecutor = cancellationExecutor;
     }
 
     Long taskId() {
@@ -61,19 +71,22 @@ final class RunningTask {
     }
 
     boolean requestCancellation(boolean mayInterruptIfRunning) {
-        if (closed) {
-            return false;
+        Future<?> currentFuture;
+        List<TaskCancelable> currentCancelables;
+        synchronized (cancellationLock) {
+            if (closed) {
+                return false;
+            }
+            if (!cancellationToken.cancel()) {
+                return false;
+            }
+            currentFuture = future;
+            currentCancelables = List.copyOf(cancelables);
         }
-        if (!cancellationToken.cancel()) {
-            return false;
-        }
-        Future<?> currentFuture = future;
         if (currentFuture != null) {
             currentFuture.cancel(mayInterruptIfRunning);
         }
-        for (TaskCancelable resource : cancelables) {
-            cancelRegisteredResourceAsync(resource);
-        }
+        currentCancelables.forEach(this::cancelRegisteredResourceAsync);
         return true;
     }
 
@@ -81,14 +94,19 @@ final class RunningTask {
         if (resource == null) {
             return;
         }
-        cancelables.add(resource);
-        if (cancellationToken.isCancelled()) {
+        boolean cancelImmediately;
+        synchronized (cancellationLock) {
+            cancelImmediately = cancelables.add(resource) && cancellationToken.isCancelled();
+        }
+        if (cancelImmediately) {
             cancelRegisteredResourceAsync(resource);
         }
     }
 
     void clearCancelable(TaskCancelable resource) {
-        cancelables.remove(resource);
+        synchronized (cancellationLock) {
+            cancelables.remove(resource);
+        }
     }
 
     boolean isClosed() {
@@ -96,8 +114,10 @@ final class RunningTask {
     }
 
     void close() {
-        closed = true;
-        cancelables.clear();
+        synchronized (cancellationLock) {
+            closed = true;
+            cancelables.clear();
+        }
     }
 
     void markFinished() {
@@ -112,7 +132,7 @@ final class RunningTask {
         if (resource == null) {
             return;
         }
-        CANCELLATION_EXECUTOR.execute(() -> {
+        cancellationExecutor.execute(() -> {
             try {
                 resource.cancel();
             } catch (Exception e) {
