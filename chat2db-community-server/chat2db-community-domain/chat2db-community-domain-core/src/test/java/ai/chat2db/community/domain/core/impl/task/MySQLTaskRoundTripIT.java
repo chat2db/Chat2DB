@@ -8,7 +8,6 @@ import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
 import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
 import ai.chat2db.community.domain.api.model.task.TaskProgress;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
@@ -269,7 +268,6 @@ class MySQLTaskRoundTripIT {
                 .options(ImportOptions.builder()
                         .charset("UTF-8")
                         .delimiter(",")
-                        .onError("ABORT")
                         .columnMappings(List.of(
                                 new ImportColumnMapping("ID", "ID"),
                                 new ImportColumnMapping("NAME", "NAME"),
@@ -346,8 +344,6 @@ class MySQLTaskRoundTripIT {
         }
     }
 
-
-
     private static final class StorageStub implements TaskStorage {
 
         private final List<Task> tasks = new ArrayList<>();
@@ -413,19 +409,6 @@ class MySQLTaskRoundTripIT {
         @Override
         public boolean deleteTerminalTask(Long taskId, Runnable commitAction) {
             return false;
-        }
-
-        @Override
-        public List<TaskArtifact> listArtifacts(Long taskId) {
-            return List.of();
-        }
-
-        @Override
-        public void saveArtifact(Long taskId, TaskArtifact artifact) {
-        }
-
-        @Override
-        public void deleteArtifact(Long taskId, String artifactId) {
         }
 
     }

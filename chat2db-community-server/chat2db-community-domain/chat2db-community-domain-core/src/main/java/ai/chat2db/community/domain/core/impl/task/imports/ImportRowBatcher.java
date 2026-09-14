@@ -21,21 +21,10 @@ import ai.chat2db.spi.model.datasource.ConnectInfo;
 import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectionPool;
-import com.alibaba.fastjson2.JSON;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.SQLNonTransientConnectionException;
-import java.sql.SQLRecoverableException;
-import java.sql.SQLTransientConnectionException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -52,8 +41,7 @@ import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Turns file rows into buffered {@code INSERT} statements and executes them in JDBC batches.
- * With {@code onError=SKIP} a failing row is retried individually and recorded in a
- * {@code REJECT}-role NDJSON sub-artifact instead of aborting the task.
+ * Any row conversion or batch execution error fails the import without retrying rows.
  *
  * <p>Parallel execution starts at the fast-mode contract baseline of {@code 4} workers and
  * {@code 20000} rows per batch, shrinks to at most {@code 1} worker and {@code 100} rows when the
@@ -89,10 +77,6 @@ public final class ImportRowBatcher implements AutoCloseable {
     /** How long a worker waits for an adaptive gate permit before degrading to ungated execution. */
     private static final long GATE_WAIT_MILLIS = 30_000L;
 
-    private static final String ON_ERROR_SKIP = "SKIP";
-
-    private static final String REJECT_ROLE = "REJECT";
-
     private final ImportTaskSpec spec;
 
     private final TaskExecutionContext context;
@@ -115,17 +99,9 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     private final LongAdder importedCount = new LongAdder();
 
-    private final Object rejectLock = new Object();
-
     private final List<String> bufferedSqls = new ArrayList<>(DEFAULT_BATCH_ROWS);
 
-    private final List<String> bufferedRows = new ArrayList<>(DEFAULT_BATCH_ROWS);
-
-    private final List<Long> bufferedRowNumbers = new ArrayList<>(DEFAULT_BATCH_ROWS);
-
-    private BufferedWriter rejectWriter;
-
-    private long rejectedRowCount;
+    private long firstBufferedRow;
 
     // --- parallel-execution state, null on the serial path ---
     private volatile int workerCount;
@@ -236,18 +212,11 @@ public final class ImportRowBatcher implements AutoCloseable {
     private void acceptRow(long fileRowNumber, List<String> fileValues) {
         context.checkCancelled();
         throwIfFailed();
-        String sql;
-        String raw;
-        try {
-            sql = buildInsert(fileRowNumber, fileValues);
-            raw = JSON.toJSONString(fileValues);
-        } catch (RuntimeException conversionFailure) {
-            handleFailedRow(fileRowNumber, fileValues, conversionFailure);
-            return;
+        String sql = buildInsert(fileRowNumber, fileValues);
+        if (bufferedSqls.isEmpty()) {
+            firstBufferedRow = fileRowNumber;
         }
         bufferedSqls.add(sql);
-        bufferedRows.add(raw);
-        bufferedRowNumbers.add(fileRowNumber);
         if (bufferedSqls.size() >= batchSizer.batchSize()) {
             flushBufferedBatch();
         }
@@ -255,12 +224,6 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     public long importedRows() {
         return importedCount.sum();
-    }
-
-    public long rejectedRows() {
-        synchronized (rejectLock) {
-            return rejectedRowCount;
-        }
     }
 
     /** Final adaptive batch size; observability for tests and ops dashboards. */
@@ -284,8 +247,7 @@ public final class ImportRowBatcher implements AutoCloseable {
      * last closed batcher wins when several imports run at once.
      */
     public record ImportTuningSnapshot(int workers, long batches, long rows, long nanos,
-            int batchSize, int gatePermits, int peakInFlightBatches,
-            long rejectedRows) { }
+            int batchSize, int gatePermits, int peakInFlightBatches) { }
 
     private static final AtomicReference<ImportTuningSnapshot> LAST_TUNING = new AtomicReference<>();
 
@@ -316,13 +278,9 @@ public final class ImportRowBatcher implements AutoCloseable {
         if (bufferedSqls.isEmpty()) {
             return;
         }
-        long firstRowNumber = bufferedRowNumbers.get(0);
-        PendingBatch batch = new PendingBatch(List.copyOf(bufferedSqls), List.copyOf(bufferedRows),
-                List.copyOf(bufferedRowNumbers), submittedBatches, firstRowNumber);
+        PendingBatch batch = new PendingBatch(List.copyOf(bufferedSqls), submittedBatches, firstBufferedRow);
         submittedBatches++;
         bufferedSqls.clear();
-        bufferedRows.clear();
-        bufferedRowNumbers.clear();
         executeBatch(batch);
     }
 
@@ -330,7 +288,7 @@ public final class ImportRowBatcher implements AutoCloseable {
         if (workerPool != null) {
             submitBatch(batch);
         } else {
-            executeWithTolerance(batch);
+            executePendingBatch(batch);
         }
     }
 
@@ -338,26 +296,22 @@ public final class ImportRowBatcher implements AutoCloseable {
      * Executes a finished batch in the calling (serial) or a worker (parallel) context and reports
      * the measured cost to the adaptive sizer and gate.
      */
-    private void executeWithTolerance(PendingBatch batch) {
+    private void executePendingBatch(PendingBatch batch) {
         long started = System.nanoTime();
         int rows = batch.sqls().size();
         try {
-            try {
-                sqlExecutor.executeBatch(batch.sqls());
-                importedCount.add(rows);
-            } catch (TaskCancelledException cancellation) {
-                throw cancellation;
-            } catch (RuntimeException batchFailure) {
+            sqlExecutor.executeBatch(batch.sqls());
+            importedCount.add(rows);
+        } catch (RuntimeException | Error batchFailure) {
+            // Publish failure before decrementing in-flight work, so flush cannot report success.
+            recordFailure(batchFailure);
+            if (!(batchFailure instanceof TaskCancelledException)) {
                 context.logError("IMPORT_BATCH_FAILED", "Could not import batch", Map.of(
                         "statementCount", rows,
                         "firstRow", batch.firstRowNumber(),
                         "message", StringUtils.defaultString(batchFailure.getMessage())));
-                if (!isSkipMode()) {
-                    throw batchFailure;
-                }
-                // Apply healthy halves as batches and record individually rejected rows.
-                isolateBatchFailures(batch);
             }
+            throw batchFailure;
         } finally {
             long elapsed = System.nanoTime() - started;
             if (gate != null) {
@@ -370,90 +324,6 @@ public final class ImportRowBatcher implements AutoCloseable {
                 batchCompleted();
             }
         }
-    }
-
-    /**
-     * Locates the rows of a failed batch by repeated bisection: a half that executes cleanly is
-     * applied as one batch again, a half that still fails is split further until the offending
-     * rows stand alone. Each is recorded with its own cause and the import continues,
-     * so k bad rows cost O(k log n)
-     * executions instead of replaying every row of the batch one by one.
-     */
-    private void isolateBatchFailures(PendingBatch batch) {
-        List<String> sqls = batch.sqls();
-        isolateRange(sqls, batch.rows(), batch.rowNumbers(), 0, sqls.size());
-    }
-
-    private void isolateRange(List<String> sqls, List<String> rows, List<Long> rowNumbers,
-            int from, int to) {
-        if (from >= to) {
-            return;
-        }
-        if (to - from == 1) {
-            retryIsolatedRow(sqls.get(from), rows.get(from), rowNumbers.get(from));
-            return;
-        }
-        int mid = (from + to) >>> 1;
-        if (tryExecuteRange(sqls, from, mid)) {
-            importedCount.add(mid - from);
-        } else {
-            isolateRange(sqls, rows, rowNumbers, from, mid);
-        }
-        if (tryExecuteRange(sqls, mid, to)) {
-            importedCount.add(to - mid);
-        } else {
-            isolateRange(sqls, rows, rowNumbers, mid, to);
-        }
-    }
-
-    /** Runs one range as a batch; a clean range is applied, a failing range is split further. */
-    private boolean tryExecuteRange(List<String> sqls, int from, int to) {
-        context.checkCancelled();
-        try {
-            sqlExecutor.executeBatch(sqls.subList(from, to));
-            return true;
-        } catch (TaskCancelledException cancellation) {
-            throw cancellation;
-        } catch (RuntimeException rangeFailure) {
-            if (isConnectionFailure(rangeFailure)) {
-                throw rangeFailure;
-            }
-            return false;
-        }
-    }
-
-    /** Retries one isolated row and records its failure when skipping errors. */
-    private void retryIsolatedRow(String sql, String rawRow, Long fileRowNumber) {
-        try {
-            sqlExecutor.executeBatch(List.of(sql));
-            // A row that only failed inside a larger batch is healthy on its own.
-            importedCount.increment();
-            return;
-        } catch (TaskCancelledException cancellation) {
-            throw cancellation;
-        } catch (RuntimeException rowFailure) {
-            if (isConnectionFailure(rowFailure)) {
-                throw rowFailure;
-            }
-            handleRejectedRow(fileRowNumber, rawRow, rootMessage(rowFailure));
-        }
-    }
-
-    private static boolean isConnectionFailure(Throwable failure) {
-        Throwable current = failure;
-        while (current != null) {
-            if (current instanceof SQLNonTransientConnectionException
-                    || current instanceof SQLRecoverableException
-                    || current instanceof SQLTransientConnectionException) {
-                return true;
-            }
-            if (current instanceof SQLException sqlException
-                    && StringUtils.startsWith(sqlException.getSQLState(), "08")) {
-                return true;
-            }
-            current = current.getCause() == current ? null : current.getCause();
-        }
-        return false;
     }
 
     // --- parallel plumbing ---------------------------------------------------------------
@@ -611,7 +481,7 @@ public final class ImportRowBatcher implements AutoCloseable {
                 }
                 try {
                     throwIfFailed();
-                    executeWithTolerance(batch);
+                    executePendingBatch(batch);
                 } finally {
                     gate.relinquish(permitted);
                 }
@@ -648,61 +518,9 @@ public final class ImportRowBatcher implements AutoCloseable {
     }
 
     private static final PendingBatch END_OF_QUEUE =
-            new PendingBatch(List.of(), List.of(), List.of(), -1L, Long.MAX_VALUE);
+            new PendingBatch(List.of(), -1L, Long.MAX_VALUE);
 
-    private record PendingBatch(List<String> sqls, List<String> rows, List<Long> rowNumbers,
-            long seq, long firstRowNumber) {
-    }
-
-    // --- rejected-row bookkeeping ---------------------------------------------------------
-
-    private void handleFailedRow(long fileRowNumber, List<String> fileValues, RuntimeException failure) {
-        handleRejectedRow(fileRowNumber, JSON.toJSONString(fileValues), rootMessage(failure));
-    }
-
-    @SuppressWarnings("unused")
-    private void handleFailedRowText(String rawRow, RuntimeException failure) {
-        handleRejectedRow(null, rawRow, rootMessage(failure));
-    }
-
-    private void handleRejectedRow(Long fileRowNumber, String rawRow, String reason) {
-        if (!isSkipMode()) {
-            throw new TaskExecutionException(TaskErrorCode.IMPORT_FAILED.name(),
-                    "Import row failed: " + reason);
-        }
-        synchronized (rejectLock) {
-            rejectedRowCount++;
-            Integer maxErrors = options.getMaxErrors();
-            if (maxErrors != null && maxErrors >= 0 && rejectedRowCount > maxErrors) {
-                throw new TaskExecutionException(TaskErrorCode.IMPORT_FAILED.name(),
-                        "Import aborted after " + rejectedRowCount + " rejected rows");
-            }
-            try {
-                rejectWriter().write(JSON.toJSONString(Map.of(
-                        "row", fileRowNumber == null ? -1L : fileRowNumber,
-                        "line", rawRow,
-                        "reason", reason == null ? "unknown" : reason)));
-                rejectWriter().write("\n");
-            } catch (IOException e) {
-                throw new UncheckedIOException("Could not write reject file", e);
-            }
-        }
-        context.logWarn("IMPORT_ROW_REJECTED", "Import row rejected: " + reason,
-                Map.of("row", fileRowNumber == null ? -1L : fileRowNumber,
-                        "rejectedRows", rejectedRows()));
-    }
-
-    private BufferedWriter rejectWriter() throws IOException {
-        if (rejectWriter == null) {
-            String fileName = StringUtils.firstNonBlank(
-                    new java.io.File(StringUtils.defaultString(spec.getSourceFile())).getName(), "import")
-                    + ".rejects.ndjson";
-            var draft = context.createArtifact(REJECT_ROLE,
-                    StringUtils.substringBeforeLast(spec.getSourceFile(), java.io.File.separator),
-                    fileName, "application/x-ndjson");
-            rejectWriter = Files.newBufferedWriter(draft.getTemporaryFile().toPath(), StandardCharsets.UTF_8);
-        }
-        return rejectWriter;
+    private record PendingBatch(List<String> sqls, long seq, long firstRowNumber) {
     }
 
     private String buildInsert(long fileRowNumber, List<String> fileValues) {
@@ -740,18 +558,6 @@ public final class ImportRowBatcher implements AutoCloseable {
         sqlDataValue.setDataType(dataType);
         sqlDataValue.setValue(raw);
         return valueProcessor.getSqlValueString(sqlDataValue);
-    }
-
-    private boolean isSkipMode() {
-        return ON_ERROR_SKIP.equalsIgnoreCase(StringUtils.trimToEmpty(options.getOnError()));
-    }
-
-    private static String rootMessage(Throwable failure) {
-        Throwable current = failure;
-        while (current.getCause() != null && current.getCause() != current) {
-            current = current.getCause();
-        }
-        return current.getMessage();
     }
 
     /** Stops pending writes when the source parser fails outside the batch executor. */
@@ -804,16 +610,7 @@ public final class ImportRowBatcher implements AutoCloseable {
                     batchSizer.batchSize(), gate == null ? 1 : gate.availablePermits());
             LAST_TUNING.set(new ImportTuningSnapshot(workerCount, submittedBatches, importedRows,
                     totalImportNanos, batchSizer.batchSize(),
-                    gate == null ? 1 : gate.availablePermits(), peakInFlightBatches.get(),
-                    rejectedRows()));
-            if (rejectWriter != null) {
-                try {
-                    rejectWriter.flush();
-                    rejectWriter.close();
-                } catch (IOException e) {
-                    log.warn("Could not close import reject writer", e);
-                }
-            }
+                    gate == null ? 1 : gate.availablePermits(), peakInFlightBatches.get()));
         }
     }
 }

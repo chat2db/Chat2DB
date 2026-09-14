@@ -91,7 +91,7 @@ public final class ImportSqlExecutor {
             return;
         }
         context.checkCancelled();
-        // Keep a failed row batch atomic so error isolation can retry healthy rows safely.
+        // Fast mode commits each submitted batch as one transaction.
         DefaultSQLExecutor.getInstance().executeBatchInsert(
                 Chat2DBContext.getConnection(), List.copyOf(inserts), context, context::checkCancelled,
                 atomicBatches ? 0 : DefaultSQLExecutor.BATCH_INSERT_CHUNK_SIZE);

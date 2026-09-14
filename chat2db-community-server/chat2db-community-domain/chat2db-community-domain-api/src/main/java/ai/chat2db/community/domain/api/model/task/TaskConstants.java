@@ -36,8 +36,6 @@ public final class TaskConstants {
 
     public static final String ARTIFACT_ID_DETAIL_KEY = "artifactId";
 
-    public static final String ARTIFACT_ROLE_DETAIL_KEY = "role";
-
     public static final String ARTIFACT_TEMPORARY_PATH_DETAIL_KEY = "temporaryPath";
 
     public static final String ARTIFACT_TARGET_PATH_DETAIL_KEY = "targetPath";

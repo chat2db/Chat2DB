@@ -9,7 +9,6 @@ import { useImportExportStore } from '@/store/importExport';
 import jcefApi from '@/jcef';
 import { isDesktop } from '@/utils/env';
 import { ImportExportTaskStatus } from '@/constants/importExport';
-import { artifactDownloadUrl } from '@/service/importExport';
 import { Download, FolderOpen } from 'lucide-react';
 
 interface IProps {
@@ -29,14 +28,13 @@ const LogModal = (_props: IProps) => {
     setTaskDetails(undefined);
   }, [logModalTaskId]);
 
-  const handleOpenFile = (artifactId?: string) => {
+  const handleOpenFile = () => {
     if (!taskDetails) return;
-    const localArtifact = artifactId || taskDetails.artifactId;
-    if (isDesktop && localArtifact) {
-      jcefApi?.revealInExplorer(localArtifact);
+    if (isDesktop && taskDetails.artifactId) {
+      jcefApi?.revealInExplorer(taskDetails.artifactId);
       return;
     }
-    window.open(artifactDownloadUrl({ taskId: taskDetails.id, artifactId }), '_blank');
+    window.open(`/api/tasks/artifact?taskId=${taskDetails.id}`, '_blank');
   };
 
   const renderFooter = (
@@ -50,27 +48,15 @@ const LogModal = (_props: IProps) => {
           >
             {i18n('common.button.close')}
           </Button>
-          {taskDetails?.status === ImportExportTaskStatus.SUCCESS &&
-            (taskDetails.artifacts?.length
-              ? taskDetails.artifacts.map((artifact) => (
-                  <Button
-                    key={artifact.artifactId}
-                    type={artifact.role === 'OUTPUT' ? 'primary' : 'default'}
-                    icon={isDesktop ? <FolderOpen aria-hidden size={15} /> : <Download aria-hidden size={15} />}
-                    onClick={() => handleOpenFile(artifact.artifactId)}
-                  >
-                    {artifact.artifactId.split(/[\\/]/).pop()}
-                  </Button>
-                ))
-              : taskDetails.artifactId && (
-                  <Button
-                    type="primary"
-                    icon={isDesktop ? <FolderOpen aria-hidden size={15} /> : <Download aria-hidden size={15} />}
-                    onClick={() => handleOpenFile()}
-                  >
-                    {i18n('workspace.text.openFile')}
-                  </Button>
-                ))}
+          {taskDetails?.status === ImportExportTaskStatus.SUCCESS && taskDetails.artifactId && (
+            <Button
+              type="primary"
+              icon={isDesktop ? <FolderOpen aria-hidden size={15} /> : <Download aria-hidden size={15} />}
+              onClick={handleOpenFile}
+            >
+              {i18n('workspace.text.openFile')}
+            </Button>
+          )}
         </>
       }
     />

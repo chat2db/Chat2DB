@@ -7,8 +7,8 @@ import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
 import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
+import ai.chat2db.community.domain.api.model.task.TaskExecutionException;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
 import ai.chat2db.community.domain.api.model.task.TaskStatusPatch;
 import ai.chat2db.community.domain.api.model.task.TaskTargetSnapshot;
@@ -43,13 +43,15 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The parallel import path end to end: multiple workers, each on its own dedicated connection,
  * execute partitioned batches while the caller keeps producing. Verifies that parallel workers
- * insert every row exactly once and that SKIP replay distinguishes bad data from connection
- * failures.
+ * insert every row exactly once and propagate failed batches without retrying their rows.
  */
 class ImportRowBatcherParallelTest {
 
@@ -152,7 +154,7 @@ class ImportRowBatcherParallelTest {
                 storage, new ArtifactServiceImpl());
     }
 
-    private ImportTaskSpec csvSpec(Path csv, String onError) {
+    private ImportTaskSpec csvSpec(Path csv) {
         return ImportTaskSpec.builder()
                 .taskType("DATA_FILE_IMPORT")
                 .sourceFile(csv.toString())
@@ -164,8 +166,6 @@ class ImportRowBatcherParallelTest {
                 .options(ImportOptions.builder()
                         .charset("UTF-8")
                         .delimiter(",")
-                        .onError(onError)
-                        .maxErrors(1000)
                         .columnMappings(List.of(
                                 new ImportColumnMapping("ID", "ID"),
                                 new ImportColumnMapping("NAME", "NAME")))
@@ -205,7 +205,7 @@ class ImportRowBatcherParallelTest {
             lines[index] = (index + 1) + ",name-" + (index + 1);
         }
         Path csv = writeCsv(lines);
-        ImportTaskSpec spec = csvSpec(csv, "FAIL_FAST");
+        ImportTaskSpec spec = csvSpec(csv);
 
         new CSVImporter().run(spec, contextFor(spec));
 
@@ -224,28 +224,34 @@ class ImportRowBatcherParallelTest {
     }
 
     @Test
-    void skipReplayRejectsConsecutiveBadRowsWithoutAbortingHealthyRows() throws Exception {
+    void failedFinalBatchRollsBackAndPropagatesWorkerFailure() throws Exception {
         System.setProperty(PARALLELISM_PROPERTY, "2");
-        Path csv = writeCsv("1,ok", "1,dup-a", "1,dup-b", "1,dup-c", "2,ok");
-        ImportTaskSpec spec = csvSpec(csv, "SKIP");
+        ImportTaskSpec spec = csvSpec(writeCsv("1,ok", "1,duplicate", "2,ok"));
+        TaskExecutionContextImpl context = contextFor(spec);
 
-        new CSVImporter().run(spec, contextFor(spec));
+        assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, context));
 
-        List<Integer> ids = importedIds();
-        assertEquals(List.of(1, 2), ids,
-                "adjacent constraint violations are rejected without hiding healthy rows");
+        assertEquals(List.of(), importedIds(), "healthy rows in the failed batch must not be replayed");
+        assertNull(context.artifactDraft());
+        assertTrue(storage.events.stream().anyMatch(event -> "IMPORT_BATCH_FAILED".equals(event.getCode())));
+        assertFalse(storage.events.stream().anyMatch(event -> "IMPORT_SUMMARY".equals(event.getCode())));
     }
 
     @Test
-    void isolatedBadRowsAreStillSkippedWhenSurroundedBySuccessfulRows() throws Exception {
+    void failedParallelBatchesNeverReplayTheirHealthyRows() throws Exception {
         System.setProperty(PARALLELISM_PROPERTY, "2");
-        Path csv = writeCsv("1,ok", "1,isolated-dup", "2,ok", "3,ok");
-        ImportTaskSpec spec = csvSpec(csv, "SKIP");
+        String[] lines = new String[80_000];
+        for (int index = 0; index < lines.length; index++) {
+            // Every batch contains constraint violations; replay would otherwise insert rows.
+            lines[index] = (index % 2) + ",ok";
+        }
+        ImportTaskSpec spec = csvSpec(writeCsv(lines));
 
-        new CSVImporter().run(spec, contextFor(spec));
+        assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, contextFor(spec)));
 
-        List<Integer> ids = importedIds();
-        assertEquals(List.of(1, 2, 3), ids, "the isolated duplicate row is rejected, others imported");
+        assertEquals(List.of(), importedIds());
+        assertEquals(0, ImportRowBatcher.lastTuningSnapshot().rows());
+        assertFalse(storage.events.stream().anyMatch(event -> "IMPORT_SUMMARY".equals(event.getCode())));
     }
 
     /**
@@ -256,7 +262,6 @@ class ImportRowBatcherParallelTest {
 
         private final List<Task> tasks = new ArrayList<>();
         private final List<TaskEvent> events = new ArrayList<>();
-        private final List<TaskArtifact> artifacts = new ArrayList<>();
 
         private long sequence;
 
@@ -317,21 +322,6 @@ class ImportRowBatcherParallelTest {
         @Override
         public boolean deleteTerminalTask(Long taskId, Runnable commitAction) {
             return false;
-        }
-
-        @Override
-        public List<TaskArtifact> listArtifacts(Long taskId) {
-            return List.copyOf(artifacts);
-        }
-
-        @Override
-        public void saveArtifact(Long taskId, TaskArtifact artifact) {
-            artifacts.add(artifact);
-        }
-
-        @Override
-        public void deleteArtifact(Long taskId, String artifactId) {
-            artifacts.removeIf(artifact -> artifact.getArtifactId().equals(artifactId));
         }
 
     }

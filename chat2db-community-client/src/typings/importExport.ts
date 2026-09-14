@@ -27,19 +27,10 @@ export interface ImportExportTaskDetails {
   errorCode?: string;
   errorMessage?: string;
   artifactId?: string;
-  artifacts?: ITaskArtifact[];
   createdAt: number | string;
   startedAt?: number | string;
   finishedAt?: number | string;
   updatedAt?: number | string;
-}
-
-export interface ITaskArtifact {
-  artifactId: string;
-  role: string;
-  mediaType?: string;
-  sizeBytes?: number;
-  createdAt?: number | string;
 }
 
 export interface IImportColumnMapping {
@@ -54,8 +45,6 @@ export interface IImportOptions {
   skipRows?: number;
   nullString?: string;
   columnMappings?: IImportColumnMapping[];
-  onError?: 'ABORT' | 'SKIP';
-  maxErrors?: number;
 }
 
 /** Execution mode of bulk import/export tasks; absent resolves to STANDARD on the backend. */

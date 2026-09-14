@@ -1,8 +1,6 @@
 package ai.chat2db.community.domain.core.impl.task;
 
 import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
-import ai.chat2db.community.domain.api.model.task.TaskArtifactRole;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
@@ -23,12 +21,9 @@ import ai.chat2db.spi.sql.Chat2DBContext;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 
-import java.io.File;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CancellationException;
 
@@ -76,26 +71,26 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
                     taskExecutor.execute(submission.spec(), executionContext);
                 }
             });
-            List<ArtifactDraft> drafts = executionContext.artifactDrafts();
+            ArtifactDraft draft = executionContext.artifactDraft();
             executionContext.finishArtifactWrites();
-            logArtifactWritten(executionContext, drafts);
-            completeSuccessfully(drafts);
+            logArtifactWritten(executionContext, draft);
+            completeSuccessfully(draft);
         } catch (TaskCancelledException | CancellationException e) {
             if (isCancellationRequested()) {
-                completeCancelled(executionContext.artifactDrafts());
+                completeCancelled(executionContext.artifactDraft());
             } else {
                 completeFailed(TaskErrorCode.TASK_INTERNAL_ERROR.name(), "Task execution failed", null, e,
-                        executionContext.artifactDrafts());
+                        executionContext.artifactDraft());
             }
         } catch (TaskExecutionException e) {
             completeFailed(e.getCode(), e.publicMessage(), e.getSafeReason(), e,
-                    executionContext.artifactDrafts());
+                    executionContext.artifactDraft());
         } catch (Throwable e) {
-            if (isCancellationRequested() || Thread.currentThread().isInterrupted()) {
-                completeCancelled(executionContext.artifactDrafts());
+            if (isCancellationRequested()) {
+                completeCancelled(executionContext.artifactDraft());
             } else {
                 completeFailed(TaskErrorCode.TASK_INTERNAL_ERROR.name(), "Task execution failed", null, e,
-                        executionContext.artifactDrafts());
+                        executionContext.artifactDraft());
             }
         } finally {
             try {
@@ -113,24 +108,19 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
         return runningTask.cancellationToken().isCancelled();
     }
 
-    private void logArtifactWritten(TaskExecutionContextImpl executionContext, List<ArtifactDraft> drafts) {
-        if (drafts.isEmpty()) {
+    private void logArtifactWritten(TaskExecutionContextImpl executionContext, ArtifactDraft draft) {
+        if (draft == null) {
             return;
         }
         executionContext.reportProgress(95, TaskStage.FINALIZING.name(), "Export file written");
-        for (ArtifactDraft draft : drafts) {
-            Map<String, Object> details = new LinkedHashMap<>();
-            if (draft.getTargetFile() != null) {
-                details.put(TaskConstants.FILE_NAME_DETAIL_KEY, draft.getTargetFile().getName());
-            }
-            if (draft.getMediaType() != null) {
-                details.put("mediaType", draft.getMediaType());
-            }
-            if (draft.getRole() != null) {
-                details.put(TaskConstants.ARTIFACT_ROLE_DETAIL_KEY, draft.getRole());
-            }
-            executionContext.logInfo(TaskEventCode.FILE_WRITE_COMPLETED.name(), "Export file written", details);
+        Map<String, Object> details = new LinkedHashMap<>();
+        if (draft.getTargetFile() != null) {
+            details.put(TaskConstants.FILE_NAME_DETAIL_KEY, draft.getTargetFile().getName());
         }
+        if (draft.getMediaType() != null) {
+            details.put("mediaType", draft.getMediaType());
+        }
+        executionContext.logInfo(TaskEventCode.FILE_WRITE_COMPLETED.name(), "Export file written", details);
     }
 
     private boolean startTask() {
@@ -155,17 +145,16 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
         }
     }
 
-    private void completeSuccessfully(List<ArtifactDraft> drafts) {
+    private void completeSuccessfully(ArtifactDraft draft) {
         runningTask.completionLock().lock();
-        List<String> published = new ArrayList<>();
+        String artifactId = null;
         try {
             if (runningTask.cancellationToken().isCancelled()) {
-                completeCancelledLocked(drafts);
+                completeCancelledLocked(draft);
                 return;
             }
-            String primaryArtifactId = null;
-            for (ArtifactDraft draft : drafts) {
-                String artifactId = artifactService.publish(draft, target -> taskStorage.appendEvent(TaskEvent.builder()
+            if (draft != null) {
+                artifactId = artifactService.publish(draft, target -> taskStorage.appendEvent(TaskEvent.builder()
                         .taskId(submission.taskId())
                         .level(TaskEventLevel.INFO.name())
                         .code(TaskEventCode.ARTIFACT_PUBLICATION_STARTED.name())
@@ -173,25 +162,13 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
                         .message("Saving export file")
                         .details(Map.of(TaskConstants.ARTIFACT_ID_DETAIL_KEY, target))
                         .build()));
-                published.add(artifactId);
-                if (primaryArtifactId == null || TaskArtifactRole.OUTPUT.equals(draft.getRole())) {
-                    primaryArtifactId = artifactId;
-                }
-                taskStorage.saveArtifact(submission.taskId(), TaskArtifact.builder()
-                        .artifactId(artifactId)
-                        .role(draft.getRole())
-                        .mediaType(draft.getMediaType())
-                        .sizeBytes(new File(artifactId).length())
-                        .createdAt(new Date())
-                        .build());
                 taskStorage.appendEvent(TaskEvent.builder()
                         .taskId(submission.taskId())
                         .level(TaskEventLevel.INFO.name())
                         .code(TaskEventCode.ARTIFACT_PUBLISHED.name())
                         .stage(TaskStage.FINALIZING.name())
                         .message("Artifact published")
-                        .details(Map.of(TaskConstants.ARTIFACT_ID_DETAIL_KEY, artifactId,
-                                TaskConstants.ARTIFACT_ROLE_DETAIL_KEY, String.valueOf(draft.getRole())))
+                        .details(Map.of(TaskConstants.ARTIFACT_ID_DETAIL_KEY, artifactId))
                         .build());
             }
             Date now = new Date();
@@ -201,59 +178,47 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
                             .progress(TaskConstants.COMPLETED_PROGRESS)
                             .stage(TaskStage.COMPLETED.name())
                             .progressMessage("Task completed successfully")
-                            .artifactId(primaryArtifactId)
-                            .artifactIds(published.isEmpty() ? null : List.copyOf(published))
+                            .artifactId(artifactId)
                             .finishedAt(now)
                             .updatedAt(now)
                             .build(),
                     lifecycleEvent(TaskEventCode.TASK_SUCCEEDED.name(), TaskEventLevel.INFO.name(),
                             "Task completed successfully"));
-            if (!completed) {
-                rollbackPublishedArtifacts(published);
+            if (!completed && artifactId != null) {
+                artifactService.deletePublished(artifactId);
             }
         } catch (Throwable e) {
-            rollbackPublishedArtifacts(published);
+            if (artifactId != null) {
+                artifactService.deletePublished(artifactId);
+            }
             if (runningTask.cancellationToken().isCancelled()) {
-                completeCancelledLocked(drafts);
+                completeCancelledLocked(draft);
             } else {
                 completeFailedLocked(TaskErrorCode.ARTIFACT_PUBLISH_FAILED.name(),
-                        "Could not publish task artifact", null, e, drafts);
+                        "Could not publish task artifact", null, e, draft);
             }
         } finally {
             runningTask.completionLock().unlock();
         }
     }
 
-    /**
-     * A lost completion race or a publish failure must not leave orphan files or artifact rows
-     * behind, so every already-published output is undone in reverse order.
-     */
-    private void rollbackPublishedArtifacts(List<String> publishedArtifactIds) {
-        for (int index = publishedArtifactIds.size() - 1; index >= 0; index--) {
-            artifactService.deletePublished(publishedArtifactIds.get(index));
-            taskStorage.deleteArtifact(submission.taskId(), publishedArtifactIds.get(index));
-        }
-    }
-
     private void completeFailed(String code, String message, String safeReason, Throwable cause,
-            List<ArtifactDraft> drafts) {
+            ArtifactDraft draft) {
         runningTask.completionLock().lock();
         try {
             if (runningTask.cancellationToken().isCancelled()) {
-                completeCancelledLocked(drafts);
+                completeCancelledLocked(draft);
                 return;
             }
-            completeFailedLocked(code, message, safeReason, cause, drafts);
+            completeFailedLocked(code, message, safeReason, cause, draft);
         } finally {
             runningTask.completionLock().unlock();
         }
     }
 
     private void completeFailedLocked(String code, String message, String safeReason, Throwable cause,
-            List<ArtifactDraft> drafts) {
-        for (ArtifactDraft draft : drafts) {
-            artifactService.deleteDraft(draft);
-        }
+            ArtifactDraft draft) {
+        artifactService.deleteDraft(draft);
         log.error("Task {} failed", submission.taskId(), cause);
         Date now = new Date();
         taskStorage.compareAndSetStatus(submission.taskId(), TaskStatus.RUNNING.name(), TaskStatus.FAILED.name(),
@@ -285,19 +250,17 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
         return details;
     }
 
-    private void completeCancelled(List<ArtifactDraft> drafts) {
+    private void completeCancelled(ArtifactDraft draft) {
         runningTask.completionLock().lock();
         try {
-            completeCancelledLocked(drafts);
+            completeCancelledLocked(draft);
         } finally {
             runningTask.completionLock().unlock();
         }
     }
 
-    private void completeCancelledLocked(List<ArtifactDraft> drafts) {
-        for (ArtifactDraft draft : drafts) {
-            artifactService.deleteDraft(draft);
-        }
+    private void completeCancelledLocked(ArtifactDraft draft) {
+        artifactService.deleteDraft(draft);
     }
 
     private TaskEvent lifecycleEvent(String code, String level, String message) {

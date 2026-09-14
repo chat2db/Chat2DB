@@ -236,14 +236,7 @@ class QueryResultExportTaskExecutorTest {
 
         @Override
         public ArtifactDraft createArtifact(String outputDirectory, String fileName, String mediaType) {
-            return createArtifact(ai.chat2db.community.domain.api.model.task.TaskArtifactRole.OUTPUT,
-                    outputDirectory, fileName, mediaType);
-        }
-
-        @Override
-        public ArtifactDraft createArtifact(String role, String outputDirectory, String fileName, String mediaType) {
             createdArtifact = ArtifactDraft.builder()
-                    .role(role)
                     .temporaryFile(tempDirectory.resolve("query-export.part").toFile())
                     .targetFile(tempDirectory.resolve(fileName).toFile())
                     .mediaType(mediaType)

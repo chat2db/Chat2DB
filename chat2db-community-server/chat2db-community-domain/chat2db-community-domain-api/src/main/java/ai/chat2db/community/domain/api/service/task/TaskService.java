@@ -4,7 +4,6 @@ import ai.chat2db.community.domain.api.model.PageResponse;
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskDownload;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
@@ -34,8 +33,4 @@ public interface TaskService {
     void abortUserExit();
 
     TaskDownload resolveArtifact(Long taskId);
-
-    TaskDownload resolveArtifact(Long taskId, String artifactId);
-
-    List<TaskArtifact> listArtifacts(Long taskId);
 }

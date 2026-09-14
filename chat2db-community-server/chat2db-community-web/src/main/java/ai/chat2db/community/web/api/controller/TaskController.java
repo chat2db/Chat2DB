@@ -2,7 +2,6 @@ package ai.chat2db.community.web.api.controller;
 
 import ai.chat2db.community.domain.api.model.PageResponse;
 import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
 import ai.chat2db.community.domain.api.service.task.IImportTaskSubmissionService;
@@ -99,16 +98,9 @@ public class TaskController {
         return ActionResult.isSuccess();
     }
 
-    @GetMapping("/artifacts")
-    public DataResult<List<TaskArtifact>> artifacts(@Valid TaskIdRequest request) {
-        return DataResult.of(taskService.listArtifacts(request.getTaskId()));
-    }
-
     @GetMapping("/artifact")
     public ResponseEntity<Resource> artifact(@Valid TaskIdRequest request) {
-        return taskDownloadWebConverter.toResponse(StringUtils.isBlank(request.getArtifactId())
-                ? taskService.resolveArtifact(request.getTaskId())
-                : taskService.resolveArtifact(request.getTaskId(), request.getArtifactId()));
+        return taskDownloadWebConverter.toResponse(taskService.resolveArtifact(request.getTaskId()));
     }
 
     @GetMapping("/active-count")

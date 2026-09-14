@@ -4,7 +4,6 @@ import ai.chat2db.community.domain.api.model.PageResponse;
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
 import ai.chat2db.community.domain.api.model.task.TaskDownload;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -44,8 +43,6 @@ public class TaskServiceImpl implements TaskService {
     private final LocalTaskManager localTaskManager;
 
     private final TaskDeletionService deletionService;
-
-
 
     @Autowired
     public TaskServiceImpl(TaskStorage taskStorage, LocalTaskManager localTaskManager,
@@ -177,34 +174,10 @@ public class TaskServiceImpl implements TaskService {
             throw new DataNotFoundException();
         }
         File file = deletionService.resolveArtifact(task);
-        return downloadFor(file, new File(task.getArtifactId()).getName());
-    }
-
-    @Override
-    public TaskDownload resolveArtifact(Long taskId, String artifactId) {
-        Task task = get(taskId);
-        if (task == null || !TaskStatus.SUCCESS.name().equals(task.getStatus())) {
-            throw new DataNotFoundException();
-        }
-        // The parameter is only a lookup key; the served path always comes from the stored row, so
-        // a caller cannot name an arbitrary file.
-        TaskArtifact artifact = taskStorage.listArtifacts(taskId).stream()
-                .filter(candidate -> candidate.getArtifactId().equals(artifactId))
-                .findFirst()
-                .orElseThrow(DataNotFoundException::new);
-        return downloadFor(new File(artifact.getArtifactId()), new File(artifact.getArtifactId()).getName());
-    }
-
-    @Override
-    public List<TaskArtifact> listArtifacts(Long taskId) {
-        return get(taskId) == null ? List.of() : taskStorage.listArtifacts(taskId);
-    }
-
-    private TaskDownload downloadFor(File file, String fileName) {
         if (!file.isFile() || !file.canRead()) {
             throw new DataNotFoundException();
         }
-        return TaskDownload.builder().fileName(fileName)
+        return TaskDownload.builder().fileName(new File(task.getArtifactId()).getName())
                 .fileUri(file.toURI().toString()).build();
     }
 

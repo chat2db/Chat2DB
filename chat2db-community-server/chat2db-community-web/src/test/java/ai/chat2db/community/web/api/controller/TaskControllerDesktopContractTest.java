@@ -39,7 +39,7 @@ class TaskControllerDesktopContractTest {
                 .collect(Collectors.toSet());
 
         assertEquals(Set.of("/export", "/import", "/list", "/get", "/events", "/delete",
-                "/artifact", "/artifacts", "/active-count", "/prepare-user-exit", "/abort-user-exit"), paths);
+                "/artifact", "/active-count", "/prepare-user-exit", "/abort-user-exit"), paths);
 
         Arrays.stream(TaskController.class.getDeclaredMethods())
                 .filter(method -> requestMapping(method) != null)

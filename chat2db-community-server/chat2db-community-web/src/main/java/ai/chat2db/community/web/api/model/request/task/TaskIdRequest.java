@@ -8,9 +8,4 @@ public class TaskIdRequest {
 
     @NotNull
     private Long taskId;
-
-    /**
-     * Optional on the download path; blank selects the primary artifact.
-     */
-    private String artifactId;
 }

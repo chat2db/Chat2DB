@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * XLSX/XLS import through EasyExcel, sharing column resolution, batching and reject handling with
+ * XLSX/XLS import through EasyExcel, sharing column resolution, batching and batch execution with
  * the CSV path.
  */
 public abstract class BaseExcelImporter extends BaseImporter {
@@ -117,8 +117,7 @@ public abstract class BaseExcelImporter extends BaseImporter {
             }
             batcher.flush();
             taskContext.logInfo("IMPORT_SUMMARY", "Excel import finished", Map.of(
-                    "importedRows", batcher.importedRows(),
-                    "rejectedRows", batcher.rejectedRows()));
+                    "importedRows", batcher.importedRows()));
         }
 
         void abort(RuntimeException failure) {

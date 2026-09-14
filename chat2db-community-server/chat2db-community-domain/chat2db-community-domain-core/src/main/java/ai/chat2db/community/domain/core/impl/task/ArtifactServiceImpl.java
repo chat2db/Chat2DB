@@ -14,8 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Collections;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,8 +27,7 @@ public class ArtifactServiceImpl implements ArtifactService {
     private final Set<Path> reservedTargets = ConcurrentHashMap.newKeySet();
 
     @Override
-    public ArtifactDraft createDraft(Long taskId, String role, String outputDirectory, String fileName,
-            String mediaType) {
+    public ArtifactDraft createDraft(Long taskId, String outputDirectory, String fileName, String mediaType) {
         File directory = resolveDirectory(outputDirectory);
         if (!directory.exists() && !directory.mkdirs()) {
             throw new IllegalStateException("Could not create artifact directory");
@@ -40,7 +37,6 @@ public class ArtifactServiceImpl implements ArtifactService {
         File temporary = new File(directory,
                 ".task-" + taskId + "-" + UUID.randomUUID() + "-" + safeFileName + DRAFT_FILE_SUFFIX);
         return ArtifactDraft.builder()
-                .role(role)
                 .temporaryFile(temporary)
                 .targetFile(target)
                 .mediaType(mediaType)
@@ -146,34 +142,18 @@ public class ArtifactServiceImpl implements ArtifactService {
 
     @Override
     public boolean cleanupInterruptedArtifact(Long taskId, String temporaryPath, String publishedPath) {
-        return cleanupInterruptedArtifacts(taskId, Collections.singletonList(temporaryPath),
-                Collections.singletonList(publishedPath));
-    }
-
-    @Override
-    public boolean cleanupInterruptedArtifacts(Long taskId, List<String> temporaryPaths, List<String> publishedPaths) {
         boolean cleaned = true;
-        for (String temporaryPath : temporaryPaths) {
-            cleaned = cleanupInterruptedDraft(taskId, temporaryPath) && cleaned;
-        }
-        for (String publishedPath : publishedPaths) {
-            if (StringUtils.isNotBlank(publishedPath)) {
-                cleaned = deleteQuietly(Path.of(publishedPath).toAbsolutePath().normalize()) && cleaned;
+        if (StringUtils.isNotBlank(temporaryPath)) {
+            Path temporary = Path.of(temporaryPath).toAbsolutePath().normalize();
+            String fileName = temporary.getFileName() == null ? "" : temporary.getFileName().toString();
+            if (fileName.startsWith(".task-" + taskId + "-") && fileName.endsWith(DRAFT_FILE_SUFFIX)) {
+                cleaned = deleteQuietly(temporary);
             }
         }
+        if (StringUtils.isNotBlank(publishedPath)) {
+            cleaned = deleteQuietly(Path.of(publishedPath).toAbsolutePath().normalize()) && cleaned;
+        }
         return cleaned;
-    }
-
-    private boolean cleanupInterruptedDraft(Long taskId, String temporaryPath) {
-        if (StringUtils.isBlank(temporaryPath)) {
-            return true;
-        }
-        Path temporary = Path.of(temporaryPath).toAbsolutePath().normalize();
-        String fileName = temporary.getFileName() == null ? "" : temporary.getFileName().toString();
-        if (fileName.startsWith(".task-" + taskId + "-") && fileName.endsWith(DRAFT_FILE_SUFFIX)) {
-            return deleteQuietly(temporary);
-        }
-        return true;
     }
 
     private File resolveDirectory(String outputDirectory) {

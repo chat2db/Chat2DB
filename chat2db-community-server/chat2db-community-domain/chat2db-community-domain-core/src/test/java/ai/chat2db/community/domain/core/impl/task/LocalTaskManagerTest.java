@@ -2,10 +2,8 @@ package ai.chat2db.community.domain.core.impl.task;
 
 import ai.chat2db.community.domain.api.config.DriverConfig;
 import ai.chat2db.community.domain.api.model.PageResponse;
-import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -43,6 +41,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -503,35 +502,6 @@ class LocalTaskManagerTest {
         Files.deleteIfExists(Path.of(storage.get(task.getId()).orElseThrow().getArtifactId()));
     }
 
-    @Test
-    void allDraftsOfAMultiArtifactTaskArePublishedRecordedAndCleanable() throws Exception {
-        TestTaskStorage storage = new TestTaskStorage();
-        taskManager = manager(storage, (spec, context) -> {
-            ArtifactDraft reject = context.createArtifact("REJECT", tempDirectory.toString(),
-                    "reject.ndjson", "application/x-ndjson");
-            writeQuietly(reject.getTemporaryFile().toPath(), "{\"line\":1}\n");
-            ArtifactDraft output = context.createArtifact(tempDirectory.toString(), "export.csv", "text/csv");
-            writeQuietly(output.getTemporaryFile().toPath(), "value\n");
-        });
-        Task task = newTask();
-
-        taskManager.submit(task, event(TaskEventCode.TASK_CREATED.name()), spec(), null, null);
-
-        assertTrue(storage.awaitTerminal());
-        Task finished = storage.get(task.getId()).orElseThrow();
-        assertEquals(TaskStatus.SUCCESS.name(), finished.getStatus());
-        List<TaskArtifact> publishedArtifacts = storage.listArtifacts(task.getId());
-        assertEquals(List.of("REJECT", "OUTPUT"),
-                publishedArtifacts.stream().map(TaskArtifact::getRole).toList());
-        // The legacy single-artifact column always names the OUTPUT row, whichever order it was created in.
-        assertEquals("export.csv", Path.of(finished.getArtifactId()).getFileName().toString());
-        assertTrue(publishedArtifacts.stream()
-                .anyMatch(artifact -> artifact.getArtifactId().equals(finished.getArtifactId())));
-        for (TaskArtifact artifact : publishedArtifacts) {
-            Files.deleteIfExists(Path.of(artifact.getArtifactId()));
-        }
-    }
-
     private LocalTaskManager manager(TestTaskStorage storage, TestExecution execution) {
         return manager(storage, execution, emptyExtensionManager());
     }
@@ -586,14 +556,6 @@ class LocalTaskManagerTest {
                 .build();
     }
 
-    private static void writeQuietly(Path path, String content) {
-        try {
-            Files.writeString(path, content);
-        } catch (java.io.IOException e) {
-            throw new java.io.UncheckedIOException(e);
-        }
-    }
-
     private void assertUnexpectedCancellationFailed(TestTaskStorage storage, Task task) throws InterruptedException {
         assertTrue(storage.awaitTerminal());
         Task failed = storage.get(task.getId()).orElseThrow();
@@ -613,8 +575,6 @@ class LocalTaskManagerTest {
         private final AtomicLong ids = new AtomicLong();
         private final Map<Long, Task> tasks = new LinkedHashMap<>();
         private final Map<Long, List<TaskEvent>> events = new LinkedHashMap<>();
-        private final Map<Long, List<TaskArtifact>> artifacts = new LinkedHashMap<>();
-
         private final CountDownLatch terminal = new CountDownLatch(1);
         private int terminalTransitions;
         private CountDownLatch createPaused;
@@ -646,11 +606,7 @@ class LocalTaskManagerTest {
 
         @Override
         public synchronized Optional<Task> get(Long taskId) {
-            Task task = tasks.get(taskId);
-            if (task != null) {
-                task.setArtifacts(new ArrayList<>(artifacts.getOrDefault(taskId, List.of())));
-            }
-            return Optional.ofNullable(task);
+            return Optional.ofNullable(tasks.get(taskId));
         }
 
         @Override
@@ -746,32 +702,8 @@ class LocalTaskManagerTest {
             }
             tasks.remove(taskId);
             events.remove(taskId);
-            artifacts.remove(taskId);
             commitAction.run();
             return true;
-        }
-
-        @Override
-        public synchronized List<TaskArtifact> listArtifacts(Long taskId) {
-            return new ArrayList<>(artifacts.getOrDefault(taskId, List.of()));
-        }
-
-        @Override
-        public synchronized void saveArtifact(Long taskId, TaskArtifact artifact) {
-            if (!tasks.containsKey(taskId)) {
-                throw new IllegalArgumentException("artifact must reference an existing task");
-            }
-            List<TaskArtifact> stored = artifacts.computeIfAbsent(taskId, ignored -> new ArrayList<>());
-            stored.removeIf(existing -> existing.getArtifactId().equals(artifact.getArtifactId()));
-            stored.add(artifact);
-        }
-
-        @Override
-        public synchronized void deleteArtifact(Long taskId, String artifactId) {
-            List<TaskArtifact> stored = artifacts.get(taskId);
-            if (stored != null) {
-                stored.removeIf(existing -> existing.getArtifactId().equals(artifactId));
-            }
         }
 
         boolean awaitTerminal() throws InterruptedException {

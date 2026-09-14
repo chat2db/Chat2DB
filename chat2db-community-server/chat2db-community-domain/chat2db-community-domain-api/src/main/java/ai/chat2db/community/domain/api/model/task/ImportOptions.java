@@ -48,12 +48,4 @@ public class ImportOptions {
      */
     private List<ImportColumnMapping> columnMappings;
 
-    /**
-     * {@code ABORT} (default) stops the task on the first failed row; {@code SKIP} records the row
-     * in the reject artifact and continues until {@code maxErrors}.
-     */
-    private String onError;
-
-    private Integer maxErrors;
-
 }

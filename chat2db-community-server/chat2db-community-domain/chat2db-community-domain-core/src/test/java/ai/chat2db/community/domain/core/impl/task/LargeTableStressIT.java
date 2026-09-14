@@ -9,7 +9,6 @@ import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
 import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
 import ai.chat2db.community.domain.api.model.task.TaskProgress;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
@@ -303,7 +302,6 @@ class LargeTableStressIT {
                 .options(ImportOptions.builder()
                         .charset("UTF-8")
                         .delimiter(",")
-                        .onError("ABORT")
                         .columnMappings(List.of(
                                 new ImportColumnMapping("ID", "ID"),
                                 new ImportColumnMapping("NAME", "NAME"),
@@ -384,13 +382,7 @@ class LargeTableStressIT {
         }
 
         @Override
-        public ArtifactDraft createArtifact(String outputDirectory, String fileName, String mediaType) {
-            return createArtifact(ai.chat2db.community.domain.api.model.task.TaskArtifactRole.OUTPUT,
-                    outputDirectory, fileName, mediaType);
-        }
-
-        @Override
-        public ArtifactDraft createArtifact(String role, String outputDirectory, String fileName,
+        public ArtifactDraft createArtifact(String outputDirectory, String fileName,
                 String mediaType) {
             throw new UnsupportedOperationException();
         }
@@ -418,7 +410,6 @@ class LargeTableStressIT {
 
         private final List<Task> tasks = new ArrayList<>();
         private final List<TaskEvent> events = new ArrayList<>();
-        private final List<TaskArtifact> artifacts = new ArrayList<>();
 
         private long sequence;
 
@@ -480,21 +471,6 @@ class LargeTableStressIT {
         @Override
         public boolean deleteTerminalTask(Long taskId, Runnable commitAction) {
             return false;
-        }
-
-        @Override
-        public List<TaskArtifact> listArtifacts(Long taskId) {
-            return List.copyOf(artifacts);
-        }
-
-        @Override
-        public void saveArtifact(Long taskId, TaskArtifact artifact) {
-            artifacts.add(artifact);
-        }
-
-        @Override
-        public void deleteArtifact(Long taskId, String artifactId) {
-            artifacts.removeIf(artifact -> artifact.getArtifactId().equals(artifactId));
         }
 
     }

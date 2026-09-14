@@ -37,7 +37,7 @@ public class ImportTaskSpec implements TaskSpec {
 
     private UnmappedTargetStrategy unmappedTarget;
     /**
-     * Optional behaviour overrides (encoding, delimiters, column mapping, error tolerance).
+     * Optional behaviour overrides (encoding, delimiters, column mapping).
      */
     private ImportOptions options;
 

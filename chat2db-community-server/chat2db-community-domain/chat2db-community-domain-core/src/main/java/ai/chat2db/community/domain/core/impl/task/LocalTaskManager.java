@@ -3,7 +3,6 @@ package ai.chat2db.community.domain.core.impl.task;
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -44,7 +43,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.stream.Collectors;
 
 @Component
 public class LocalTaskManager {
@@ -253,10 +251,8 @@ public class LocalTaskManager {
             return;
         }
         long afterSequence = 0L;
-        List<String> temporaryPaths = new ArrayList<>();
-        List<String> publishedPaths = taskStorage.listArtifacts(taskId).stream()
-                .map(TaskArtifact::getArtifactId)
-                .collect(Collectors.toCollection(ArrayList::new));
+        String temporaryPath = null;
+        String publishedPath = null;
         while (true) {
             List<TaskEvent> events = taskStorage.listEvents(taskId, afterSequence, TaskConstants.MAX_EVENT_LIMIT);
             if (events.isEmpty()) {
@@ -265,13 +261,10 @@ public class LocalTaskManager {
             for (TaskEvent event : events) {
                 Map<String, Object> details = event.getDetails();
                 if (TaskEventCode.ARTIFACT_PREPARED.name().equals(event.getCode())) {
-                    temporaryPaths.add(detail(details, TaskConstants.ARTIFACT_TEMPORARY_PATH_DETAIL_KEY));
+                    temporaryPath = detail(details, TaskConstants.ARTIFACT_TEMPORARY_PATH_DETAIL_KEY);
                 } else if (TaskEventCode.ARTIFACT_PUBLICATION_STARTED.name().equals(event.getCode())
                         || TaskEventCode.ARTIFACT_PUBLISHED.name().equals(event.getCode())) {
-                    String publishedPath = detail(details, TaskConstants.ARTIFACT_ID_DETAIL_KEY);
-                    if (publishedPath != null && !publishedPaths.contains(publishedPath)) {
-                        publishedPaths.add(publishedPath);
-                    }
+                    publishedPath = detail(details, TaskConstants.ARTIFACT_ID_DETAIL_KEY);
                 }
             }
             long nextSequence = events.get(events.size() - 1).getSequence();
@@ -280,7 +273,7 @@ public class LocalTaskManager {
             }
             afterSequence = nextSequence;
         }
-        if (artifactService.cleanupInterruptedArtifacts(taskId, temporaryPaths, publishedPaths)) {
+        if (artifactService.cleanupInterruptedArtifact(taskId, temporaryPath, publishedPath)) {
             TaskEvent cleanupEvent = event(TaskEventCode.ARTIFACT_CLEANUP_COMPLETED.name(),
                     TaskEventLevel.INFO.name(), "Interrupted task artifacts cleaned");
             cleanupEvent.setTaskId(taskId);

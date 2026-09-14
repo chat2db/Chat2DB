@@ -1,16 +1,13 @@
 package ai.chat2db.community.domain.api.service.task;
 
 import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
-import ai.chat2db.community.domain.api.model.task.TaskArtifactRole;
 import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
 
 import java.util.Map;
 
 public interface TaskExecutionContext extends ISqlExecutionStatementListener {
 
-    /**
-     * The task these callbacks belong to; {@code null} for contexts outside a task run.
-     */
+    /** The task these callbacks belong to; null outside a task run. */
     default Long taskId() {
         return null;
     }
@@ -31,16 +28,5 @@ public interface TaskExecutionContext extends ISqlExecutionStatementListener {
 
     ArtifactDraft createArtifact(String outputDirectory, String fileName, String mediaType);
 
-    /**
-     * Creates one draft per artifact role; the primary download uses {@code OUTPUT}.
-     */
-    default ArtifactDraft createArtifact(String role, String outputDirectory, String fileName, String mediaType) {
-        if (!TaskArtifactRole.OUTPUT.equals(role)) {
-            throw new UnsupportedOperationException("This task context supports only the primary output artifact");
-        }
-        return createArtifact(outputDirectory, fileName, mediaType);
-    }
-
     void write(String content);
-
 }

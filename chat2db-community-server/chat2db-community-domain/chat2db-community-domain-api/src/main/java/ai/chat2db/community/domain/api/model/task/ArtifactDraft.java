@@ -13,8 +13,6 @@ import java.io.File;
 @AllArgsConstructor
 public class ArtifactDraft {
 
-    private String role;
-
     private File temporaryFile;
 
     private File targetFile;
