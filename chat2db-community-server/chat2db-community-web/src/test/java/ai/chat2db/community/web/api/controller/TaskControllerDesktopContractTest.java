@@ -21,16 +21,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TaskControllerDesktopContractTest {
 
     @Test
-    void submitRejectsRawServerPathsBeforeReadingFiles() {
-        TaskController controller = new TaskController(null, null, null, null);
-        var request = new ai.chat2db.community.web.api.model.request.task.TaskImportRequest();
-        request.setSourceFile("C:/private/data.csv");
-        org.junit.jupiter.api.Assertions.assertThrows(
-                ai.chat2db.community.tools.exception.ParamBusinessException.class,
-                () -> controller.submitImport(request));
-    }
-
-    @Test
     void taskEndpointsUseStaticPathsAndAtMostOneRequestObject() {
         Set<String> paths = Arrays.stream(TaskController.class.getDeclaredMethods())
                 .map(this::requestMapping)

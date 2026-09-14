@@ -18,7 +18,6 @@ import ai.chat2db.community.web.api.model.request.task.TaskIdRequest;
 import ai.chat2db.community.web.api.model.request.task.TaskImportRequest;
 import ai.chat2db.community.web.api.model.response.task.TaskSubmitResponse;
 import jakarta.validation.Valid;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -60,9 +59,6 @@ public class TaskController {
 
     @PostMapping("/import")
     public DataResult<TaskSubmitResponse> submitImport(@Valid @RequestBody TaskImportRequest request) {
-        if (StringUtils.isBlank(request.getFileId())) {
-            throw new ai.chat2db.community.tools.exception.ParamBusinessException("fileId");
-        }
         Long taskId = importTaskSubmissionService.submit(
                 taskWebConverter.importRequest2spec(request), request.getFileId());
         return DataResult.of(new TaskSubmitResponse(taskId));

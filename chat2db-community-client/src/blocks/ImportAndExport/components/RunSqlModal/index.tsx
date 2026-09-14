@@ -7,8 +7,6 @@ import { useImportExportStore } from '@/store/importExport';
 import ModalFooterButton from '@/components/Modal/ModalFooterButton';
 import importExportServices from '@/service/importExport';
 import Log from '@/blocks/ImportAndExport/components/Log';
-import sqlService from '@/service/sql';
-import { prepareImportParams } from '../ImportFileModal/submission';
 
 interface IProps {
   className?: string;
@@ -16,7 +14,6 @@ interface IProps {
 
 export default memo<IProps>((_props) => {
   const [isReady, setIsReady] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const runSqlRef = useRef<RunSqlRef>(null);
   const [taskId, setTaskId] = useState<number>();
 
@@ -34,24 +31,13 @@ export default memo<IProps>((_props) => {
     }
   }, [runSqlBoundInfo]);
 
-  const handleRunSQl = async () => {
-    if (submitting) return;
+  const handleRunSQl = () => {
     const params = runSqlRef.current?.getValues();
-    const file = runSqlRef.current?.getFile();
-    if (!params || !file) return;
-    setSubmitting(true);
-    try {
-      const prepared = await prepareImportParams(
-        params, file, sqlService.uploadImportFile, sqlService.stageDesktopImportFile,
-      );
-      const result = await importExportServices.submitImport(prepared);
-      setTaskId(result.taskId);
-      void getTaskList();
-    } catch {
-      // Request helpers display the submission error.
-    } finally {
-      setSubmitting(false);
-    }
+    if (!params) return;
+    importExportServices.submitImport(params).then((res) => {
+      setTaskId(res.taskId);
+      getTaskList();
+    });
   };
 
   const renderFooter = () => {
@@ -66,7 +52,7 @@ export default memo<IProps>((_props) => {
             >
               {i18n('common.button.cancel')}
             </Button>
-            <Button type="primary" disabled={!isReady} loading={submitting} onClick={handleRunSQl}>
+            <Button type="primary" disabled={!isReady} onClick={handleRunSQl}>
               {i18n('common.button.start')}
             </Button>
           </>

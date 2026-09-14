@@ -1,13 +1,12 @@
 import { memo, useState, forwardRef, ForwardedRef, useImperativeHandle, useEffect } from 'react';
 import { useStyles } from './style';
-import UploadLocalFile, { type FileUrl } from '@/components/UploadLocalFile';
+import UploadLocalFile from '@/components/UploadLocalFile';
 import { Form, Input } from 'antd';
 import i18n from '@/i18n';
 import { useImportExportStore } from '@/store/importExport';
-import { isDesktop, isDevelopment } from '@/utils/env';
+import { isDevelopment } from '@/utils/env';
 import { ImportExportFileType, ImportExportTaskType } from '@/constants/importExport';
 import { ImportTaskParams } from '@/service/importExport';
-import { hasSelectedImportFile } from '../ImportExportFile/selection';
 
 interface IProps {
   className?: string;
@@ -16,7 +15,6 @@ interface IProps {
 
 export interface RunSqlRef {
   getValues: () => ImportTaskParams | null;
-  getFile: () => FileUrl | undefined;
 }
 
 // const codeOptions = [
@@ -34,11 +32,11 @@ const RunSql = forwardRef((props: IProps, ref: ForwardedRef<RunSqlRef>) => {
   const { setIsReady } = props;
   const { styles } = useStyles();
   const [form] = Form.useForm();
-  const [fileUrlList, setFileUrlList] = useState<FileUrl[]>([]);
-  const [formValues, setFormValues] = useState<{ fileUrl?: string }>({});
+  const [fileUrlList, setFileUrlList] = useState<string[]>([]);
+  const [formValues, setFormValues] = useState<any>({});
 
   useEffect(() => {
-    setIsReady && setIsReady(hasSelectedImportFile(fileUrlList) || !!(isDesktop && formValues.fileUrl));
+    setIsReady && setIsReady(!!fileUrlList.length || formValues.fileUrl);
   }, [fileUrlList, formValues]);
 
   const { runSqlBoundInfo } = useImportExportStore((state) => {
@@ -64,9 +62,6 @@ const RunSql = forwardRef((props: IProps, ref: ForwardedRef<RunSqlRef>) => {
   }, [runSqlBoundInfo]);
 
   useImperativeHandle(ref, () => ({
-    getFile: () => fileUrlList[0] || (isDesktop && formValues.fileUrl
-      ? { filePath: formValues.fileUrl, fileName: formValues.fileUrl.split(/[\\/]/).pop() }
-      : undefined),
     getValues: () => {
       if (!runSqlBoundInfo) return null;
       const { dataSourceId, databaseName, schemaName } = runSqlBoundInfo;
@@ -75,14 +70,14 @@ const RunSql = forwardRef((props: IProps, ref: ForwardedRef<RunSqlRef>) => {
         databaseName,
         schemaName,
         taskType: ImportExportTaskType.SQL_FILE_IMPORT,
-        sourceFile: fileUrlList[0]?.filePath || formValues.fileUrl,
+        sourceFile: fileUrlList[0] || formValues.fileUrl,
         format: ImportExportFileType.SQL,
       };
     },
   }));
 
-  const handleFileUrlListChange = (_fileUrlList: FileUrl[]) => {
-    setFileUrlList(_fileUrlList);
+  const handleFileUrlListChange = (_fileUrlList) => {
+    setFileUrlList(_fileUrlList.map((item) => item.filePath));
   };
 
   return (
@@ -101,7 +96,7 @@ const RunSql = forwardRef((props: IProps, ref: ForwardedRef<RunSqlRef>) => {
       <Form.Item>
         <UploadLocalFile fileUrlListChange={handleFileUrlListChange} accept=".sql" />
       </Form.Item>
-      {isDesktop && isDevelopment && (
+      {isDevelopment && (
         <Form.Item label="File URL" name="fileUrl">
           <Input autoComplete="off" />
         </Form.Item>

@@ -13,7 +13,7 @@ import ImportMappingContent from '@/blocks/ImportAndExport/components/ImportMapp
 import jcefApi from '@/jcef';
 import { isDesktop } from '@/utils/env';
 import sqlService from '@/service/sql';
-import { prepareImportParams } from './submission';
+import { prepareWebImportParams } from './submission';
 import {
   IMPORT_TARGET_TABLE_REFRESH_EVENT,
   shouldRefreshImportTargetTable,
@@ -31,7 +31,6 @@ const isPreviewFile = (file?: FileUrl) => {
 
 export default memo<IProps>((_props) => {
   const [isReady, setIsReady] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const importExportFileRef = useRef<ImportExportFileRef>(null);
   const previousTaskDetailsRef = useRef<ImportExportTaskDetails>();
   const [taskId, setTaskId] = useState<number>();
@@ -56,29 +55,21 @@ export default memo<IProps>((_props) => {
   }, [importExportDataBoundInfo]);
 
   const handleRunSQl = async () => {
-    if (submitting) return;
     const params = importExportFileRef.current?.getValues();
     if (!params) return;
-    setSubmitting(true);
-    try {
-      let response;
-      if ('sourceFile' in params) {
-        let importParams = params;
-        if (!importFile) return;
-        importParams = await prepareImportParams(
-          importParams, importFile, sqlService.uploadImportFile, sqlService.stageDesktopImportFile,
-        );
-        response = await importExportServices.submitImport(importParams);
-      } else {
-        response = await importExportServices.submitExport(params);
+    let response;
+    if ('sourceFile' in params) {
+      let importParams = params;
+      if (!isDesktop) {
+        if (!importFile?.file) return;
+        importParams = await prepareWebImportParams(importParams, importFile.file, sqlService.uploadImportFile);
       }
-      setTaskId(response.taskId);
-      getTaskList();
-    } catch {
-      // Request helpers display the submission error.
-    } finally {
-      setSubmitting(false);
+      response = await importExportServices.submitImport(importParams);
+    } else {
+      response = await importExportServices.submitExport(params);
     }
+    setTaskId(response.taskId);
+    getTaskList();
   };
 
   const handleImportFileChange = (file?: FileUrl) => {
@@ -97,7 +88,7 @@ export default memo<IProps>((_props) => {
             >
               {i18n('common.button.cancel')}
             </Button>
-            <Button type="primary" disabled={!isReady} loading={submitting} onClick={handleRunSQl}>
+            <Button type="primary" disabled={!isReady} onClick={handleRunSQl}>
               {i18n('common.button.start')}
             </Button>
           </>

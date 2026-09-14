@@ -1,18 +1,14 @@
-import type { FileUrl } from '@/components/UploadLocalFile';
-import type { ImportTaskParams } from '@/service/importExport';
-import { stageSelectedImportFile } from '../ImportMappingContent/fileStaging';
+import { ImportTaskParams } from '@/service/importExport';
 
-type UploadBrowserFile = (params: { file: File }) => Promise<string>;
-type StageDesktopFile = (params: { sourceFile: string; originalFileName: string }) => Promise<string>;
+type UploadImportFile = (params: { file: File }) => Promise<string>;
 
-export const prepareImportParams = async (
+export const prepareWebImportParams = async (
   params: ImportTaskParams,
-  file: FileUrl,
-  uploadBrowserFile: UploadBrowserFile,
-  stageDesktopFile: StageDesktopFile,
+  file: File,
+  uploadImportFile: UploadImportFile,
 ): Promise<ImportTaskParams> => ({
   ...params,
   sourceFile: undefined,
-  fileId: await stageSelectedImportFile(file, uploadBrowserFile, stageDesktopFile),
-  displayFileName: file.fileName || file.file?.name,
+  fileId: await uploadImportFile({ file }),
+  displayFileName: file.name,
 });
