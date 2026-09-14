@@ -66,9 +66,6 @@ public final class ImportRowBatcher implements AutoCloseable {
     /** Contract baseline fan-out of the fast mode; the adaptive gate grows it further on demand. */
     private static final int BASE_WORKERS = 4;
 
-    /** How long a worker waits for an adaptive gate permit before degrading to ungated execution. */
-    private static final long GATE_WAIT_MILLIS = 30_000L;
-
     private final ImportTaskSpec spec;
 
     private final TaskExecutionContext context;
@@ -119,8 +116,6 @@ public final class ImportRowBatcher implements AutoCloseable {
     private final long createdNanos = System.nanoTime();
 
     private volatile long totalImportNanos;
-
-    private final AtomicBoolean ungatedWarned = new AtomicBoolean();
 
     public ImportRowBatcher(ImportTaskSpec spec, TaskExecutionContext context, Resolution resolution,
             IValueProcessor valueProcessor) {
@@ -429,20 +424,20 @@ public final class ImportRowBatcher implements AutoCloseable {
                 if (batch == END_OF_QUEUE) {
                     return;
                 }
-                boolean permitted = gate.admit(GATE_WAIT_MILLIS);
-                if (!permitted && ungatedWarned.compareAndSet(false, true)) {
-                    log.warn("Adaptive import gate did not admit within {}ms; executing batches "
-                            + "ungated until the gate recovers (degraded concurrency)", GATE_WAIT_MILLIS);
-                }
+                gate.awaitPermit(() -> {
+                    throwIfFailed();
+                    context.checkCancelled();
+                });
                 try {
                     throwIfFailed();
                     executePendingBatch(batch);
                 } finally {
-                    gate.relinquish(permitted);
+                    gate.release();
                 }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            recordFailure(new TaskCancelledException());
         } catch (Throwable t) {
             recordFailure(t);
         } finally {

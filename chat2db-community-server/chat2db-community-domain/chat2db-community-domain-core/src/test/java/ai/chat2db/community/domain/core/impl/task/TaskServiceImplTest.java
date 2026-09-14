@@ -1,7 +1,6 @@
 package ai.chat2db.community.domain.core.impl.task;
 
 import ai.chat2db.community.domain.api.model.PageResponse;
-import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskDownload;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -10,17 +9,14 @@ import ai.chat2db.community.domain.api.model.task.TaskQuery;
 import ai.chat2db.community.domain.api.model.task.TaskStatus;
 import ai.chat2db.community.domain.api.model.task.TaskStatusPatch;
 import ai.chat2db.community.domain.api.service.task.TaskStorage;
-import ai.chat2db.community.tools.exception.BusinessException;
 import ai.chat2db.community.tools.exception.DataNotFoundException;
 import ai.chat2db.community.tools.model.Context;
 import ai.chat2db.community.tools.model.LoginUser;
 import ai.chat2db.community.tools.util.ContextUtils;
-import ai.chat2db.spi.sql.Chat2DBContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -32,11 +28,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskServiceImplTest {
-
-    private static final String PREVIEW_TEST_DB_TYPE = "TASK_PREVIEW_TEST";
 
     @TempDir
     Path tempDirectory;
@@ -44,8 +37,6 @@ class TaskServiceImplTest {
     @AfterEach
     void clearContext() {
         ContextUtils.removeContext();
-        Chat2DBContext.removeContext();
-        Chat2DBContext.PLUGIN_MAP.remove(PREVIEW_TEST_DB_TYPE);
     }
 
     @Test
@@ -84,30 +75,6 @@ class TaskServiceImplTest {
         assertThrows(DataNotFoundException.class, () -> service.resolveArtifact(3L));
         TaskDownload download = service.resolveArtifact(1L);
         assertEquals("owned.csv", download.getFileName());
-    }
-
-    @Test
-    void importAllowlistResolvesSymbolicLinksBeforeAuthorizingTheSource() throws Exception {
-        Path allowed = Files.createDirectory(tempDirectory.resolve("allowed"));
-        Path outside = Files.createDirectory(tempDirectory.resolve("outside"));
-        Files.writeString(outside.resolve("data.csv"), "id\n1\n");
-        Path link = allowed.resolve("linked");
-        try {
-            Files.createSymbolicLink(link, outside);
-        } catch (UnsupportedOperationException | java.io.IOException | SecurityException unavailable) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false,
-                    "Symbolic links are unavailable: " + unavailable.getMessage());
-        }
-        TaskServiceImpl service = new TaskServiceImpl(new OwnershipTaskStorage(List.of()), null,
-                new ArtifactServiceImpl());
-        Field field = TaskServiceImpl.class.getDeclaredField("importAllowedRoots");
-        field.setAccessible(true);
-        field.set(service, allowed.toString());
-        ImportTaskSpec spec = ImportTaskSpec.builder()
-                .sourceFile(link.resolve("data.csv").toString())
-                .build();
-
-        assertThrows(BusinessException.class, () -> service.submitImport(spec));
     }
 
     private Task task(Long id, Long userId, Long organizationId, Path artifact) {
@@ -197,6 +164,5 @@ class TaskServiceImplTest {
             commitAction.run();
             return true;
         }
-
     }
 }

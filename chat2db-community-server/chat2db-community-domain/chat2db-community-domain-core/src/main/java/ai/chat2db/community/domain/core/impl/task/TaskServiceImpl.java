@@ -13,7 +13,6 @@ import ai.chat2db.community.domain.api.model.task.TaskQuery;
 import ai.chat2db.community.domain.api.model.task.TaskSpec;
 import ai.chat2db.community.domain.api.model.task.TaskStage;
 import ai.chat2db.community.domain.api.model.task.TaskStatus;
-import ai.chat2db.community.domain.api.service.task.ArtifactService;
 import ai.chat2db.community.domain.api.service.task.TaskDeletionService;
 import ai.chat2db.community.domain.api.service.task.TaskService;
 import ai.chat2db.community.domain.api.service.task.TaskStorage;
@@ -25,7 +24,6 @@ import ai.chat2db.spi.model.datasource.ConnectInfo;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import jakarta.annotation.PostConstruct;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -36,24 +34,16 @@ import java.util.Objects;
 @Service
 public class TaskServiceImpl implements TaskService {
 
-    @org.springframework.beans.factory.annotation.Value("${chat2db.task.import.allowed-roots:}")
-    private String importAllowedRoots;
     private final TaskStorage taskStorage;
 
     private final LocalTaskManager localTaskManager;
 
     private final TaskDeletionService deletionService;
 
-    @Autowired
-    public TaskServiceImpl(TaskStorage taskStorage, LocalTaskManager localTaskManager,
-            TaskDeletionService deletionService) {
+    public TaskServiceImpl(TaskStorage taskStorage, LocalTaskManager localTaskManager, TaskDeletionService deletionService) {
         this.taskStorage = taskStorage;
         this.localTaskManager = localTaskManager;
         this.deletionService = deletionService;
-    }
-
-    TaskServiceImpl(TaskStorage taskStorage, LocalTaskManager localTaskManager, ArtifactService artifactService) {
-        this(taskStorage, localTaskManager, new TaskDeletionServiceImpl(taskStorage, artifactService));
     }
 
     @PostConstruct
@@ -67,43 +57,8 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    /** Staged/desktop local paths are the intended import source boundary. */
-    @SuppressWarnings("lgtm[java/path-injection]")
     public Long submitImport(ImportTaskSpec spec) {
-        validateImportSource(spec.getSourceFile());
         return submit(spec);
-    }
-
-    /**
-     * Server deployments can restrict which directories import files may come from; desktop runs
-     * keep the unrestricted default. Paths are compared normalized and absolute so `..` segments
-     * cannot escape the allowlist.
-     */
-    private void validateImportSource(String sourceFile) {
-        if (StringUtils.isBlank(importAllowedRoots) || StringUtils.isBlank(sourceFile)) {
-            return;
-        }
-        java.nio.file.Path candidate;
-        try {
-            candidate = java.nio.file.Path.of(sourceFile).toAbsolutePath().normalize().toRealPath();
-        } catch (java.nio.file.InvalidPathException | java.io.IOException invalidPath) {
-            throw new BusinessException("task.import.sourceNotAllowed", null);
-        }
-        for (String root : importAllowedRoots.split(",")) {
-            if (StringUtils.isBlank(root)) {
-                continue;
-            }
-            try {
-                java.nio.file.Path allowedRoot = java.nio.file.Path.of(root.trim()).toAbsolutePath()
-                        .normalize().toRealPath();
-                if (candidate.startsWith(allowedRoot)) {
-                    return;
-                }
-            } catch (java.nio.file.InvalidPathException | java.io.IOException ignored) {
-                // An invalid configured root cannot authorize access to any source path.
-            }
-        }
-        throw new BusinessException("task.import.sourceNotAllowed", null);
     }
 
     @Override

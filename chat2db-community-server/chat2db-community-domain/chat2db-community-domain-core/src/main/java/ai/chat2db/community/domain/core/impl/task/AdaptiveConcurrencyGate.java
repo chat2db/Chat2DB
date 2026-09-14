@@ -20,9 +20,8 @@ import lombok.extern.slf4j.Slf4j;
  * failure degrades to keeping the current fan-out instead of failing the import. The
  * total permit count is tracked explicitly and hard-capped at {@code maxPermits}, even while
  * workers hold permits, so the fan-out can never exceed its configured ceiling, and tuning never
- * shrinks it past {@link #MIN_PERMITS}. A stuck gate must not hang a task either: workers wait
- * through {@link #admit(long)} with a timeout and proceed ungated on expiry, which degrades to the
- * pre-adaptive unbounded concurrency instead of stalling.
+ * shrinks it past {@link #MIN_PERMITS}. Waiting workers keep checking task cancellation and
+ * never execute without a permit.
  */
 @Slf4j
 public final class AdaptiveConcurrencyGate extends Semaphore {
@@ -86,33 +85,11 @@ public final class AdaptiveConcurrencyGate extends Semaphore {
         }
     }
 
-    /**
-     * Bounded permit wait for task workers: waits up to {@code timeoutMillis} and then reports
-     * failure instead of blocking forever, so a stuck gate degrades to ungated execution (the
-     * pre-adaptive behaviour) rather than hanging the task.
-     *
-     * @return whether a permit was taken and must later be returned via {@link #relinquish}
-     */
-    public boolean admit(long timeoutMillis) {
-        try {
-            return tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-    }
-
-    /** Returns a permit taken by {@link #admit}; never throws into the worker. */
-    public void relinquish(boolean permitted) {
-        if (!permitted) {
-            return;
-        }
-        try {
-            release();
-        } catch (Throwable releaseFailure) {
-            // The lost permit is capacity, not data: the AIMD tuning re-grows it.
-            log.warn("Returning a gate permit failed; the AIMD tuning will restore the capacity",
-                    releaseFailure);
+    /** Waits for a permit while checking cancellation between bounded waits. */
+    public void awaitPermit(Runnable cancellationChecker) throws InterruptedException {
+        cancellationChecker.run();
+        while (!tryAcquire(200L, TimeUnit.MILLISECONDS)) {
+            cancellationChecker.run();
         }
     }
 

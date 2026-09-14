@@ -37,7 +37,7 @@ public class ImportFileStagingService implements IImportFileStagingService {
             TaskFileFormat.SQL.name().toLowerCase(Locale.ROOT));
     private static final Duration MAX_AGE = Duration.ofHours(24);
     private static final Duration CLAIMED_MAX_AGE = Duration.ofDays(7);
-    private static final long MAX_SIZE_BYTES = 2L * 1024 * 1024 * 1024;
+    private static final long MAX_SIZE_BYTES = 50L * 1024 * 1024;
 
     private final Map<String, Instant> claimedFiles = new ConcurrentHashMap<>();
 
