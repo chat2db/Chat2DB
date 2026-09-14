@@ -2,7 +2,6 @@ package ai.chat2db.community.domain.core.impl.task.export;
 
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
-import ai.chat2db.community.domain.api.model.task.TaskCompression;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskEventCode;
@@ -52,7 +51,6 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -120,8 +118,7 @@ public abstract class BaseExporter implements IExportStrategy {
         try {
             if (tableNames.size() == 1) {
                 context.reportProgress(20, TaskStage.EXPORTING.name(), "Exporting table data");
-                try (OutputStream file = Files.newOutputStream(outputFile.toPath());
-                        OutputStream output = wrapForCompression(file, spec)) {
+                try (OutputStream output = new BufferedOutputStream(Files.newOutputStream(outputFile.toPath()))) {
                     singleWithEvents(spec, context, tableNames.get(0), output, 0, 1);
                     output.flush();
                 }
@@ -154,8 +151,8 @@ public abstract class BaseExporter implements IExportStrategy {
     private void multi(ExportTaskSpec spec, TaskExecutionContext context, File outputFile) throws Exception {
         List<String> tableNames = spec.getTableNames();
         int n = tableNames.size();
-        try (OutputStream file = Files.newOutputStream(outputFile.toPath());
-                ZipOutputStream zip = new ZipOutputStream(wrapForCompression(file, spec))) {
+        try (ZipOutputStream zip = new ZipOutputStream(
+                new BufferedOutputStream(Files.newOutputStream(outputFile.toPath())))) {
             for (int i = 0; i < n; i++) {
                 context.checkCancelled();
                 String tableName = tableNames.get(i);
@@ -179,12 +176,6 @@ public abstract class BaseExporter implements IExportStrategy {
                     Map.of(TaskConstants.FILE_FORMAT_DETAIL_KEY, "ZIP",
                             TaskConstants.TOTAL_TABLES_DETAIL_KEY, n));
         }
-    }
-
-    private static OutputStream wrapForCompression(OutputStream file, ExportTaskSpec spec) throws IOException {
-        BufferedOutputStream buffered = new BufferedOutputStream(file);
-        return TaskCompression.GZIP.equalsIgnoreCase(StringUtils.trimToEmpty(spec.getCompression()))
-                ? new GZIPOutputStream(buffered) : buffered;
     }
 
     /** Streams a table using parallel key ranges when eligible, or a single query otherwise. */

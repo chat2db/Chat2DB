@@ -5,8 +5,6 @@ public enum TaskFileFormat {
     XLS,
     XLSX,
     JSON,
-    NDJSON,
-    MARKDOWN,
     SQL,
     ZIP
 }

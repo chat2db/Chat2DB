@@ -58,7 +58,6 @@ export interface ExportTaskParams extends IDatabaseBaseInfo {
   containsHeader?: boolean;
   exportPath?: string;
   suggestedFileName?: string;
-  compression?: string;
   /** Execution mode: ULTRA_FAST (parallel) or STANDARD (serial). Default STANDARD. */
   mode?: 'ULTRA_FAST' | 'STANDARD';
 }

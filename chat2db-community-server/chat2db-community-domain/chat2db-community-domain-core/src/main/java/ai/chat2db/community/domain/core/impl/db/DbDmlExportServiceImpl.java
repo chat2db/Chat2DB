@@ -23,9 +23,6 @@ import ai.chat2db.community.domain.core.impl.task.export.ExportCellProcessorChai
 import ai.chat2db.community.domain.core.impl.task.export.SqlValueSerializer;
 import ai.chat2db.community.domain.core.impl.task.export.excel.MultiSheetExcelWriter;
 import ai.chat2db.community.domain.core.impl.task.export.sink.CsvSink;
-import ai.chat2db.community.domain.core.impl.task.export.sink.JsonSink;
-import ai.chat2db.community.domain.core.impl.task.export.sink.MarkdownSink;
-import ai.chat2db.community.domain.core.impl.task.export.sink.NdjsonSink;
 import ai.chat2db.community.domain.core.impl.task.export.sink.SqlSink;
 import ai.chat2db.community.tools.exception.BusinessException;
 import ai.chat2db.community.tools.exception.ParamBusinessException;
@@ -130,7 +127,7 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
             OutputStream outputStream, ISqlExecutionStatementListener statementListener,
             Runnable cancellationChecker, LongConsumer exportedRowsListener,
             Runnable fileFinalizationListener) throws IOException {
-        boolean sqlLiteral = exportType == ExportTypeEnum.INSERT;
+        boolean sqlLiteral = exportType != ExportTypeEnum.CSV;
         IValueProcessor valueProcessor = Chat2DBContext.getDbMetaData().getValueProcessor();
         String parsedInsertTable = sqlLiteral ? defaultInsertTable(param, plan) : null;
         AtomicReference<FormatSink> sinkReference = new AtomicReference<>();
@@ -178,13 +175,9 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
         ConnectInfo connectInfo = Chat2DBContext.getConnectInfo();
         return switch (exportType) {
             case CSV -> new CsvSink(outputStream, true);
-            case JSON -> new JsonSink(outputStream);
-            case NDJSON -> new NdjsonSink(outputStream);
-            case MARKDOWN -> new MarkdownSink(outputStream);
-            case INSERT -> new SqlSink(outputStream, Chat2DBContext.getSqlBuilder(),
+            default -> new SqlSink(outputStream, Chat2DBContext.getSqlBuilder(),
                     firstHeaderOr(includedHeaders, Header::getDatabaseName, connectInfo.getDatabaseName()),
                     firstHeaderOr(includedHeaders, Header::getSchemaName, connectInfo.getSchemaName()));
-            default -> throw new ParamBusinessException("exportType");
         };
     }
 

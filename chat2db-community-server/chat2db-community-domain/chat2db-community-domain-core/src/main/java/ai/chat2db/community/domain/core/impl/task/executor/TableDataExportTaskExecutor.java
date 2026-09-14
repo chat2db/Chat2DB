@@ -47,10 +47,9 @@ public class TableDataExportTaskExecutor implements TaskExecutor<ExportTaskSpec>
                         "ZIP is an output container, not a table data format");
             }
             boolean multipleTables = CollectionUtils.size(spec.getTableNames()) > 1;
-            String compression = TaskExecutorSupport.requireCompression(spec.getCompression());
             String artifactFormat = multipleTables ? TaskFileFormat.ZIP.name() : format;
             String fileName = TaskExecutorSupport.artifactFileName(spec, spec.getSuggestedFileName(),
-                    artifactFormat, compression);
+                    artifactFormat);
             ArtifactDraft draft = context.createArtifact(spec.getExportPath(), fileName,
                     TaskExecutorSupport.mediaType(artifactFormat));
             context.logInfo(TaskEventCode.EXPORT_STARTED.name(), "Table data export started",
@@ -67,5 +66,4 @@ public class TableDataExportTaskExecutor implements TaskExecutor<ExportTaskSpec>
                     "Could not export table data", e);
         }
     }
-
 }

@@ -3,7 +3,6 @@ package ai.chat2db.community.domain.core.impl.task.export;
 import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
-import ai.chat2db.community.domain.api.model.task.TaskCompression;
 import ai.chat2db.community.domain.api.service.task.TaskCancelable;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
 import ai.chat2db.community.domain.core.impl.db.extension.SqlExecutionPolicyManager;
@@ -20,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -88,19 +86,14 @@ class BaseExporterTest {
     }
 
     @Test
-    void gzipCompressionWrapsTheWholeArtifact() throws Exception {
-        RecordingExporter exporter = new RecordingExporter();
-        File output = temporaryDirectory.resolve("one.sql.gz").toFile();
+    void legacyCompressionOptionDoesNotCompressTheArtifact() throws Exception {
+        ExportTaskSpec spec = com.alibaba.fastjson2.JSON.parseObject(
+                "{\"tableNames\":[\"orders\"],\"compression\":\"GZIP\"}", ExportTaskSpec.class);
+        File output = temporaryDirectory.resolve("one.sql").toFile();
 
-        exporter.run(ExportTaskSpec.builder().tableNames(List.of("orders"))
-                .compression(TaskCompression.GZIP).build(), new NoopContext(), output);
+        new RecordingExporter().run(spec, new NoopContext(), output);
 
-        byte[] compressed = Files.readAllBytes(output.toPath());
-        assertTrue(compressed[0] == (byte) 0x1f && compressed[1] == (byte) 0x8b, "gzip magic");
-        try (GZIPInputStream gunzip = new GZIPInputStream(new java.io.ByteArrayInputStream(compressed))) {
-            assertArrayEquals("data of orders".getBytes(StandardCharsets.UTF_8),
-                    gunzip.readAllBytes());
-        }
+        assertArrayEquals("data of orders".getBytes(StandardCharsets.UTF_8), Files.readAllBytes(output.toPath()));
     }
 
     @Test

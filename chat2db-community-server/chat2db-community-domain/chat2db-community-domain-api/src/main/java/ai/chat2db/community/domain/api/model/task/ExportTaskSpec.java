@@ -31,11 +31,6 @@ public class ExportTaskSpec implements TaskSpec {
 
     private String format;
 
-    /**
-     * Optional post-format compression, see {@link TaskCompression}; null or blank means none.
-     */
-    private String compression;
-
     private String scope;
 
     private Boolean containData;
