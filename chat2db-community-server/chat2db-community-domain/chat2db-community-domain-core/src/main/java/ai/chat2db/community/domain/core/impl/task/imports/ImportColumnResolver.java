@@ -2,7 +2,6 @@ package ai.chat2db.community.domain.core.impl.task.imports;
 
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
-import ai.chat2db.community.domain.api.model.task.ImportColumnMatch;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.UnmappedTargetStrategy;
 import ai.chat2db.community.tools.exception.ParamBusinessException;
@@ -15,8 +14,7 @@ import java.util.Map;
 
 /**
  * Resolves which file column feeds which table column. Explicit mappings win; otherwise matching is
- * case-insensitive on trimmed names. Unmatched file columns are reported instead of silently
- * dropping data as the old upper-case-equality rule did.
+ * case-insensitive on trimmed names.
  */
 public final class ImportColumnResolver {
 
@@ -25,7 +23,7 @@ public final class ImportColumnResolver {
      * {@code tableColumns[i]}.
      */
     public record Resolution(List<TableColumn> tableColumns, List<Integer> fileIndexes,
-                             List<ImportColumnMatch> matches, List<String> missingTableColumns) {
+                             List<String> missingTableColumns) {
     }
 
     private ImportColumnResolver() {
@@ -102,23 +100,7 @@ public final class ImportColumnResolver {
             }
         }
 
-        java.util.Set<Integer> usedFileIndexes = new java.util.HashSet<>(fileIndexes);
-        List<ImportColumnMatch> matches = new ArrayList<>(fileHeaders.size());
-        for (int index = 0; index < fileHeaders.size(); index++) {
-            String tableColumn = null;
-            for (int resolved = 0; resolved < fileIndexes.size(); resolved++) {
-                if (java.util.Objects.equals(fileIndexes.get(resolved), index)) {
-                    tableColumn = resolvedColumns.get(resolved).getName();
-                    break;
-                }
-            }
-            matches.add(ImportColumnMatch.builder()
-                    .fileColumn(fileHeaders.get(index))
-                    .tableColumn(tableColumn)
-                    .matched(usedFileIndexes.contains(index))
-                    .build());
-        }
-        return new Resolution(resolvedColumns, fileIndexes, matches, missingTableColumns);
+        return new Resolution(resolvedColumns, fileIndexes, missingTableColumns);
     }
 
     private static Integer indexOfSource(String source, List<String> fileHeaders,

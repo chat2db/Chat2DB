@@ -26,5 +26,4 @@ public class ImportExecuteRequest extends DataSourceBaseRequest {
 
     private String mode;
 
-    private Boolean confirmedNoStrongRelations;
 }

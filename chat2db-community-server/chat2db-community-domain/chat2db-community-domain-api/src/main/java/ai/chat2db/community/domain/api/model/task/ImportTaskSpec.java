@@ -42,10 +42,4 @@ public class ImportTaskSpec implements TaskSpec {
      */
     private String mode;
 
-    /**
-     * Explicit operator assertion required for parallel row imports. It covers relationship and
-     * ordering semantics that metadata alone cannot prove (logical foreign keys, triggers and
-     * application-level parent/child ID dependencies); it does not bypass file-format blockers.
-     */
-    private Boolean confirmedNoStrongRelations;
 }

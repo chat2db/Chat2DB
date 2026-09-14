@@ -64,7 +64,7 @@ public class CSVImporter extends BaseImporter implements IImportStrategy {
     private ImportRowBatcher createBatcher(ImportTaskSpec spec, TaskExecutionContext context,
             List<TableColumn> columns, List<String> headers) {
         ImportColumnResolver.Resolution resolution = ImportColumnResolver.resolveForSpec(columns, headers, spec);
-        reportResolution(context, resolution);
+
         ImportColumnResolver.validateForImport(columns, resolution, spec);
         return new ImportRowBatcher(spec, context, resolution,
                 Chat2DBContext.getDbMetaData().getValueProcessor());

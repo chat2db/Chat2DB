@@ -82,11 +82,9 @@ class DbMappedImportServiceImplTest {
         options.setDelimiter(";");
         execution.setCsvOptions(options);
         execution.setMode("ULTRA_FAST");
-        execution.setConfirmedNoStrongRelations(true);
 
         assertEquals(42L, service.submit(execution));
         assertEquals("ULTRA_FAST", submitted.get().getMode());
-        assertEquals(Boolean.TRUE, submitted.get().getConfirmedNoStrongRelations());
         assertEquals(";", submitted.get().getCsvOptions().getDelimiter());
         assertEquals("name", submitted.get().getColumnMappings().get(0).getTargetColumn());
     }

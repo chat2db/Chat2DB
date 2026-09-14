@@ -65,7 +65,6 @@ public class TaskWebConverter {
                 .dataTimeFormat(request.getDataTimeFormat())
                 .csvOptions(csvOptions(format, request.getCsvOptions()))
                 .mode(normalize(request.getMode()))
-                .confirmedNoStrongRelations(request.getConfirmedNoStrongRelations())
                 .build();
     }
 

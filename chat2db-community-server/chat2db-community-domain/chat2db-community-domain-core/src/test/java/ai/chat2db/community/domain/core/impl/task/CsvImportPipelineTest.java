@@ -106,7 +106,6 @@ class CsvImportPipelineTest {
         assertEquals(List.of(), importedIds(), "the failed batch must roll back without row retries");
         assertNull(context.artifactDraft());
         assertFailedWithoutSummary();
-        assertTrue(storage.events.stream().anyMatch(event -> "IMPORT_COLUMN_MAPPING".equals(event.getCode())));
     }
 
     @Test

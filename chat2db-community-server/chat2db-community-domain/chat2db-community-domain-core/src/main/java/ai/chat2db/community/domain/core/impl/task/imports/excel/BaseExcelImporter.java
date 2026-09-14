@@ -79,7 +79,7 @@ public abstract class BaseExcelImporter extends BaseImporter {
             this.taskContext.checkCancelled();
             List<String> headers = values(headMap);
             resolution = ImportColumnResolver.resolveForSpec(columns, headers, spec);
-            reportResolution(taskContext, resolution);
+
             ImportColumnResolver.validateForImport(columns, resolution, spec);
             batcher = new ImportRowBatcher(spec, taskContext, resolution, valueProcessor);
         }

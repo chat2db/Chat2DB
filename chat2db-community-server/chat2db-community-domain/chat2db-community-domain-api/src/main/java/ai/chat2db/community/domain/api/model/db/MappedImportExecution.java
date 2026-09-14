@@ -34,5 +34,4 @@ public class MappedImportExecution {
 
     private String mode;
 
-    private Boolean confirmedNoStrongRelations;
 }

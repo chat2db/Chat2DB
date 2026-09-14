@@ -161,7 +161,6 @@ class ImportRowBatcherParallelTest {
                 .format("CSV")
                 .target(TaskTargetSnapshot.builder().dataSourceId(1L).tableName("BULK_ROWS").build())
                 .mode("ULTRA_FAST")
-                .confirmedNoStrongRelations(true)
                 .columnMappings(List.of(
                         new ImportColumnMapping("ID", "ID"),
                         new ImportColumnMapping("NAME", "NAME")))
@@ -216,6 +215,39 @@ class ImportRowBatcherParallelTest {
                 "an explicit parallelism pin must cap the adaptive fan-out, got " + tuning.gatePermits());
         assertTrue(tuning.gatePermits() <= Runtime.getRuntime().availableProcessors(),
                 "the fan-out must never exceed the machine's available parallelism");
+    }
+
+    @Test
+    void parallelImportUsesParsedRowsWithQuotedNewlines() throws Exception {
+        System.setProperty(PARALLELISM_PROPERTY, "2");
+        ImportTaskSpec spec = csvSpec(writeCsv("1,\"Alice\nCooper\"", "2,Bob"));
+
+        new CSVImporter().run(spec, contextFor(spec));
+
+        assertEquals(List.of(1, 2), importedIds());
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT NAME FROM BULK_ROWS WHERE ID=1")) {
+            assertTrue(rows.next());
+            assertEquals("Alice\nCooper", rows.getString(1));
+        }
+        assertEquals(Math.min(2, Runtime.getRuntime().availableProcessors()),
+                ImportRowBatcher.lastTuningSnapshot().workers());
+    }
+
+    @Test
+    void excelUsesSerialExecutionEvenWithAFastModeField() throws Exception {
+        System.setProperty(PARALLELISM_PROPERTY, "2");
+        Path workbook = tempDirectory.resolve("bulk.xlsx");
+        com.alibaba.excel.EasyExcel.write(workbook.toFile())
+                .head(List.of(List.of("ID"), List.of("NAME")))
+                .sheet().doWrite(List.of(List.of(1, "Alice"), List.of(2, "Bob")));
+        ImportTaskSpec spec = csvSpec(workbook);
+        spec.setFormat("XLSX");
+
+        new ai.chat2db.community.domain.core.impl.task.imports.excel.XLSXImporter().run(spec, contextFor(spec));
+
+        assertEquals(List.of(1, 2), importedIds());
+        assertEquals(1, ImportRowBatcher.lastTuningSnapshot().workers());
     }
 
     @Test

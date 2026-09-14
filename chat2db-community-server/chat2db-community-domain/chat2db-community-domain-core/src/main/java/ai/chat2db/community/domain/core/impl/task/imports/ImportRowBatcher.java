@@ -8,6 +8,7 @@ import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskExecutionException;
 import ai.chat2db.community.domain.api.model.task.TaskExecutionMode;
+import ai.chat2db.community.domain.api.model.task.TaskFileFormat;
 import ai.chat2db.community.domain.api.model.value.SQLDataValue;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
 import ai.chat2db.community.domain.core.impl.task.AdaptiveBatchSizer;
@@ -23,7 +24,6 @@ import ai.chat2db.spi.sql.ConnectionPool;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
-import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -142,7 +142,8 @@ public final class ImportRowBatcher implements AutoCloseable {
         this.valueProcessor = valueProcessor;
         this.sqlBuilder = Chat2DBContext.getSqlBuilder();
         this.connectInfo = Chat2DBContext.getConnectInfo();
-        this.standardMode = !TaskExecutionMode.isUltraFast(spec.getMode());
+        this.standardMode = !TaskFileFormat.CSV.name().equalsIgnoreCase(spec.getFormat())
+                || !TaskExecutionMode.isUltraFast(spec.getMode());
         this.sqlExecutor = new ImportSqlExecutor(context, !standardMode);
         this.batchSizer = new AdaptiveBatchSizer(
                 standardMode ? DEFAULT_BATCH_ROWS : FAST_MODE_BATCH_ROWS);
@@ -193,7 +194,6 @@ public final class ImportRowBatcher implements AutoCloseable {
                 this.workerPool.execute(() -> runWorker(workerIndex));
             }
         }
-        warnIfSelfReferencing(spec, this.workerPool != null);
     }
 
     public void accept(long fileRowNumber, List<String> fileValues) {
@@ -427,33 +427,6 @@ public final class ImportRowBatcher implements AutoCloseable {
             }
         }
         throwIfFailed();
-    }
-
-    /**
-     * Warns once when the target references itself (e.g. {@code category.parent_id}): parallel
-     * batches carry no parent-before-child order, so an enforced self-referencing foreign key
-     * needs the serial path or a deferred constraint. Purely advisory — never fails the import.
-     */
-    private void warnIfSelfReferencing(ImportTaskSpec spec, boolean parallel) {
-        if (!parallel) {
-            return;
-        }
-        try (ResultSet keys = Chat2DBContext.getConnection().getMetaData()
-                .getImportedKeys(null, null, spec.getTarget().getTableName())) {
-            while (keys.next()) {
-                String referencing = keys.getString("FKTABLE_NAME");
-                String referenced = keys.getString("PKTABLE_NAME");
-                if (referencing != null && referencing.equalsIgnoreCase(referenced)) {
-                    log.warn("Target table {} references itself; parallel batch import carries no "
-                            + "parent-before-child order — if the foreign key is enforced, use the "
-                            + "serial path (chat2db.task.import.parallelism=1) or defer the constraint",
-                            spec.getTarget().getTableName());
-                    break;
-                }
-            }
-        } catch (Throwable probeFailure) {
-            log.debug("Self-reference probe skipped", probeFailure);
-        }
     }
 
     private void runWorker(int workerIndex) {

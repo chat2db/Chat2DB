@@ -231,7 +231,6 @@ const ImportMappingContent = ({ dataSourceId, databaseName, schemaName, tableNam
         unmappedTarget,
         csvOptions: taskCsvOptions,
         mode,
-        confirmedNoStrongRelations: mode === 'ULTRA_FAST',
       })
       .then((result) => onSubmitted(result.taskId))
       .catch((e) => setError(resolveErrorMessage(e)))

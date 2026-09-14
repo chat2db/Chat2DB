@@ -66,7 +66,6 @@ export interface ImportTaskParams extends IDatabaseBaseInfo {
   dataTimeFormat?: string;
   csvOptions?: ICsvOptions;
   mode?: 'ULTRA_FAST' | 'STANDARD';
-  confirmedNoStrongRelations?: boolean;
 }
 
 const submitExport = createRequest<ExportTaskParams, TaskSubmissionResponse>('/api/tasks/export', { method: 'post' });
