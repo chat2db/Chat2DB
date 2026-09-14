@@ -144,10 +144,12 @@ public class Updater {
         ApplicationExitCoordinator.request(ApplicationExitCoordinator.ExitAction.RESTART.name());
     }
 
-    public void restartAppNow() throws IOException {
+    public boolean restartAppNow() throws IOException {
         if (prepareRestart()) {
             System.exit(0);
+            return true;
         }
+        return false;
     }
 
     public boolean prepareRestart() throws IOException {
@@ -798,7 +800,7 @@ public class Updater {
         ApplicationExitCoordinator.request(ApplicationExitCoordinator.ExitAction.INSTALL_UPDATE.name());
     }
 
-    public void triggerInstallationWithAuxiliaryProcessNow() {
+    public boolean triggerInstallationWithAuxiliaryProcessNow() {
         progressDialog.appendLog("Preparing for update via auxiliary process...");
         try {
             UpdatePlan plan = new UpdatePlan();
@@ -825,10 +827,12 @@ public class Updater {
             } catch (InterruptedException ignored) {
             }
             System.exit(0);
+            return true;
 
         } catch (Exception e) {
             log.error("Failed to launch auxiliary updater process", e);
             progressDialog.appendLog("FATAL ERROR: Could not start the update process. " + e.getMessage());
+            return false;
         }
     }
 

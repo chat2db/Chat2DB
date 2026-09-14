@@ -16,7 +16,9 @@ Targets:
 Environment:
   SKIP_BACKEND=true             Skip Maven backend build.
   SKIP_FRONTEND=true            Skip frontend build.
-  COMMUNITY_UPDATE_BASE_URL     Metadata base URL.
+  COMMUNITY_RELEASE_EPOCH       Release sequence (positive for published updates).
+  COMMUNITY_UPDATE_KEY_ID       Update signing public key identifier.
+  COMMUNITY_UPDATE_PUBLIC_KEY_B64  Ed25519 public key.
   MAC_SIGNING_IDENTITY          macOS Developer ID Application identity.
 
 Examples:
@@ -42,7 +44,14 @@ SOURCE_FILE_DIR="${JPACKAGE_INPUT_DIR}/sourceFile"
 COMMUNITY_JAR="${SERVER_DIR}/chat2db-community-start/target/chat2db-community.jar"
 COMMUNITY_LIB_DIR="${SERVER_DIR}/chat2db-community-start/target/lib"
 COMMUNITY_LIB_ZIP="${SERVER_DIR}/chat2db-community-start/target/lib.zip"
-UPDATE_BASE_URL="${COMMUNITY_UPDATE_BASE_URL:-https://cdn.chat2db-ai.com/community/updates}"
+RELEASE_EPOCH="${COMMUNITY_RELEASE_EPOCH:-0}"
+UPDATE_KEY_ID="${COMMUNITY_UPDATE_KEY_ID:-}"
+UPDATE_PUBLIC_KEY="${COMMUNITY_UPDATE_PUBLIC_KEY_B64:-}"
+UPDATE_HELPER=""
+if [[ ! "${RELEASE_EPOCH}" =~ ^[0-9]+$ ]]; then
+  echo "[error] COMMUNITY_RELEASE_EPOCH must be a non-negative integer" >&2
+  exit 1
+fi
 JBR_BASE_URL="https://cache-redirector.jetbrains.com/intellij-jbr"
 JBR_WORK_DIR=""
 JBR_EXTRACT_DIR=""
@@ -281,7 +290,9 @@ copy_dist() {
   cp -R "${CLIENT_DIR}/dist" "${target_dir}/dist"
   cp -R "${COMMUNITY_LIB_DIR}" "${target_dir}/lib"
   cp "${COMMUNITY_JAR}" "${target_dir}/chat2db-community.jar"
-  cp "${SOURCE_FILE_DIR}/local_version.json" "${target_dir}/local_version.json"
+  cp "${SOURCE_FILE_DIR}/version.json" "${target_dir}/version.json"
+  mkdir -p "${target_dir}/tools"
+  cp "${UPDATE_HELPER}" "${target_dir}/tools/chat2db-updater.jar"
 }
 
 zip_frontend_dist() {
@@ -304,9 +315,18 @@ stage_community_input() {
     mvn clean install -U -B \
       -Dmaven.test.skip=true \
       -Dchat2db.finalName=chat2db-community \
+      "-Dchat2db.community.update.key-id=${UPDATE_KEY_ID}" \
+      "-Dchat2db.community.update.public-key=${UPDATE_PUBLIC_KEY}" \
       -f "${SERVER_DIR}/pom.xml"
   fi
   require_file "${COMMUNITY_JAR}"
+  local update_helpers=("${SERVER_DIR}"/chat2db-community-updater/target/chat2db-community-updater-*-helper.jar)
+  if [ "${#update_helpers[@]}" -ne 1 ]; then
+    echo "[error] expected one standalone update helper" >&2
+    exit 1
+  fi
+  UPDATE_HELPER="${update_helpers[0]}"
+  require_file "${UPDATE_HELPER}"
   require_dir "${COMMUNITY_LIB_DIR}"
   require_file "${COMMUNITY_LIB_ZIP}"
   verify_jcef_i18n_resources
@@ -340,11 +360,10 @@ stage_community_input() {
   cp "${COMMUNITY_JAR}" "${SOURCE_FILE_DIR}/chat2db-community.jar"
   cp "${COMMUNITY_LIB_ZIP}" "${SOURCE_FILE_DIR}/lib.zip"
   cp "${CLIENT_DIR}/dist.zip" "${SOURCE_FILE_DIR}/dist.zip"
-  bash "${SCRIPT_DIR}/generate_metadata.sh" \
-    "${VERSION}" \
-    "${SOURCE_FILE_DIR}" \
-    "${UPDATE_BASE_URL}"
-  cp "${SOURCE_FILE_DIR}/version.json" "${SOURCE_FILE_DIR}/local_version.json"
+  jq -n --arg version "${VERSION}" --argjson releaseEpoch "${RELEASE_EPOCH}" \
+    --arg buildSha "$(git -C "${ROOT_DIR}" rev-parse HEAD)" \
+    '{version: $version, releaseEpoch: $releaseEpoch, buildSha: $buildSha}' \
+    > "${SOURCE_FILE_DIR}/version.json"
 
   copy_dist mac
   copy_dist win

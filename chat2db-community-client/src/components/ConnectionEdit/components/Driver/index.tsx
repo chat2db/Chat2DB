@@ -167,34 +167,29 @@ export default memo<IProps>((props) => {
         </Form.Item>
       </Form>
       <div className={styles.downloadDriveFooter}>
-        {(driverObj?.driverConfigList && !driverObj?.driverConfigList?.length) ||
-        downloadStatus === DownloadStatus.Success ? (
-          <div onClick={downloadDrive} className={styles.downloadDrive}>
-            {downloadStatus === DownloadStatus.Default && (
-              <div className={classnames(styles.downloadText, styles.downloadTextDownload)}>
-                {i18n('connection.text.downloadDriver')}
-              </div>
-            )}
-            {downloadStatus === DownloadStatus.Loading && (
-              <div className={classnames(styles.downloadText, styles.downloadTextLoading)}>
-                <LoadingGracile />
-                <div className={styles.text}>{i18n('connection.text.downloading')}</div>
-              </div>
-            )}
-            {downloadStatus === DownloadStatus.Error && (
-              <div className={classnames(styles.downloadText, styles.downloadTextError)}>
-                {i18n('connection.text.tryAgainDownload')}
-              </div>
-            )}
-            {downloadStatus === DownloadStatus.Success && (
-              <div className={classnames(styles.downloadText, styles.downloadTextSuccess)}>
-                {i18n('connection.text.downloadSuccess')}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div />
-        )}
+        <div onClick={downloadDrive} className={styles.downloadDrive}>
+          {downloadStatus === DownloadStatus.Default && (
+            <div className={classnames(styles.downloadText, styles.downloadTextDownload)}>
+              {i18n('connection.text.downloadDriver')}
+            </div>
+          )}
+          {downloadStatus === DownloadStatus.Loading && (
+            <div className={classnames(styles.downloadText, styles.downloadTextLoading)}>
+              <LoadingGracile />
+              <div className={styles.text}>{i18n('connection.text.downloading')}</div>
+            </div>
+          )}
+          {downloadStatus === DownloadStatus.Error && (
+            <div className={classnames(styles.downloadText, styles.downloadTextError)}>
+              {i18n('connection.text.tryAgainDownload')}
+            </div>
+          )}
+          {downloadStatus === DownloadStatus.Success && (
+            <div className={classnames(styles.downloadText, styles.downloadTextSuccess)}>
+              {i18n('connection.text.downloadSuccess')}
+            </div>
+          )}
+        </div>
         {(isDesktop || isCommunityEnv) && (
           <div
             className={styles.uploadCustomDrive}
