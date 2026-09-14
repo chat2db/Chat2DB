@@ -235,19 +235,19 @@ class ImportRowBatcherParallelTest {
     }
 
     @Test
-    void excelUsesSerialExecutionEvenWithAFastModeField() throws Exception {
+    void excelPreservesSequentialFailureEvenWithAFastModeField() throws Exception {
         System.setProperty(PARALLELISM_PROPERTY, "2");
         Path workbook = tempDirectory.resolve("bulk.xlsx");
         com.alibaba.excel.EasyExcel.write(workbook.toFile())
                 .head(List.of(List.of("ID"), List.of("NAME")))
-                .sheet().doWrite(List.of(List.of(1, "Alice"), List.of(2, "Bob")));
+                .sheet().doWrite(List.of(List.of(1, "Alice"), List.of(1, "duplicate"), List.of(2, "Bob")));
         ImportTaskSpec spec = csvSpec(workbook);
         spec.setFormat("XLSX");
 
-        new ai.chat2db.community.domain.core.impl.task.imports.excel.XLSXImporter().run(spec, contextFor(spec));
+        assertThrows(TaskExecutionException.class,
+                () -> new ai.chat2db.community.domain.core.impl.task.imports.excel.XLSXImporter().run(spec, contextFor(spec)));
 
-        assertEquals(List.of(1, 2), importedIds());
-        assertEquals(1, ImportRowBatcher.lastTuningSnapshot().workers());
+        assertEquals(List.of(1), importedIds());
     }
 
     @Test

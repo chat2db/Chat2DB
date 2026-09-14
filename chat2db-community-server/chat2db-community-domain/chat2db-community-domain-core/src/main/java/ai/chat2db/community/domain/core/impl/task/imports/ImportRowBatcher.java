@@ -7,8 +7,6 @@ import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskExecutionException;
-import ai.chat2db.community.domain.api.model.task.TaskExecutionMode;
-import ai.chat2db.community.domain.api.model.task.TaskFileFormat;
 import ai.chat2db.community.domain.api.model.value.SQLDataValue;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
 import ai.chat2db.community.domain.core.impl.task.AdaptiveBatchSizer;
@@ -16,6 +14,7 @@ import ai.chat2db.community.domain.core.impl.task.AdaptiveConcurrencyGate;
 import ai.chat2db.community.domain.core.impl.task.imports.ImportColumnResolver.Resolution;
 import ai.chat2db.community.domain.core.impl.task.imports.excel.CsvImportValueNormalizer;
 import ai.chat2db.spi.ISqlBuilder;
+import ai.chat2db.spi.DefaultSQLExecutor;
 import ai.chat2db.spi.IValueProcessor;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
 import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
@@ -59,12 +58,6 @@ import java.util.concurrent.atomic.LongAdder;
 @Slf4j
 public final class ImportRowBatcher implements AutoCloseable {
 
-    /**
-     * Standard-mode batch size: the historical value, untouched by the fast mode so the plain
-     * import path keeps behaving exactly as it did before.
-     */
-    private static final int DEFAULT_BATCH_ROWS = 500;
-
     /** Fast-mode contract baseline: batches start at 20000 rows and may grow beyond it. */
     private static final int FAST_MODE_BATCH_ROWS = 20_000;
 
@@ -90,13 +83,11 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     private final ConnectInfo connectInfo;
 
-    private final ImportSqlExecutor sqlExecutor;
-
     private final AdaptiveBatchSizer batchSizer;
 
     private final LongAdder importedCount = new LongAdder();
 
-    private final List<String> bufferedSqls = new ArrayList<>(DEFAULT_BATCH_ROWS);
+    private final List<String> bufferedSqls = new ArrayList<>(FAST_MODE_BATCH_ROWS);
 
     private long firstBufferedRow;
 
@@ -131,8 +122,6 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     private final AtomicBoolean ungatedWarned = new AtomicBoolean();
 
-    private final boolean standardMode;
-
     public ImportRowBatcher(ImportTaskSpec spec, TaskExecutionContext context, Resolution resolution,
             IValueProcessor valueProcessor) {
         this.spec = spec;
@@ -142,12 +131,8 @@ public final class ImportRowBatcher implements AutoCloseable {
         this.valueProcessor = valueProcessor;
         this.sqlBuilder = Chat2DBContext.getSqlBuilder();
         this.connectInfo = Chat2DBContext.getConnectInfo();
-        this.standardMode = !TaskFileFormat.CSV.name().equalsIgnoreCase(spec.getFormat())
-                || !TaskExecutionMode.isUltraFast(spec.getMode());
-        this.sqlExecutor = new ImportSqlExecutor(context, !standardMode);
-        this.batchSizer = new AdaptiveBatchSizer(
-                standardMode ? DEFAULT_BATCH_ROWS : FAST_MODE_BATCH_ROWS);
-        int requestedWorkers = standardMode ? 1 : effectiveWorkerCount(connectInfo);
+        this.batchSizer = new AdaptiveBatchSizer(FAST_MODE_BATCH_ROWS);
+        int requestedWorkers = effectiveWorkerCount(connectInfo);
         List<BlockingQueue<PendingBatch>> builtQueues = null;
         AdaptiveConcurrencyGate builtGate = null;
         ExecutorService builtPool = null;
@@ -296,8 +281,11 @@ public final class ImportRowBatcher implements AutoCloseable {
         long started = System.nanoTime();
         int rows = batch.sqls().size();
         try {
-            sqlExecutor.executeBatch(batch.sqls());
+            DefaultSQLExecutor.getInstance().executeAtomicBatchInsert(
+                    Chat2DBContext.getConnection(), batch.sqls(), context, context::checkCancelled);
             importedCount.add(rows);
+            context.logInfo("BATCH_EXECUTED", "SQL batch executed",
+                    Map.of("batch", batch.seq() + 1, "statementCount", rows));
         } catch (RuntimeException | Error batchFailure) {
             // Publish failure before decrementing in-flight work, so flush cannot report success.
             recordFailure(batchFailure);
@@ -313,9 +301,7 @@ public final class ImportRowBatcher implements AutoCloseable {
             if (gate != null) {
                 gate.record(rows, elapsed);
             }
-            if (!standardMode) {
-                batchSizer.record(rows, elapsed);
-            }
+            batchSizer.record(rows, elapsed);
             if (workerPool != null) {
                 batchCompleted();
             }

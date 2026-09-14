@@ -20,20 +20,10 @@ public final class ImportSqlExecutor {
 
     private final TaskExecutionContext context;
 
-    private final boolean atomicBatches;
-
     private final AtomicInteger batchSequence = new AtomicInteger();
 
     public ImportSqlExecutor(TaskExecutionContext context) {
-        this(context, false);
-    }
-
-    /**
-     * @param atomicBatches whether the whole row batch is committed as one transaction
-     */
-    public ImportSqlExecutor(TaskExecutionContext context, boolean atomicBatches) {
         this.context = context;
-        this.atomicBatches = atomicBatches;
     }
 
     public void executeBatch(List<String> sqls) {
@@ -91,10 +81,8 @@ public final class ImportSqlExecutor {
             return;
         }
         context.checkCancelled();
-        // Fast mode commits each submitted batch as one transaction.
         DefaultSQLExecutor.getInstance().executeBatchInsert(
-                Chat2DBContext.getConnection(), List.copyOf(inserts), context, context::checkCancelled,
-                atomicBatches ? 0 : DefaultSQLExecutor.BATCH_INSERT_CHUNK_SIZE);
+                Chat2DBContext.getConnection(), List.copyOf(inserts), context, context::checkCancelled);
         inserts.clear();
     }
 

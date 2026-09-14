@@ -111,14 +111,14 @@ class CsvImportPipelineTest {
     @Test
     void preservesCommittedBatchAndStopsBeforeLaterBatches() throws Exception {
         StringBuilder content = new StringBuilder("ROW_ID,ROW_NAME\n");
-        for (int id = 1; id <= 1500; id++) {
-            content.append(id == 750 ? 1 : id).append(",ok\n");
+        for (int id = 1; id <= 60_000; id++) {
+            content.append(id == 25_000 ? 1 : id).append(",ok\n");
         }
         ImportTaskSpec spec = csvSpec(writeCsv(content.toString()));
 
         assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, contextFor(spec)));
 
-        assertEquals(java.util.stream.IntStream.rangeClosed(1, 500).boxed().toList(), importedIds());
+        assertEquals(java.util.stream.IntStream.rangeClosed(1, 20_000).boxed().toList(), importedIds());
         assertEquals(1, storage.events.stream().filter(event -> "BATCH_EXECUTED".equals(event.getCode())).count());
         assertFailedWithoutSummary();
     }
@@ -162,6 +162,43 @@ class CsvImportPipelineTest {
         }
     }
 
+    @Test
+    void ordinaryModesPreserveSequentialWritesBeforeFailure() throws Exception {
+        for (String mode : java.util.Arrays.asList(null, "STANDARD", "unknown")) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("DELETE FROM TARGET_ROWS");
+            }
+            ImportTaskSpec spec = csvSpec(writeCsv("ROW_ID,ROW_NAME\n1,ok\n1,duplicate\n2,later\n"));
+            spec.setMode(mode);
+
+            assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, contextFor(spec)));
+
+            assertEquals(List.of(1), importedIds(), "ordinary import preserves its executed prefix: " + mode);
+            assertTrue(connection.getAutoCommit());
+        }
+    }
+
+    @Test
+    void ordinaryImportPreservesThousandRowBatchesAndProgress() throws Exception {
+        StringBuilder content = new StringBuilder("ROW_ID,ROW_NAME\n");
+        for (int id = 1; id <= 2001; id++) {
+            content.append(id).append(",ok\n");
+        }
+        ImportTaskSpec spec = csvSpec(writeCsv(content.toString()));
+        spec.setMode("STANDARD");
+
+        new CSVImporter().run(spec, contextFor(spec));
+
+        assertEquals(2001, importedIds().size());
+        assertEquals(List.of(1000, 1000, 1), storage.events.stream()
+                .filter(event -> "BATCH_EXECUTED".equals(event.getCode()) && event.getDetails() != null
+                        && event.getDetails().containsKey("statementCount"))
+                .map(event -> ((Number) event.getDetails().get("statementCount")).intValue()).toList());
+        assertEquals(List.of(30, 40, 40), storage.progressUpdates.stream()
+                .filter(progress -> "IMPORTING".equals(progress.getStage()))
+                .map(TaskProgress::getProgress).toList());
+    }
+
     private Path writeCsv(String content) throws Exception {
         Path csv = tempDirectory.resolve("input.csv");
         Files.writeString(csv, content, StandardCharsets.UTF_8);
@@ -173,6 +210,7 @@ class CsvImportPipelineTest {
                 .taskType("DATA_FILE_IMPORT")
                 .sourceFile(csv.toString())
                 .format("CSV")
+                .mode("ULTRA_FAST")
                 .target(TaskTargetSnapshot.builder().dataSourceId(1L).tableName("TARGET_ROWS").build())
                 .columnMappings(List.of(
                         new ImportColumnMapping("ROW_ID", "ID"),
@@ -208,6 +246,7 @@ class CsvImportPipelineTest {
 
         private final List<Task> tasks = new ArrayList<>();
         private final List<TaskEvent> events = new ArrayList<>();
+        private final List<TaskProgress> progressUpdates = new ArrayList<>();
 
         private long sequence;
 
@@ -239,6 +278,7 @@ class CsvImportPipelineTest {
 
         @Override
         public boolean updateProgressIfRunning(Long taskId, TaskProgress progress) {
+            progressUpdates.add(progress);
             return true;
         }
 

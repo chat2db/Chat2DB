@@ -235,9 +235,9 @@ class CSVImporterColumnMappingTest {
     }
 
     @Test
-    void duplicateMappingIsRejectedBeforeWritingRows(@TempDir Path directory) throws Exception {
+    void fastModeRejectsDuplicateMappingBeforeWritingRows(@TempDir Path directory) throws Exception {
         Path input = Files.writeString(directory.resolve("duplicates.csv"), "Full Name,status\nAlice,OVERRIDE\n");
-        ImportTaskSpec spec = ImportTaskSpec.builder().sourceFile(input.toString())
+        ImportTaskSpec spec = ImportTaskSpec.builder().mode("ULTRA_FAST").sourceFile(input.toString())
                 .target(TaskTargetSnapshot.builder().tableName("orders").build())
                 .columnMappings(List.of(new ImportColumnMapping("Full Name", "name"),
                         new ImportColumnMapping("status", "name"))).build();
