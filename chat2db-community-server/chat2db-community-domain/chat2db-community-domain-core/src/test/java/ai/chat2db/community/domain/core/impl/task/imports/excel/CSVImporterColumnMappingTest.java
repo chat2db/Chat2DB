@@ -258,6 +258,22 @@ class CSVImporterColumnMappingTest {
         assertRowCount(0);
     }
 
+    @Test
+    void preservesQuotedEmptyTextAndUnquotedNull(@TempDir Path directory) throws Exception {
+        Path input = Files.writeString(directory.resolve("empty.csv"), "name,note\nAlice,\"\"\nBob,\n");
+        ImportTaskSpec spec = ImportTaskSpec.builder().sourceFile(input.toString())
+                .target(TaskTargetSnapshot.builder().tableName("orders").build())
+                .csvOptions(ai.chat2db.community.domain.api.model.task.CsvOptions.defaults()).build();
+        new CSVImporter().doImportData(spec, new RecordingTaskExecutionContext(), columns());
+        try (Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery("SELECT note FROM orders ORDER BY name")) {
+            org.junit.jupiter.api.Assertions.assertTrue(result.next());
+            assertEquals("", result.getString(1));
+            org.junit.jupiter.api.Assertions.assertTrue(result.next());
+            org.junit.jupiter.api.Assertions.assertNull(result.getString(1));
+        }
+    }
+
     private void assertRowCount(int expected) throws Exception {
         try (Statement statement = connection.createStatement();
                 ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM orders")) {
@@ -279,7 +295,7 @@ class CSVImporterColumnMappingTest {
     }
 
     @Test
-    void failedImportRetainsStagedSourceForRecovery(@TempDir Path directory) throws Exception {
+    void failedImportReleasesStagedSource(@TempDir Path directory) throws Exception {
         Path input = Files.writeString(directory.resolve("staged.csv"), "name\nAlice\n");
         var executor = new ai.chat2db.community.domain.core.impl.task.executor.DataFileImportTaskExecutor();
         var released = new ArrayList<String>();
@@ -293,8 +309,7 @@ class CSVImporterColumnMappingTest {
         ImportTaskSpec spec = ImportTaskSpec.builder().sourceFile(input.toString())
                 .importFileId("staged-id").format("SQL").build();
         assertThrows(RuntimeException.class, () -> executor.execute(spec, new RecordingTaskExecutionContext()));
-        assertEquals(List.of(), released);
-        org.junit.jupiter.api.Assertions.assertTrue(Files.isReadable(input));
+        assertEquals(List.of("staged-id"), released);
     }
     private static List<TableColumn> columns() {
         return List.of(

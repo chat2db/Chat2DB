@@ -6,7 +6,6 @@ import ai.chat2db.community.domain.api.model.PageResponse;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
 import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -17,7 +16,6 @@ import ai.chat2db.community.domain.api.service.task.TaskStorage;
 import ai.chat2db.community.domain.api.model.task.TaskProgress;
 import ai.chat2db.community.domain.core.impl.task.imports.excel.CSVImporter;
 import ai.chat2db.community.domain.core.impl.task.imports.ImportRowBatcher;
-import ai.chat2db.community.domain.api.model.task.TaskStage;
 import ai.chat2db.community.domain.api.model.task.TaskStatus;
 import ai.chat2db.community.tools.constant.JdbcDriverConstants;
 import ai.chat2db.spi.DefaultMetaService;
@@ -259,7 +257,7 @@ class ImportRowBatcherParallelTest {
         private final List<Task> tasks = new ArrayList<>();
         private final List<TaskEvent> events = new ArrayList<>();
         private final List<TaskArtifact> artifacts = new ArrayList<>();
-        private final List<ResumeState> states = new ArrayList<>();
+
         private long sequence;
 
         @Override
@@ -336,24 +334,5 @@ class ImportRowBatcherParallelTest {
             artifacts.removeIf(artifact -> artifact.getArtifactId().equals(artifactId));
         }
 
-        @Override
-        public List<Task> listResumableTasks() {
-            return List.of();
-        }
-
-        @Override
-        public void saveResumeState(Long taskId, ResumeState state) {
-            states.add(state);
-        }
-
-        @Override
-        public List<ResumeState> listResumeStates(Long taskId) {
-            return List.copyOf(states);
-        }
-
-        @Override
-        public void clearResumeStates(Long taskId) {
-            states.clear();
-        }
     }
 }

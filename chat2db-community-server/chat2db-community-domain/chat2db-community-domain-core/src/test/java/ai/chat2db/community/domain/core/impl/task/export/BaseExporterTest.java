@@ -12,7 +12,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,7 +47,7 @@ class BaseExporterTest {
 
         @Override
         protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-                java.io.OutputStream output, boolean resuming) throws Exception {
+                java.io.OutputStream output) throws Exception {
             ByteArrayOutputStream capture = new ByteArrayOutputStream();
             capture.write(("data of " + tableName).getBytes(StandardCharsets.UTF_8));
             output.write(capture.toByteArray());

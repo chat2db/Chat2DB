@@ -1,7 +1,6 @@
 package ai.chat2db.community.storage.large;
 
 import ai.chat2db.community.domain.api.model.PageResponse;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
@@ -20,6 +19,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -36,7 +36,6 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 @Slf4j
+@Component
 public class FileTaskStorage implements TaskStorage {
 
     public static final String TASK_STORAGE_DIRECTORY = "task-v2";
@@ -415,47 +415,9 @@ public class FileTaskStorage implements TaskStorage {
         });
     }
 
-    @Override
-    public synchronized List<Task> listResumableTasks() {
-        return snapshots.all().stream()
-                .filter(task -> task.getStatus() != null && !TaskStatus.isTerminal(task.getStatus()))
-                .filter(task -> task.getResumeStates() != null && !task.getResumeStates().isEmpty())
-                .map(this::copy)
-                .toList();
-    }
-
-    @Override
-    public synchronized void saveResumeState(Long taskId, ResumeState state) {
-        if (taskId == null || state == null || state.getShardNo() == null || state.getKind() == null) {
-            throw new IllegalArgumentException("resume state must reference an existing task");
-        }
-        mutateTask(taskId, "resume state", updated -> {
-            List<ResumeState> states = new ArrayList<>(
-                    updated.getResumeStates() == null ? List.of() : updated.getResumeStates());
-            states.removeIf(existing -> state.getShardNo().equals(existing.getShardNo()));
-            states.add(JSON.parseObject(JSON.toJSONString(state), ResumeState.class));
-            states.sort(Comparator.comparing(ResumeState::getShardNo));
-            updated.setResumeStates(states);
-        });
-    }
-
-    @Override
-    public synchronized List<ResumeState> listResumeStates(Long taskId) {
-        Task task = taskId == null ? null : snapshots.find(taskId);
-        return task == null || task.getResumeStates() == null ? List.of() : List.copyOf(task.getResumeStates());
-    }
-
-    @Override
-    public synchronized void clearResumeStates(Long taskId) {
-        if (taskId == null || snapshots.find(taskId) == null) {
-            return;
-        }
-        mutateTask(taskId, "resume state", updated -> updated.setResumeStates(null));
-    }
-
     /**
-     * Rewrites the stored snapshot with {@code change} applied to a copy, so artifact and resume
-     * data share the task snapshot's single-writer semantics and its deletion rollback.
+     * Rewrites the stored snapshot with {@code change} applied to a copy, so artifact
+     * data shares the task snapshot's single-writer semantics and its deletion rollback.
      */
     private void mutateTask(Long taskId, String subject, Consumer<Task> change) {
         Task current = snapshots.find(taskId);
@@ -752,7 +714,6 @@ public class FileTaskStorage implements TaskStorage {
         target.setStage(copy.getStage());
         target.setProgressMessage(copy.getProgressMessage());
         target.setTarget(copy.getTarget());
-        target.setSpecJson(copy.getSpecJson());
         target.setErrorCode(copy.getErrorCode());
         target.setErrorMessage(copy.getErrorMessage());
         target.setArtifactId(copy.getArtifactId());

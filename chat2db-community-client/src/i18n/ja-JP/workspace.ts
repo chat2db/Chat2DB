@@ -130,28 +130,10 @@ export default {
     'workspace.importExport.ultraMode': '超高速モード',
     'workspace.importExport.ultraModeHint': 'マルチスレッド並列処理を使用します：より高速ですが、リソース使用量が増加します',
     'workspace.importExport.ultraModeConfirmTitle': '超高速モードを有効化',
-    'workspace.importExport.ultraModeConfirmIntro': '超高速モードの特徴：',
-    'workspace.importExport.ultraModeBenefit1':
-      '✅ 対応するテーブルデータのインポート/エクスポートはマルチスレッド並列処理を使用',
-    'workspace.importExport.ultraModeBenefit2': '✅ スレッド数とバッチサイズを適応的に調整し最適な構成に自動合わせ',
-    'workspace.importExport.ultraModeBenefit3':
-      '✅ ワーカー開始前にファイル全体を判定し、重大なリスクは明示的に拒否',
-    'workspace.importExport.ultraModeRisk1': '⚠️ 高同時実行時にソース DB の接続圧力が増大（MySQL プール ≥ 16 推奨）',
-    'workspace.importExport.ultraModeRisk2': '⚠️ メモリ使用量がやや増加（シャードごとの ResultSet とバッファ）',
-    'workspace.importExport.ultraModeRisk3': '⚠️ 事前準備されていない厳格な外部キーのデータには不適（デッドロックの可能性）',
     'workspace.importExport.ultraModeAcknowledge':
       '対象に外部キー順序、親子 ID、行をまたぐトリガー、業務順序の強い依存関係がないことを確認し、並列書き込みのリスクを受け入れます',
-    'workspace.importExport.parallelAdmission': '並列実行の適格性判定',
-    'workspace.importExport.parallelAdmissionPending': 'ファイル全体の検査と並列実行判定を待っています',
-    'workspace.importExport.parallelFormatUnavailable':
-      'この形式には安全な並列計画がありません。標準モードまたは検証済み UTF-8 CSV を使用してください。',
-    'workspace.importExport.parallelAdmissionRules': '該当ルール',
-    'workspace.importExport.parallelAdmissionEffectiveMode': '実際の実行モード',
     'workspace.importExport.ultraModeConfirm': '有効にする',
-    'workspace.importExport.modeBadgeUltra': '[超高速]',
-    'workspace.importExport.modeBadgeStandard': '[標準]',
   'workspace.importExport.fileType': 'ファイルタイプ',
-  'workspace.importExport.sourceFile': 'インポートファイル',
   'workspace.importExport.exportLocation': 'エクスポート位置',
   'workspace.importExport.executionEnvironment': '実行環境',
   'workspace.importExport.clickOrDrag': 'ファイルのアップロードをクリックします',

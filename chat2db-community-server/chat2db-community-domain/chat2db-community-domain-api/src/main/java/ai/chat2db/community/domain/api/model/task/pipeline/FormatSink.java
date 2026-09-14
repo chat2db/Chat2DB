@@ -33,12 +33,7 @@ public interface FormatSink extends Closeable {
      */
     long bytesWritten();
 
-    /**
-     * Pushes every buffered byte down to the caller-owned output stream without closing anything.
-     * After this returns, the bytes reported by {@link #bytesWritten()} are durable in the artifact
-     * file, which is the invariant the checkpointed export path relies on before persisting a
-     * resume cursor.
-     */
+    /** Flushes buffered output. */
     default void flush() throws java.io.IOException {
     }
 }

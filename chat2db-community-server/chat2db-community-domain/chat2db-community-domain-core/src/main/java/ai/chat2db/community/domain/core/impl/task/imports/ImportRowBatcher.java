@@ -5,8 +5,6 @@ import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.task.CsvOptions;
 import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
-import ai.chat2db.community.domain.api.model.task.ResumeDuplicatePolicy;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskExecutionException;
@@ -15,7 +13,6 @@ import ai.chat2db.community.domain.api.model.value.SQLDataValue;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
 import ai.chat2db.community.domain.core.impl.task.AdaptiveBatchSizer;
 import ai.chat2db.community.domain.core.impl.task.AdaptiveConcurrencyGate;
-import ai.chat2db.community.domain.core.impl.task.TaskResumeJournal;
 import ai.chat2db.community.domain.core.impl.task.imports.ImportColumnResolver.Resolution;
 import ai.chat2db.community.domain.core.impl.task.imports.excel.CsvImportValueNormalizer;
 import ai.chat2db.spi.ISqlBuilder;
@@ -25,7 +22,6 @@ import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectionPool;
 import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 
@@ -41,11 +37,8 @@ import java.sql.SQLNonTransientConnectionException;
 import java.sql.SQLRecoverableException;
 import java.sql.SQLTransientConnectionException;
 import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -55,8 +48,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.stream.Stream;
 import java.util.concurrent.atomic.LongAdder;
 
 /**
@@ -98,17 +89,9 @@ public final class ImportRowBatcher implements AutoCloseable {
     /** How long a worker waits for an adaptive gate permit before degrading to ungated execution. */
     private static final long GATE_WAIT_MILLIS = 30_000L;
 
-    private static final String RESUME_KIND_IMPORT = "IMPORT_WATERMARK";
-
     private static final String ON_ERROR_SKIP = "SKIP";
 
     private static final String REJECT_ROLE = "REJECT";
-
-    /**
-     * Sub-artifact listing rows a resumed run found already applied: the screening record that
-     * keeps reconciliation auditable even though it is not an error.
-     */
-    private static final String RECONCILED_ROLE = "RECONCILED";
 
     private final ImportTaskSpec spec;
 
@@ -141,17 +124,6 @@ public final class ImportRowBatcher implements AutoCloseable {
     private final List<Long> bufferedRowNumbers = new ArrayList<>(DEFAULT_BATCH_ROWS);
 
     private BufferedWriter rejectWriter;
-
-    private BufferedWriter reconciledWriter;
-
-    /** Rows a resumed run skipped because an earlier run had already applied them. */
-    private final LongAdder reconciledCount = new LongAdder();
-
-    /**
-     * Resolved policy for duplicate-key rows on a resumed run; {@code null} in the options keeps
-     * RECONCILE, so a resume finishes instead of replaying durable rows into rejections.
-     */
-    private final ResumeDuplicatePolicy resumeDuplicatePolicy;
 
     private long rejectedRowCount;
 
@@ -186,59 +158,7 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     private final AtomicBoolean ungatedWarned = new AtomicBoolean();
 
-    // --- three-layer resume state: rows below the durable watermark are committed ---------
-    private final Map<String, Object> sourceIdentity;
-
-    private final long resumeBelowRow;
-
-    private final TaskResumeJournal journal;
-
-    /** Standard mode: serial path with a fixed batch size (see {@link TaskExecutionMode}). */
     private final boolean standardMode;
-
-    /** Batch sequence -> first row number, for submitted-but-not-durable batches. */
-    private final ConcurrentSkipListMap<Long, Long> inFlightFirstRows =
-            new ConcurrentSkipListMap<>();
-
-    private long lastAcceptedRow;
-
-    private long bufferedFirstRow = Long.MAX_VALUE;
-
-    private long batchesSinceCheckpoint;
-
-    private long rowsSinceJournal;
-
-    private long rowsSinceCheckpoint;
-
-    private long rowsSinceSnapshot;
-
-    // Intervals are read per construction (not class-load) so tests can retune them reliably.
-    // Every layer fires on whichever comes first, its batch interval or its row interval: with
-    // 20000-row baseline batches a batch-only cadence would leave up to 1.28M rows between
-    // storage checkpoints, and a crash resume would replay (and reject) all of them.
-    /** Batch interval of the Layer-1 journal progress records. */
-    private final int journalProgressInterval =
-            Integer.getInteger("chat2db.task.import.journal-interval", 8);
-
-    /** Row interval of the Layer-1 journal progress records. */
-    private final long journalRowInterval =
-            Long.getLong("chat2db.task.import.journal-rows", 20_000L);
-
-    /** Batch interval of the Layer-2 task-storage checkpoints. */
-    private final int checkpointInterval =
-            Integer.getInteger("chat2db.task.import.checkpoint-interval", 64);
-
-    /** Row interval of the Layer-2 task-storage checkpoints. */
-    private final long checkpointRowInterval =
-            Long.getLong("chat2db.task.import.checkpoint-rows", 50_000L);
-
-    /** Batch interval of the Layer-3 committed-snapshot generations. */
-    private final int snapshotInterval =
-            Integer.getInteger("chat2db.task.import.snapshot-interval", 256);
-
-    /** Row interval of the Layer-3 committed-snapshot generations. */
-    private final long snapshotRowInterval =
-            Long.getLong("chat2db.task.import.snapshot-rows", 50_000L);
 
     public ImportRowBatcher(ImportTaskSpec spec, TaskExecutionContext context, Resolution resolution,
             IValueProcessor valueProcessor) {
@@ -246,8 +166,6 @@ public final class ImportRowBatcher implements AutoCloseable {
         this.context = context;
         this.resolution = resolution;
         this.options = spec.getOptions() == null ? new ImportOptions() : spec.getOptions();
-        this.resumeDuplicatePolicy = this.options.getResumeDuplicatePolicy() == null
-                ? ResumeDuplicatePolicy.RECONCILE : this.options.getResumeDuplicatePolicy();
         this.csvOptions = spec.getCsvOptions() == null ? null : spec.getCsvOptions().validate();
         this.valueProcessor = valueProcessor;
         this.sqlBuilder = Chat2DBContext.getSqlBuilder();
@@ -256,16 +174,6 @@ public final class ImportRowBatcher implements AutoCloseable {
         this.sqlExecutor = new ImportSqlExecutor(context, !standardMode);
         this.batchSizer = new AdaptiveBatchSizer(
                 standardMode ? DEFAULT_BATCH_ROWS : FAST_MODE_BATCH_ROWS);
-        this.sourceIdentity = sourceIdentity(spec);
-        this.resumeBelowRow = resolveResumeBelowRow(spec, context);
-        if (resumeBelowRow > 0) {
-            log.info("Import resume: the first {} rows are durable from the interrupted run; "
-                    + "they will be skipped", resumeBelowRow);
-        }
-        this.journal = TaskResumeJournal.open(context.taskId(), sourceIdentity);
-        if (journal != null && resumeBelowRow > 0) {
-            journal.progress("RESUMED", resumeBelowRow);
-        }
         int requestedWorkers = standardMode ? 1 : effectiveWorkerCount(connectInfo);
         List<BlockingQueue<PendingBatch>> builtQueues = null;
         AdaptiveConcurrencyGate builtGate = null;
@@ -328,10 +236,6 @@ public final class ImportRowBatcher implements AutoCloseable {
     private void acceptRow(long fileRowNumber, List<String> fileValues) {
         context.checkCancelled();
         throwIfFailed();
-        if (fileRowNumber <= resumeBelowRow) {
-            // Durable from the interrupted run; skipping keeps the target duplicate-free.
-            return;
-        }
         String sql;
         String raw;
         try {
@@ -344,12 +248,6 @@ public final class ImportRowBatcher implements AutoCloseable {
         bufferedSqls.add(sql);
         bufferedRows.add(raw);
         bufferedRowNumbers.add(fileRowNumber);
-        if (fileRowNumber > lastAcceptedRow) {
-            lastAcceptedRow = fileRowNumber;
-        }
-        if (bufferedFirstRow == Long.MAX_VALUE) {
-            bufferedFirstRow = fileRowNumber;
-        }
         if (bufferedSqls.size() >= batchSizer.batchSize()) {
             flushBufferedBatch();
         }
@@ -357,11 +255,6 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     public long importedRows() {
         return importedCount.sum();
-    }
-
-    /** Rows a resumed run reconciled as already applied (screening count, never an error). */
-    public long reconciledRows() {
-        return reconciledCount.sum();
     }
 
     public long rejectedRows() {
@@ -391,7 +284,7 @@ public final class ImportRowBatcher implements AutoCloseable {
      * last closed batcher wins when several imports run at once.
      */
     public record ImportTuningSnapshot(int workers, long batches, long rows, long nanos,
-            int batchSize, int gatePermits, int peakInFlightBatches, long alreadyAppliedRows,
+            int batchSize, int gatePermits, int peakInFlightBatches,
             long rejectedRows) { }
 
     private static final AtomicReference<ImportTuningSnapshot> LAST_TUNING = new AtomicReference<>();
@@ -423,19 +316,17 @@ public final class ImportRowBatcher implements AutoCloseable {
         if (bufferedSqls.isEmpty()) {
             return;
         }
-        long firstRowNumber = bufferedFirstRow;
+        long firstRowNumber = bufferedRowNumbers.get(0);
         PendingBatch batch = new PendingBatch(List.copyOf(bufferedSqls), List.copyOf(bufferedRows),
                 List.copyOf(bufferedRowNumbers), submittedBatches, firstRowNumber);
         submittedBatches++;
         bufferedSqls.clear();
         bufferedRows.clear();
         bufferedRowNumbers.clear();
-        bufferedFirstRow = Long.MAX_VALUE;
         executeBatch(batch);
     }
 
     private void executeBatch(PendingBatch batch) {
-        inFlightFirstRows.put(batch.seq(), batch.firstRowNumber());
         if (workerPool != null) {
             submitBatch(batch);
         } else {
@@ -450,43 +341,22 @@ public final class ImportRowBatcher implements AutoCloseable {
     private void executeWithTolerance(PendingBatch batch) {
         long started = System.nanoTime();
         int rows = batch.sqls().size();
-        boolean fullyHandled = false;
         try {
             try {
                 sqlExecutor.executeBatch(batch.sqls());
                 importedCount.add(rows);
-                fullyHandled = true;
             } catch (TaskCancelledException cancellation) {
                 throw cancellation;
             } catch (RuntimeException batchFailure) {
-                boolean reconcileFailure = shouldReconcile(batchFailure);
-                if (!isSkipMode() && !reconcileFailure) {
-                    // ABORT mode keeps its semantics: nothing of the failed batch is applied, and
-                    // the error names the range so the offending rows can be located in the file.
-                    context.logError("IMPORT_BATCH_FAILED", "Could not import batch", Map.of(
-                            "statementCount", rows,
-                            "firstRow", batch.firstRowNumber(),
-                            "message", StringUtils.defaultString(batchFailure.getMessage())));
+                context.logError("IMPORT_BATCH_FAILED", "Could not import batch", Map.of(
+                        "statementCount", rows,
+                        "firstRow", batch.firstRowNumber(),
+                        "message", StringUtils.defaultString(batchFailure.getMessage())));
+                if (!isSkipMode()) {
                     throw batchFailure;
                 }
-                if (reconcileFailure) {
-                    context.logWarn("IMPORT_BATCH_RECONCILED",
-                            "Import batch collided with already applied rows; classifying them",
-                            Map.of("statementCount", rows,
-                                    "firstRow", batch.firstRowNumber(),
-                                    "message", StringUtils.defaultString(batchFailure.getMessage())));
-                } else {
-                    context.logError("IMPORT_BATCH_FAILED", "Could not import batch", Map.of(
-                            "statementCount", rows,
-                            "firstRow", batch.firstRowNumber(),
-                            "message", StringUtils.defaultString(batchFailure.getMessage())));
-                }
-                // Bisect the failed batch: healthy halves are applied as batches again, offending
-                // rows are isolated row by row with their own cause. Every row ends handled
-                // (imported, reconciled or recorded in the reject file), so the watermark may
-                // advance past the batch.
+                // Apply healthy halves as batches and record individually rejected rows.
                 isolateBatchFailures(batch);
-                fullyHandled = true;
             }
         } finally {
             long elapsed = System.nanoTime() - started;
@@ -495,12 +365,6 @@ public final class ImportRowBatcher implements AutoCloseable {
             }
             if (!standardMode) {
                 batchSizer.record(rows, elapsed);
-            }
-            if (fullyHandled) {
-                // Removed only on full handling: a failed batch keeps its rows un-durable, so the
-                // watermark must stay below it or a resume would skip live rows.
-                inFlightFirstRows.remove(batch.seq());
-                maybeCheckpoint(rows);
             }
             if (workerPool != null) {
                 batchCompleted();
@@ -511,8 +375,8 @@ public final class ImportRowBatcher implements AutoCloseable {
     /**
      * Locates the rows of a failed batch by repeated bisection: a half that executes cleanly is
      * applied as one batch again, a half that still fails is split further until the offending
-     * rows stand alone. Each of them is recorded with its own cause (rejected, or reconciled as
-     * already applied on a resume) and the import continues, so k bad rows cost O(k log n)
+     * rows stand alone. Each is recorded with its own cause and the import continues,
+     * so k bad rows cost O(k log n)
      * executions instead of replaying every row of the batch one by one.
      */
     private void isolateBatchFailures(PendingBatch batch) {
@@ -558,7 +422,7 @@ public final class ImportRowBatcher implements AutoCloseable {
         }
     }
 
-    /** Records one row that a bisection isolated, honouring the resume duplicate policy. */
+    /** Retries one isolated row and records its failure when skipping errors. */
     private void retryIsolatedRow(String sql, String rawRow, Long fileRowNumber) {
         try {
             sqlExecutor.executeBatch(List.of(sql));
@@ -570,15 +434,6 @@ public final class ImportRowBatcher implements AutoCloseable {
         } catch (RuntimeException rowFailure) {
             if (isConnectionFailure(rowFailure)) {
                 throw rowFailure;
-            }
-            if (shouldReconcile(rowFailure)) {
-                recordAlreadyApplied(fileRowNumber, rawRow, rootMessage(rowFailure));
-                return;
-            }
-            if (shouldFailOnApplied(rowFailure)) {
-                throw new TaskExecutionException(TaskErrorCode.IMPORT_FAILED.name(),
-                        "Import row was already applied by an earlier run: "
-                                + StringUtils.defaultString(rootMessage(rowFailure)));
             }
             handleRejectedRow(fileRowNumber, rawRow, rootMessage(rowFailure));
         }
@@ -709,157 +564,6 @@ public final class ImportRowBatcher implements AutoCloseable {
     }
 
     /**
-     * The durable watermark: every source row below it is committed. It is the first row of the
-     * earliest in-flight batch (batches complete out of order), the first still-buffered row, or
-     * one past the last accepted row when nothing is in flight.
-     */
-    private long durableWatermark() {
-        long firstInFlight = inFlightFirstRows.isEmpty()
-                ? Long.MAX_VALUE : inFlightFirstRows.firstEntry().getValue();
-        long firstBuffered = bufferedSqls.isEmpty() ? Long.MAX_VALUE : bufferedFirstRow;
-        return Math.min(firstInFlight, Math.min(firstBuffered, lastAcceptedRow + 1));
-    }
-
-    /**
-     * Layered cadence: journal every 8 batches or 20k rows, storage checkpoint every 64 batches or
-     * 50k rows, snapshot every 256 batches or 50k rows - whichever comes first, so the resume
-     * window stays bounded in rows however large the tuned batch grows.
-     */
-    private void maybeCheckpoint(int batchRows) {
-        batchesSinceCheckpoint++;
-        rowsSinceJournal += batchRows;
-        rowsSinceCheckpoint += batchRows;
-        rowsSinceSnapshot += batchRows;
-        long rowsDone = durableWatermark() - 1;
-        try {
-            if (journal != null && (batchesSinceCheckpoint % journalProgressInterval == 0
-                    || rowsSinceJournal >= journalRowInterval)) {
-                journal.progress("IMPORTING", rowsDone);
-                rowsSinceJournal = 0L;
-            }
-            if (batchesSinceCheckpoint % checkpointInterval == 0
-                    || rowsSinceCheckpoint >= checkpointRowInterval) {
-                context.checkpoint(ResumeState.builder()
-                        .shardNo(0)
-                        .kind(RESUME_KIND_IMPORT)
-                        .cursorJson(resumeCursorJson(rowsDone))
-                        .rowsDone(rowsDone)
-                        .updatedAt(new Date())
-                        .build());
-                rowsSinceCheckpoint = 0L;
-            }
-            if (journal != null && (batchesSinceCheckpoint % snapshotInterval == 0
-                    || rowsSinceSnapshot >= snapshotRowInterval)) {
-                journal.snapshot(rowsDone);
-                rowsSinceSnapshot = 0L;
-            }
-        } catch (TaskCancelledException cancellation) {
-            throw cancellation;
-        } catch (Throwable checkpointFailure) {
-            // A failed checkpoint never blocks the import; the next cadence retries.
-            log.warn("Import resume checkpoint failed; continuing", checkpointFailure);
-        }
-    }
-
-    private String resumeCursorJson(long rowsDone) {
-        JSONObject cursor = new JSONObject();
-        cursor.put("watermark", rowsDone + 1);
-        cursor.putAll(sourceIdentity);
-        return cursor.toJSONString();
-    }
-
-    private Map<String, Object> sourceIdentity(ImportTaskSpec spec) {
-        File source = new File(StringUtils.defaultString(spec.getSourceFile()));
-        Map<String, Object> identity = new HashMap<>();
-        identity.put("sourcePath", source.toPath().toAbsolutePath().normalize().toString());
-        identity.put("sourceLength", source.isFile() ? source.length() : -1L);
-        identity.put("sourceLastModified", source.isFile() ? source.lastModified() : -1L);
-        return identity;
-    }
-
-    /**
-     * Resolves the resume position: the newest VALID candidate among the journal tail, the newest
-     * and committed snapshot generations, and the task-storage checkpoints. A candidate whose
-     * source identity no longer matches (the file was rewritten between runs) is discarded so a
-     * stale checkpoint can never skip live rows.
-     */
-    private long resolveResumeBelowRow(ImportTaskSpec spec, TaskExecutionContext context) {
-        try {
-            File dir = TaskResumeJournal.directoryFor(context.taskId());
-            long below = 0L;
-            for (TaskResumeJournal.Snapshot candidate : Stream
-                    .of(TaskResumeJournal.recoverNewest(dir), TaskResumeJournal.recoverCommitted(dir),
-                            TaskResumeJournal.recoverTail(dir))
-                    .flatMap(Optional::stream).toList()) {
-                if (identityMatches(candidate.identity()) && candidate.rowsDone() > below) {
-                    below = candidate.rowsDone();
-                }
-            }
-            for (ResumeState state : context.resumeStates()) {
-                if (state == null || !RESUME_KIND_IMPORT.equals(state.getKind())
-                        || state.getRowsDone() == null || state.getRowsDone() < 0) {
-                    continue;
-                }
-                if (identityMatches(parseIdentity(state.getCursorJson()))
-                        && state.getRowsDone() > below) {
-                    below = state.getRowsDone();
-                }
-            }
-            return below;
-        } catch (Throwable resumeProbeFailure) {
-            log.warn("Import resume probe failed; the import restarts from the first row",
-                    resumeProbeFailure);
-            return 0L;
-        }
-    }
-
-    private boolean identityMatches(Map<String, Object> stored) {
-        if (stored == null || stored.isEmpty()) {
-            return false;
-        }
-        Long storedLength = asLong(stored.get("sourceLength"));
-        Long storedModified = asLong(stored.get("sourceLastModified"));
-        Long currentLength = asLong(sourceIdentity.get("sourceLength"));
-        Long currentModified = asLong(sourceIdentity.get("sourceLastModified"));
-        String storedPath = stored.get("sourcePath") instanceof String path
-                ? StringUtils.trimToNull(path) : null;
-        String currentPath = sourceIdentity.get("sourcePath") instanceof String path
-                ? StringUtils.trimToNull(path) : null;
-        return storedPath != null && storedPath.equals(currentPath)
-                && storedLength != null && storedModified != null && currentLength != null
-                && currentModified != null && storedLength >= 0
-                && storedLength.equals(currentLength) && storedModified.equals(currentModified);
-    }
-
-    private static Long asLong(Object value) {
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-        try {
-            return value == null ? null : Long.parseLong(String.valueOf(value));
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private Map<String, Object> parseIdentity(String cursorJson) {
-        try {
-            JSONObject cursor = JSONObject.parseObject(StringUtils.defaultString(cursorJson));
-            if (cursor == null || !cursor.containsKey("sourcePath")
-                    || !cursor.containsKey("sourceLength")) {
-                return Map.of();
-            }
-            Map<String, Object> identity = new HashMap<>();
-            identity.put("sourcePath", cursor.getString("sourcePath"));
-            identity.put("sourceLength", cursor.getLong("sourceLength"));
-            identity.put("sourceLastModified", cursor.getLong("sourceLastModified"));
-            return identity;
-        } catch (Exception parseFailure) {
-            return Map.of();
-        }
-    }
-
-    /**
      * Warns once when the target references itself (e.g. {@code category.parent_id}): parallel
      * batches carry no parent-before-child order, so an enforced self-referencing foreign key
      * needs the serial path or a deferred constraint. Purely advisory — never fails the import.
@@ -961,86 +665,6 @@ public final class ImportRowBatcher implements AutoCloseable {
         handleRejectedRow(null, rawRow, rootMessage(failure));
     }
 
-    /**
-     * Records a row that an earlier run had already applied. This is deliberately not an error:
-     * it is counted separately, written to its own artifact for screening, and never charged
-     * against {@code maxErrors}, so a resume finishes instead of aborting on its own durable rows.
-     */
-    private void recordAlreadyApplied(Long fileRowNumber, String rawRow, String reason) {
-        synchronized (rejectLock) {
-            reconciledCount.increment();
-            try {
-                reconciledWriter().write(JSON.toJSONString(Map.of(
-                        "row", fileRowNumber == null ? -1L : fileRowNumber,
-                        "line", rawRow,
-                        "reason", reason == null ? "unknown" : reason)));
-                reconciledWriter().write("\n");
-            } catch (IOException e) {
-                throw new UncheckedIOException("Could not write reconciled rows file", e);
-            }
-        }
-        context.logInfo("IMPORT_ROW_ALREADY_APPLIED", "Import row already applied by an earlier run",
-                Map.of("row", fileRowNumber == null ? -1L : fileRowNumber,
-                        "alreadyAppliedRows", reconciledRows()));
-    }
-
-    /**
-     * Whether a failure is this run colliding with a row an earlier run already applied: only a
-     * resumed run reconciles, and only duplicate/unique-key violations qualify. {@code REJECT}
-     * keeps the historical counting and {@code FAIL} aborts.
-     */
-    private boolean shouldReconcile(Throwable failure) {
-        return isResumedDuplicate(failure) && resumeDuplicatePolicy == ResumeDuplicatePolicy.RECONCILE;
-    }
-
-    /** {@code FAIL} aborts on an already-applied row even when the run would otherwise skip it. */
-    private boolean shouldFailOnApplied(Throwable failure) {
-        return isResumedDuplicate(failure) && resumeDuplicatePolicy == ResumeDuplicatePolicy.FAIL;
-    }
-
-    /** A duplicate-key collision on a resumed run, i.e. a row an earlier run already applied. */
-    private boolean isResumedDuplicate(Throwable failure) {
-        return resumeBelowRow > 0 && isDuplicateKey(failure);
-    }
-
-    /** Walks the cause chain for a duplicate-key/unique-constraint violation. */
-    private static boolean isDuplicateKey(Throwable failure) {
-        for (Throwable current = failure; current != null; current = current.getCause()) {
-            if (current instanceof java.sql.SQLException sql) {
-                String state = sql.getSQLState();
-                if ("23505".equals(state)) {
-                    return true;
-                }
-            }
-            String message = current.getMessage();
-            if (message != null) {
-                String lower = message.toLowerCase(java.util.Locale.ROOT);
-                if (lower.contains("duplicate entry") || lower.contains("duplicate key")
-                        || lower.contains("unique index or primary key violation")
-                        || lower.contains("unique constraint") || lower.contains("ora-00001")) {
-                    return true;
-                }
-            }
-            if (current.getCause() == current) {
-                break;
-            }
-        }
-        return false;
-    }
-
-    private BufferedWriter reconciledWriter() throws IOException {
-        if (reconciledWriter == null) {
-            String fileName = StringUtils.firstNonBlank(
-                    new java.io.File(StringUtils.defaultString(spec.getSourceFile())).getName(), "import")
-                    + ".reconciled.ndjson";
-            var draft = context.createArtifact(RECONCILED_ROLE,
-                    StringUtils.substringBeforeLast(spec.getSourceFile(), java.io.File.separator),
-                    fileName, "application/x-ndjson");
-            reconciledWriter = Files.newBufferedWriter(draft.getTemporaryFile().toPath(), StandardCharsets.UTF_8);
-        }
-        return reconciledWriter;
-    }
-
     private void handleRejectedRow(Long fileRowNumber, String rawRow, String reason) {
         if (!isSkipMode()) {
             throw new TaskExecutionException(TaskErrorCode.IMPORT_FAILED.name(),
@@ -1103,9 +727,6 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     private String toSqlLiteral(TableColumn column, String raw, long fileRowNumber) {
         if (raw == null || (options.getNullString() != null && options.getNullString().equals(raw))) {
-            return null;
-        }
-        if (raw.isEmpty()) {
             return null;
         }
         if (csvOptions != null) {
@@ -1176,52 +797,21 @@ public final class ImportRowBatcher implements AutoCloseable {
             // Final adaptive state: how far the AIMD gate grew/shrank and where the batch sizer
             // settled, for production observability and stress-test reporting.
             log.info("Import batcher finished: workers={}, batches={}, imported rows={}, "
-                            + "already-applied rows={} in {}s -> {} rows/s, final batch size={}, "
+                            + "in {}s -> {} rows/s, final batch size={}, "
                             + "final gate permits={}",
-                    workerCount, submittedBatches, importedRows, reconciledCount.sum(),
+                    workerCount, submittedBatches, importedRows,
                     Math.round(seconds), rowsPerSecond,
                     batchSizer.batchSize(), gate == null ? 1 : gate.availablePermits());
             LAST_TUNING.set(new ImportTuningSnapshot(workerCount, submittedBatches, importedRows,
                     totalImportNanos, batchSizer.batchSize(),
                     gate == null ? 1 : gate.availablePermits(), peakInFlightBatches.get(),
-                    reconciledCount.sum(), rejectedRows()));
-            if (failure.get() == null) {
-                // Tail checkpoint: after the final flush everything accepted is durable.
-                try {
-                    long rowsDone = durableWatermark() - 1;
-                    context.checkpoint(ResumeState.builder()
-                            .shardNo(0)
-                            .kind(RESUME_KIND_IMPORT)
-                            .cursorJson(resumeCursorJson(rowsDone))
-                            .rowsDone(rowsDone)
-                            .updatedAt(new Date())
-                            .build());
-                } catch (Throwable tailCheckpointFailure) {
-                    log.warn("Final import resume checkpoint failed", tailCheckpointFailure);
-                }
-            }
-            if (journal != null) {
-                if (failure.get() == null) {
-                    journal.cleanup();
-                } else {
-                    journal.progress("FAILED", durableWatermark() - 1);
-                    journal.preserve();
-                }
-            }
+                    rejectedRows()));
             if (rejectWriter != null) {
                 try {
                     rejectWriter.flush();
                     rejectWriter.close();
                 } catch (IOException e) {
                     log.warn("Could not close import reject writer", e);
-                }
-            }
-            if (reconciledWriter != null) {
-                try {
-                    reconciledWriter.flush();
-                    reconciledWriter.close();
-                } catch (IOException e) {
-                    log.warn("Could not close import reconciled-rows writer", e);
                 }
             }
         }

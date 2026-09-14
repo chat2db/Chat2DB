@@ -362,7 +362,7 @@ class ExportExtensionTest {
 
         @Override
         protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-                java.io.OutputStream output, boolean resuming) {
+                java.io.OutputStream output) {
         }
     }
 

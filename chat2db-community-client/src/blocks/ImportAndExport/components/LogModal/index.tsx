@@ -9,7 +9,7 @@ import { useImportExportStore } from '@/store/importExport';
 import jcefApi from '@/jcef';
 import { isDesktop } from '@/utils/env';
 import { ImportExportTaskStatus } from '@/constants/importExport';
-import importExportServices, { artifactDownloadUrl } from '@/service/importExport';
+import { artifactDownloadUrl } from '@/service/importExport';
 import { Download, FolderOpen } from 'lucide-react';
 
 interface IProps {
@@ -39,13 +39,6 @@ const LogModal = (_props: IProps) => {
     window.open(artifactDownloadUrl({ taskId: taskDetails.id, artifactId }), '_blank');
   };
 
-  const handleResume = () => {
-    if (!taskDetails) return;
-    importExportServices.resumeTask({ taskId: taskDetails.id }).then(() => {
-      openLogModal(taskDetails.id);
-    });
-  };
-
   const renderFooter = (
     <ModalFooterButton
       footerRight={
@@ -57,11 +50,6 @@ const LogModal = (_props: IProps) => {
           >
             {i18n('common.button.close')}
           </Button>
-          {taskDetails?.status === ImportExportTaskStatus.PENDING && taskDetails?.stage === 'RESUMING' && (
-            <Button type="primary" onClick={handleResume}>
-              {i18n('workspace.task.action.resume')}
-            </Button>
-          )}
           {taskDetails?.status === ImportExportTaskStatus.SUCCESS &&
             (taskDetails.artifacts?.length
               ? taskDetails.artifacts.map((artifact) => (

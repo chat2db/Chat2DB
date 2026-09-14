@@ -1,20 +1,13 @@
 import { IDatabaseBaseInfo } from '@/typings/database';
 import {
-  ImportExportFileType,
   ImportExportType,
   ImportExportTaskType,
   ImportExportTaskStatus,
 } from '@/constants/importExport';
 
-export type ImportExportTargetScope = 'DATA_SOURCE' | 'DATABASE' | 'SCHEMA' | 'TABLE';
-
-export type SqlExportScope = 'ALL' | 'SCHEMA' | 'TABLE';
-
 export interface ImportExportDataBoundInfo extends IDatabaseBaseInfo {
-  targetScope: ImportExportTargetScope;
+  tableName: string;
   type: ImportExportType;
-  fileType?: ImportExportFileType;
-  sqlExportScope?: SqlExportScope;
 }
 
 export interface ImportExportTaskDetails {
@@ -63,50 +56,10 @@ export interface IImportOptions {
   columnMappings?: IImportColumnMapping[];
   onError?: 'ABORT' | 'SKIP';
   maxErrors?: number;
-  /** How a resumed run treats rows an earlier run already applied; absent keeps RECONCILE. */
-  resumeDuplicatePolicy?: 'RECONCILE' | 'REJECT' | 'FAIL';
 }
 
 /** Execution mode of bulk import/export tasks; absent resolves to STANDARD on the backend. */
 export type ImportExecutionMode = 'ULTRA_FAST' | 'STANDARD';
-
-export interface IImportAdmissionFinding {
-  code: string;
-  severity: 'BLOCKER' | 'DEGRADATION';
-  message: string;
-  evidence?: string;
-  remediation?: string;
-}
-
-export interface IImportAdmissionReport {
-  verdict: 'PARALLEL_SAFE' | 'PARALLEL_DEGRADED' | 'PARALLEL_FORBIDDEN';
-  requestedMode: ImportExecutionMode;
-  effectiveMode: ImportExecutionMode;
-  parallelAllowed: boolean;
-  fileFormat: string;
-  fileSizeBytes: number;
-  dataRows: number;
-  fullScan: boolean;
-  relationshipRiskAccepted: boolean;
-  findings: IImportAdmissionFinding[];
-}
-
-export interface IImportColumnMatch {
-  fileColumn: string;
-  tableColumn?: string;
-  matched: boolean;
-}
-
-export interface IImportPreview {
-  targetColumns?: import('@/service/sql').IImportPreview['targetColumns'];
-  fileColumns: string[];
-  columnMatches: IImportColumnMatch[];
-  missingTableColumns: string[];
-  sampleRows: string[][];
-  detectedCharset?: string;
-  detectedDelimiter?: string;
-  parallelAdmission?: IImportAdmissionReport;
-}
 
 export interface ImportExportTaskEvent {
   eventId: number;

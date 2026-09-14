@@ -46,7 +46,6 @@ public class TaskWebConverter {
                 .containsHeader(request.getContainsHeader())
                 .exportPath(request.getExportPath())
                 .suggestedFileName(request.getSuggestedFileName())
-                .checkpointRows(request.getCheckpointRows())
                 .mode(normalize(request.getMode()))
                 .build();
     }

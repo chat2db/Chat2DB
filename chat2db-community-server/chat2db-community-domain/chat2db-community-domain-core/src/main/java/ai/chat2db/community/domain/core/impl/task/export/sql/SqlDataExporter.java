@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.OutputStream;
 
-
 /**
  * Table data SQL export. Rows are collected into multi-value {@code INSERT} statements bounded by
  * row count and byte size, instead of one statement per row.
@@ -37,12 +36,12 @@ public class SqlDataExporter extends BaseExporter {
 
     @Override
     protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-            OutputStream output, boolean resuming) {
+            OutputStream output) {
         streamTable(spec, tableName, context, output,
-                (stream, effectiveSpec, effectiveTable, resume) -> new SqlSink(stream,
+                (stream, effectiveSpec, effectiveTable) -> new SqlSink(stream,
                         Chat2DBContext.getSqlBuilder(),
                         effectiveSpec.getTarget().getDatabaseName(), effectiveSpec.getTarget().getSchemaName()),
                 ExportValueMode.SQL_LITERAL, EXPORT_BATCH_ROWS,
-                new ExportProgressLogger(context, "SQL", tableName), resuming);
+                new ExportProgressLogger(context, "SQL", tableName));
     }
 }

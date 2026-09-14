@@ -2,7 +2,6 @@ package ai.chat2db.community.storage;
 
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
-import ai.chat2db.community.domain.api.model.task.TaskStage;
 import ai.chat2db.community.domain.api.model.task.TaskStatus;
 import ai.chat2db.community.domain.api.model.task.TaskStatusPatch;
 
@@ -30,9 +29,7 @@ public final class TaskLifecyclePolicy {
             return TaskStatus.RUNNING.name().equals(target) || TaskStatus.FAILED.name().equals(target);
         }
         if (TaskStatus.RUNNING.name().equals(source)) {
-            return TaskStatus.SUCCESS.name().equals(target) || TaskStatus.FAILED.name().equals(target)
-                    || (TaskStatus.PENDING.name().equals(target) && patch != null
-                    && TaskStage.RESUMING.name().equals(patch.getStage()));
+            return TaskStatus.SUCCESS.name().equals(target) || TaskStatus.FAILED.name().equals(target);
         }
         if (LEGACY_CANCELLING_STATUS.equals(source)) {
             return TaskStatus.FAILED.name().equals(target);

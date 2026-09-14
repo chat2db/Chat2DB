@@ -1,7 +1,6 @@
 package ai.chat2db.community.domain.core.impl.task;
 
 import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.TaskArtifactRole;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
@@ -21,11 +20,9 @@ import java.nio.file.Files;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.Iterator;
-import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class TaskExecutionContextImpl implements TaskExecutionContext {
@@ -47,8 +44,6 @@ final class TaskExecutionContextImpl implements TaskExecutionContext {
 
     private final Map<String, BufferedWriter> writersByRole = new LinkedHashMap<>();
 
-    private final Set<String> appendingRoles = new java.util.HashSet<>();
-
     TaskExecutionContextImpl(Long taskId, RunningTask runningTask, TaskStorage taskStorage,
             ArtifactService artifactService) {
         this.taskId = taskId;
@@ -60,17 +55,6 @@ final class TaskExecutionContextImpl implements TaskExecutionContext {
     @Override
     public Long taskId() {
         return taskId;
-    }
-
-    @Override
-    public List<ResumeState> resumeStates() {
-        return taskStorage.listResumeStates(taskId);
-    }
-
-    @Override
-    public void checkpoint(ResumeState state) {
-        checkCancelled();
-        taskStorage.saveResumeState(taskId, state);
     }
 
     @Override
@@ -129,12 +113,7 @@ final class TaskExecutionContextImpl implements TaskExecutionContext {
         if (draftsByRole.containsKey(role)) {
             throw new IllegalStateException("Artifact role " + role + " is already created for this task");
         }
-        ArtifactDraft draft = resumedDraft(role, outputDirectory, fileName, mediaType);
-        if (draft == null) {
-            draft = artifactService.createDraft(taskId, role, outputDirectory, fileName, mediaType);
-        } else {
-            appendingRoles.add(role);
-        }
+        ArtifactDraft draft = artifactService.createDraft(taskId, role, outputDirectory, fileName, mediaType);
         try {
             appendEvent(TaskEventLevel.INFO.name(), TaskEventCode.ARTIFACT_PREPARED.name(),
                     "Artifact prepared", Map.of(
@@ -151,36 +130,6 @@ final class TaskExecutionContextImpl implements TaskExecutionContext {
         }
     }
 
-    /**
-     * The draft file of an interrupted run, if this task carries resume checkpoints and the file
-     * survived; the exporter then appends instead of restarting.
-     */
-    private ArtifactDraft resumedDraft(String role, String outputDirectory, String fileName, String mediaType) {
-        if (taskStorage.listResumeStates(taskId).isEmpty()) {
-            return null;
-        }
-        String temporaryPath = null;
-        for (TaskEvent prepared : taskStorage.listEvents(taskId, 0L, TaskConstants.MAX_EVENT_LIMIT)) {
-            if (TaskEventCode.ARTIFACT_PREPARED.name().equals(prepared.getCode())
-                    && role.equals(detailOf(prepared, TaskConstants.ARTIFACT_ROLE_DETAIL_KEY))) {
-                temporaryPath = detailOf(prepared, TaskConstants.ARTIFACT_TEMPORARY_PATH_DETAIL_KEY);
-            }
-        }
-        if (temporaryPath == null) {
-            return null;
-        }
-        java.io.File existing = new java.io.File(temporaryPath);
-        if (!artifactService.isInterruptedDraft(taskId, existing)) {
-            return null;
-        }
-        return artifactService.resumeDraft(taskId, role, outputDirectory, fileName, mediaType, existing);
-    }
-
-    private static String detailOf(TaskEvent event, String key) {
-        Object value = event.getDetails() == null ? null : event.getDetails().get(key);
-        return value == null ? null : String.valueOf(value);
-    }
-
     @Override
     public synchronized void write(String content) {
         checkCancelled();
@@ -191,10 +140,7 @@ final class TaskExecutionContextImpl implements TaskExecutionContext {
         BufferedWriter writer = writersByRole.get(TaskArtifactRole.OUTPUT);
         try {
             if (writer == null) {
-                writer = appendingRoles.contains(TaskArtifactRole.OUTPUT)
-                        ? Files.newBufferedWriter(draft.getTemporaryFile().toPath(), StandardCharsets.UTF_8,
-                                java.nio.file.StandardOpenOption.APPEND)
-                        : Files.newBufferedWriter(draft.getTemporaryFile().toPath(), StandardCharsets.UTF_8);
+                writer = Files.newBufferedWriter(draft.getTemporaryFile().toPath(), StandardCharsets.UTF_8);
                 writersByRole.put(TaskArtifactRole.OUTPUT, writer);
             }
             writer.write(content);

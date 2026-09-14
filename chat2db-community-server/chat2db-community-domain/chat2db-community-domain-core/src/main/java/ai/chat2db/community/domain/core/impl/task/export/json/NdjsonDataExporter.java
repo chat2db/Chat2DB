@@ -32,10 +32,10 @@ public class NdjsonDataExporter extends BaseExporter {
 
     @Override
     protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-            OutputStream output, boolean resuming) {
+            OutputStream output) {
         streamTable(spec, tableName, context, output,
-                (stream, effectiveSpec, effectiveTable, resume) -> new NdjsonSink(stream),
+                (stream, effectiveSpec, effectiveTable) -> new NdjsonSink(stream),
                 ExportValueMode.NATIVE, EXPORT_BATCH_ROWS,
-                new ExportProgressLogger(context, "NDJSON", tableName), resuming);
+                new ExportProgressLogger(context, "NDJSON", tableName));
     }
 }

@@ -94,7 +94,7 @@ public final class SqlSink extends TextSink {
 
     /**
      * Emits the pending multi-value statement, then drains the writer so the bytes already counted
-     * are on disk before a checkpoint is taken.
+     * are flushed to the output.
      */
     @Override
     public void flush() throws IOException {

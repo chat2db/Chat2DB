@@ -56,10 +56,4 @@ public class ImportOptions {
 
     private Integer maxErrors;
 
-    /**
-     * How a resumed run treats rows whose key already exists in the target; {@code null} keeps
-     * {@link ResumeDuplicatePolicy#RECONCILE}. Ignored by fresh imports, where a duplicate is
-     * genuine bad data.
-     */
-    private ResumeDuplicatePolicy resumeDuplicatePolicy;
 }

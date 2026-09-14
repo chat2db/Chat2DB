@@ -33,11 +33,11 @@ public class CsvDataExporter extends BaseExporter {
 
     @Override
     protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-            OutputStream output, boolean resuming) {
+            OutputStream output) {
         streamTable(spec, tableName, context, output,
-                (stream, effectiveSpec, effectiveTable, resume) -> new CsvSink(stream,
-                        Boolean.TRUE.equals(effectiveSpec.getContainsHeader()), resume),
+                (stream, effectiveSpec, effectiveTable) -> new CsvSink(stream,
+                        Boolean.TRUE.equals(effectiveSpec.getContainsHeader())),
                 ExportValueMode.NATIVE, EXPORT_BATCH_ROWS,
-                new ExportProgressLogger(context, "CSV", tableName), resuming);
+                new ExportProgressLogger(context, "CSV", tableName));
     }
 }

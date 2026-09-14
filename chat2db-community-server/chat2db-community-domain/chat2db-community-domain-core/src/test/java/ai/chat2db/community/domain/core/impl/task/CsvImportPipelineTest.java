@@ -6,13 +6,11 @@ import ai.chat2db.community.domain.api.model.PageResponse;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
 import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
 import ai.chat2db.community.domain.api.model.task.TaskProgress;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
-import ai.chat2db.community.domain.api.model.task.TaskStage;
 import ai.chat2db.community.domain.api.model.task.TaskStatus;
 import ai.chat2db.community.domain.api.model.task.TaskStatusPatch;
 import ai.chat2db.community.domain.api.model.task.TaskTargetSnapshot;
@@ -36,7 +34,6 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -160,7 +157,7 @@ class CsvImportPipelineTest {
         private final List<Task> tasks = new ArrayList<>();
         private final List<TaskEvent> events = new ArrayList<>();
         private final List<TaskArtifact> artifacts = new ArrayList<>();
-        private final List<ResumeState> states = new ArrayList<>();
+
         private long sequence;
 
         @Override
@@ -235,26 +232,6 @@ class CsvImportPipelineTest {
         @Override
         public void deleteArtifact(Long taskId, String artifactId) {
             artifacts.removeIf(artifact -> artifact.getArtifactId().equals(artifactId));
-        }
-
-        @Override
-        public List<Task> listResumableTasks() {
-            return List.of();
-        }
-
-        @Override
-        public void saveResumeState(Long taskId, ResumeState state) {
-            states.add(state);
-        }
-
-        @Override
-        public List<ResumeState> listResumeStates(Long taskId) {
-            return List.copyOf(states);
-        }
-
-        @Override
-        public void clearResumeStates(Long taskId) {
-            states.clear();
         }
 
     }

@@ -1,7 +1,6 @@
 package ai.chat2db.community.domain.core.impl.task.export;
 
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskCompression;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
@@ -25,7 +24,6 @@ import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
 import ai.chat2db.community.domain.core.impl.db.extension.SqlExecutionPolicyManager;
 import ai.chat2db.community.domain.core.impl.task.AdaptiveBatchSizer;
 import ai.chat2db.community.domain.core.impl.task.AdaptiveConcurrencyGate;
-import ai.chat2db.community.domain.core.impl.task.TaskResumeJournal;
 import ai.chat2db.community.tools.util.ContextUtils;
 import ai.chat2db.spi.IValueProcessor;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
@@ -47,19 +45,16 @@ import java.io.File;
 import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
 
 @Slf4j
 public abstract class BaseExporter implements IExportStrategy {
@@ -88,11 +83,6 @@ public abstract class BaseExporter implements IExportStrategy {
      * (down to 100) as the target sustains it.
      */
     public static final int FAST_MODE_SINK_BATCH_ROWS = 20_000;
-
-    /**
-     * Resume-state kind written by the checkpointed export path.
-     */
-    private static final String RESUME_KIND_KEYSET = "KEYSET";
 
     /**
      * Keyset page size used by one shard worker.
@@ -127,13 +117,12 @@ public abstract class BaseExporter implements IExportStrategy {
         if (CollectionUtils.isEmpty(tableNames)) {
             throw new IllegalArgumentException("tableNames should not be null or empty");
         }
-        boolean resuming = isResuming(spec, context, tableNames, outputFile);
         try {
             if (tableNames.size() == 1) {
                 context.reportProgress(20, TaskStage.EXPORTING.name(), "Exporting table data");
-                try (OutputStream file = openArtifactStream(outputFile, resuming);
+                try (OutputStream file = Files.newOutputStream(outputFile.toPath());
                         OutputStream output = wrapForCompression(file, spec)) {
-                    singleWithEvents(spec, context, tableNames.get(0), output, 0, 1, resuming);
+                    singleWithEvents(spec, context, tableNames.get(0), output, 0, 1);
                     output.flush();
                 }
             } else {
@@ -147,76 +136,12 @@ public abstract class BaseExporter implements IExportStrategy {
         }
     }
 
-    /**
-     * Resume only ever applies to a single-table checkpointed export whose draft file still agrees
-     * with the persisted checkpoint; ZIP containers and plain exports always rewrite their artifact
-     * from the start.
-     */
-    private boolean isResuming(ExportTaskSpec spec, TaskExecutionContext context, List<String> tableNames,
-            File outputFile) {
-        Integer checkpoint = spec.getCheckpointRows();
-        if (checkpoint == null || checkpoint <= 0 || tableNames.size() != 1
-                || context.taskId() == null || context.resumeStates().isEmpty()) {
-            return false;
-        }
-        return alignArtifactForResume(outputFile, lastResumeState(context));
-    }
-
-    /**
-     * Makes the draft file agree with the last persisted checkpoint before a resumed run appends to
-     * it. Bytes flushed past the checkpoint are truncated away, and a file that lost buffered bytes
-     * or went missing entirely cannot be continued: the caller then rewrites the artifact from the
-     * start so the output never duplicates or silently drops rows.
-     */
-    private boolean alignArtifactForResume(File outputFile, ResumeState last) {
-        if (last == null || last.getBytesDone() == null) {
-            // A checkpoint without a recorded byte count cannot be verified; keep the old append rule.
-            return outputFile.isFile() && outputFile.length() > 0;
-        }
-        long durableBytes = last.getBytesDone();
-        if (!outputFile.isFile()) {
-            log.info("Resume draft {} is missing; the export restarts from the beginning", outputFile);
-            return false;
-        }
-        long currentLength = outputFile.length();
-        if (currentLength < durableBytes) {
-            log.info("Resume draft {} holds {} bytes but its checkpoint recorded {}; the export restarts",
-                    outputFile, currentLength, durableBytes);
-            return false;
-        }
-        if (currentLength > durableBytes) {
-            try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(
-                    outputFile.toPath(), java.nio.file.StandardOpenOption.WRITE)) {
-                channel.truncate(durableBytes);
-            } catch (IOException e) {
-                throw new TaskExecutionException(TaskErrorCode.FILE_WRITE_FAILED.name(),
-                        "Could not align the export draft with its checkpoint", e);
-            }
-        }
-        return true;
-    }
-
-    private ResumeState lastResumeState(TaskExecutionContext context) {
-        return context.resumeStates().stream()
-                .filter(state -> state.getShardNo() != null && state.getShardNo() == 0)
-                .filter(state -> RESUME_KIND_KEYSET.equals(state.getKind()))
-                .reduce((first, second) -> second)
-                .orElse(null);
-    }
-
-    private static OutputStream openArtifactStream(File outputFile, boolean resuming) throws IOException {
-        if (resuming && outputFile.isFile() && outputFile.length() > 0) {
-            return Files.newOutputStream(outputFile.toPath(), java.nio.file.StandardOpenOption.APPEND);
-        }
-        return Files.newOutputStream(outputFile.toPath());
-    }
-
     private void singleWithEvents(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-            OutputStream output, int tableIndex, int totalTables, boolean resuming) throws Exception {
+            OutputStream output, int tableIndex, int totalTables) throws Exception {
         logTableEvent(context, TaskEventCode.TABLE_EXPORT_STARTED.name(),
                 tableProgressMessage("Exporting table", tableName, tableIndex, totalTables), tableName,
                 tableIndex, totalTables);
-        singleExport(spec, context, tableName, output, resuming);
+        singleExport(spec, context, tableName, output);
         logTableEvent(context, TaskEventCode.TABLE_EXPORT_COMPLETED.name(),
                 tableProgressMessage("Table export completed", tableName, tableIndex, totalTables), tableName,
                 tableIndex, totalTables);
@@ -241,7 +166,7 @@ public abstract class BaseExporter implements IExportStrategy {
                 logTableEvent(context, TaskEventCode.TABLE_EXPORT_STARTED.name(),
                         tableProgressMessage("Exporting table", tableName, i, n), tableName, i, n);
                 zip.putNextEntry(new ZipEntry(safeTableName + suffix));
-                singleExport(spec, context, tableName, new EntryStream(zip), false);
+                singleExport(spec, context, tableName, new EntryStream(zip));
                 zip.closeEntry();
                 logTableEvent(context, TaskEventCode.TABLE_EXPORT_COMPLETED.name(),
                         tableProgressMessage("Table export completed", tableName, i, n), tableName, i, n);
@@ -262,23 +187,14 @@ public abstract class BaseExporter implements IExportStrategy {
                 ? new GZIPOutputStream(buffered) : buffered;
     }
 
-    /**
-     * Shared producer loop. Without checkpoints it streams the planned query in one statement;
-     * with {@code checkpointRows} set and a single-column primary key it walks keyset pages,
-     * persisting a resume cursor after each page so an interrupted export continues where it
-     * stopped.
-     */
+    /** Streams a table using parallel key ranges when eligible, or a single query otherwise. */
     protected final void streamTable(ExportTaskSpec spec, String tableName, TaskExecutionContext context,
             OutputStream output, SinkFactory sinkFactory, ExportValueMode mode, int fetchRows,
-            ExportProgressLogger progressLogger, boolean resuming) {
+            ExportProgressLogger progressLogger) {
         SqlExecutionPlan executionPlan = getQueryPlan(spec, tableName);
         progressLogger.queryStarted("Reading table data from " + tableName);
         boolean ultra = TaskExecutionMode.isUltraFast(spec.getMode());
-        String checkpointKey = checkpointKeyColumn(spec, context, tableName);
-        if (checkpointKey != null) {
-            streamKeysetPages(spec, tableName, context, output, sinkFactory, mode, executionPlan,
-                    progressLogger, checkpointKey, resuming, ultra);
-        } else if (ultra && tryShardExport(spec, tableName, context, output, sinkFactory, mode,
+        if (ultra && tryShardExport(spec, tableName, context, output, sinkFactory, mode,
                 executionPlan, progressLogger)) {
             return;
         } else {
@@ -304,101 +220,6 @@ public abstract class BaseExporter implements IExportStrategy {
     }
 
     /**
-     * The single-column primary key usable for checkpointed paging, or {@code null} to stream.
-     * A checkpointed run without a usable key must not silently downgrade, because its stored
-     * cursor would no longer match the key columns; a plain run may.
-     */
-    private String checkpointKeyColumn(ExportTaskSpec spec, TaskExecutionContext context, String tableName) {
-        Integer checkpoint = spec.getCheckpointRows();
-        if (checkpoint == null || checkpoint <= 0 || context.taskId() == null) {
-            return null;
-        }
-        if (!Chat2DBContext.getDbManager().getExportCapability().isKeysetSharding()) {
-            throw new TaskExecutionException(TaskErrorCode.EXPORT_FAILED.name(),
-                    "Checkpointed export is not supported by this database dialect");
-        }
-        try {
-            List<PrimaryKey> primaryKeys = DefaultSQLExecutor.getInstance().getPrimaryKeys(
-                    Chat2DBContext.getConnection(), spec.getTarget().getDatabaseName(),
-                    spec.getTarget().getSchemaName(), tableName);
-            if (primaryKeys == null || primaryKeys.size() != 1) {
-                throw new TaskExecutionException(TaskErrorCode.EXPORT_FAILED.name(),
-                        "Checkpointed export requires exactly one primary key column on " + tableName);
-            }
-            String keyColumn = primaryKeys.get(0).getColumnName();
-            if (StringUtils.isBlank(keyColumn)) {
-                throw new TaskExecutionException(TaskErrorCode.EXPORT_FAILED.name(),
-                        "Checkpointed export requires a named primary key on " + tableName);
-            }
-            return keyColumn;
-        } catch (TaskExecutionException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new TaskExecutionException(TaskErrorCode.EXPORT_FAILED.name(),
-                    "Could not read the primary key of " + tableName, e);
-        }
-    }
-
-    private void streamKeysetPages(ExportTaskSpec spec, String tableName, TaskExecutionContext context,
-            OutputStream output, SinkFactory sinkFactory, ExportValueMode mode, SqlExecutionPlan executionPlan,
-            ExportProgressLogger progressLogger, String keyColumn, boolean resuming, boolean adaptiveSizing) {
-        int pageSize = Math.max(1, spec.getCheckpointRows());
-        // A non-resumable run must not pick up a stale cursor: the artifact is being rewritten.
-        KeysetRun run = new KeysetRun(keyColumn, resuming ? resumeCursor(context, keyColumn) : null, resuming,
-                adaptiveSizing);
-        try {
-            while (true) {
-                String pageSql = Chat2DBContext.getSqlBuilder().dql().buildKeysetPageLimit(
-                        KeysetPageLimitRequest.builder()
-                                .databaseName(spec.getTarget().getDatabaseName())
-                                .schemaName(spec.getTarget().getSchemaName())
-                                .tableName(tableName)
-                                .keyColumns(List.of(keyColumn))
-                                .bounds(run.bounds())
-                                .fetchSize(pageSize)
-                                .build());
-                DefaultSQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), pageSql, pageSize,
-                        resultSet -> {
-                            try {
-                                readKeysetRows(spec, tableName, context, output, sinkFactory, mode,
-                                        executionPlan, resultSet, progressLogger, run);
-                            } catch (IOException e) {
-                                throw new TaskExecutionException(TaskErrorCode.FILE_WRITE_FAILED.name(),
-                                        "Could not write export file", e);
-                            }
-                        },
-                        context, context::checkCancelled);
-                if (run.pageRows == 0) {
-                    break;
-                }
-                context.checkpoint(ResumeState.builder()
-                        .shardNo(0)
-                        .kind(RESUME_KIND_KEYSET)
-                        .cursorJson(run.cursorJson())
-                        .rowsDone(run.rowsDone)
-                        .bytesDone(durableByteCount(run))
-                        .updatedAt(new Date())
-                        .build());
-                if (run.pageRows < pageSize) {
-                    break;
-                }
-            }
-            if (run.sink != null) {
-                try {
-                    run.sink.finishTable(tableName);
-                } catch (IOException e) {
-                    throw new TaskExecutionException(TaskErrorCode.FILE_WRITE_FAILED.name(),
-                            "Could not write export file", e);
-                }
-            }
-        } finally {
-            if (run.sink != null) {
-                closeSink(run.sink);
-            }
-        }
-    }
-
-    /**
      * Rows below this span stay on the single-cursor path; sharding such tables only adds load.
      */
     private static final long MIN_ROWS_PER_SHARD = 5_000L;
@@ -420,8 +241,7 @@ public abstract class BaseExporter implements IExportStrategy {
         // SQL dumps shard too: rows are converted to dialect literals on the shard threads and
         // the ordered drain keeps the statements in key order, so the artifact carries the same
         // content as the single-cursor dump while reading with the adaptive fan-out.
-        if (configuredMax <= 1 || spec.getCheckpointRows() != null
-                || !sqlExecutionPolicyManager.isEmpty()
+        if (configuredMax <= 1 || !sqlExecutionPolicyManager.isEmpty()
                 || (mode != ExportValueMode.NATIVE && mode != ExportValueMode.SQL_LITERAL)) {
             return false;
         }
@@ -460,7 +280,7 @@ public abstract class BaseExporter implements IExportStrategy {
         if (mode == ExportValueMode.SQL_LITERAL && layout.jdbcColumns.isEmpty()) {
             throw new IllegalStateException("SQL export has no authorized columns");
         }
-        FormatSink sink = sinkFactory.create(output, spec, tableName, false);
+        FormatSink sink = sinkFactory.create(output, spec, tableName);
         // Active fan-out self-tunes inside [1, workers] starting from the fast-mode baseline of 4:
         // the merge loop below submits shards only while the gate admits, and the fixed pool only
         // bounds the threads.
@@ -470,7 +290,6 @@ public abstract class BaseExporter implements IExportStrategy {
         AdaptiveBatchSizer batchSizer =
                 new AdaptiveBatchSizer(FAST_MODE_SINK_BATCH_ROWS, true, SHARD_PAGE_ROWS);
         ShardPagePlan pagePlan = new ShardPagePlan();
-        TaskResumeJournal journal = TaskResumeJournal.open(context.taskId(), null);
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(workers,
                 runnable -> {
                     Thread thread = new Thread(runnable, "chat2db-shard-" + context.taskId());
@@ -524,12 +343,6 @@ public abstract class BaseExporter implements IExportStrategy {
                     progressLogger.recordExportedRows(batch.size());
                 }
                 drained++;
-                if (journal != null && drained % 16 == 0) {
-                    journal.progress("EXPORTING", drainedRows);
-                }
-                if (journal != null && drained % 128 == 0) {
-                    journal.snapshot(drainedRows);
-                }
             }
             throwShardFailure(failure.get());
             long mergeNanos = System.nanoTime() - mergeStarted;
@@ -544,9 +357,6 @@ public abstract class BaseExporter implements IExportStrategy {
                     mergeSeconds > 0 ? Math.round(drainedRows / mergeSeconds) : 0,
                     gate.availablePermits(), batchSizer.batchSize());
             sink.finishTable(tableName);
-            if (journal != null) {
-                journal.cleanup();
-            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             abort.set(true);
@@ -969,149 +779,6 @@ public abstract class BaseExporter implements IExportStrategy {
         private boolean done;
     }
 
-    private void readKeysetRows(ExportTaskSpec spec, String tableName, TaskExecutionContext context,
-            OutputStream output, SinkFactory sinkFactory, ExportValueMode mode, SqlExecutionPlan executionPlan,
-            ResultSet resultSet, ExportProgressLogger progressLogger, KeysetRun run)
-            throws SQLException, IOException {
-        ResultSetMetaData metaData = resultSet.getMetaData();
-        List<Integer> jdbcColumns = includedJdbcColumns(metaData, executionPlan);
-        if (mode == ExportValueMode.SQL_LITERAL && jdbcColumns.isEmpty()) {
-            throw new IllegalStateException("SQL export has no authorized columns");
-        }
-        IValueProcessor valueProcessor = Chat2DBContext.getDbMetaData().getValueProcessor();
-        if (run.sink == null) {
-            run.keyJdbcIndex = keyJdbcIndex(metaData, jdbcColumns, run.keyColumn);
-            if (run.keyJdbcIndex <= 0) {
-                throw new TaskExecutionException(TaskErrorCode.EXPORT_FAILED.name(),
-                        "The checkpoint key column is not part of the exported columns");
-            }
-            run.sink = sinkFactory.create(output, spec, tableName, run.resuming);
-            run.sink.writeSchema(new ExportSchema(
-                    selectByJdbcIndex(ResultSetUtils.getRsHeader(resultSet), jdbcColumns)), tableName);
-        }
-        run.pageRows = 0;
-        boolean hasNext = nextRow(resultSet, executionPlan, (int) Math.min(run.rowsDone, Integer.MAX_VALUE));
-        while (hasNext) {
-            context.checkCancelled();
-            run.batch.add(readRow(spec, metaData, jdbcColumns, tableName, resultSet, mode,
-                    mode == ExportValueMode.NATIVE ? valueProcessor : null));
-            JDBCDataValue keyValue = new JDBCDataValue(resultSet, metaData, run.keyJdbcIndex, false);
-            run.cursorLiteral = mode == ExportValueMode.NATIVE
-                    ? valueProcessor.getJdbcSqlValueString(keyValue)
-                    : sqlLiteral(spec, metaData, run.keyJdbcIndex, tableName, keyValue);
-            progressLogger.recordExportedRow();
-            run.rowsDone++;
-            run.pageRows++;
-            hasNext = nextRow(resultSet, executionPlan, (int) Math.min(run.rowsDone, Integer.MAX_VALUE));
-            if (run.batch.size() >= run.sizer.batchSize() || !hasNext) {
-                flushBatch(run);
-            }
-        }
-    }
-
-    private static int keyJdbcIndex(ResultSetMetaData metaData, List<Integer> jdbcColumns, String keyColumn)
-            throws SQLException {
-        for (Integer columnIndex : jdbcColumns) {
-            if (keyColumn.equalsIgnoreCase(metaData.getColumnName(columnIndex))) {
-                return columnIndex;
-            }
-        }
-        return -1;
-    }
-
-    private void flushBatch(KeysetRun run) throws IOException {
-        if (run.batch.isEmpty()) {
-            return;
-        }
-        long bytesBefore = run.sink.bytesWritten();
-        long writeStarted = System.nanoTime();
-        run.sink.writeRows(run.batch);
-        run.sizer.record(run.batch.size(), System.nanoTime() - writeStarted);
-        ExportRateLimiter.global().acquire(run.batch.size(), run.sink.bytesWritten() - bytesBefore);
-        run.batch.clear();
-    }
-
-    /**
-     * Flushes the sink and returns the byte count that is now durable in the artifact file. The
-     * counting stream sits directly above the (unbuffered-by-sink) file path and GZIP compression
-     * is rejected for checkpointed exports, so the logical count matches the file length exactly.
-     */
-    private long durableByteCount(KeysetRun run) {
-        if (run.sink == null) {
-            return 0L;
-        }
-        try {
-            run.sink.flush();
-        } catch (IOException e) {
-            throw new TaskExecutionException(TaskErrorCode.FILE_WRITE_FAILED.name(),
-                    "Could not flush the export file before its checkpoint", e);
-        }
-        return run.sink.bytesWritten();
-    }
-
-    private String resumeCursor(TaskExecutionContext context, String keyColumn) {
-        return context.resumeStates().stream()
-                .filter(state -> state.getShardNo() != null && state.getShardNo() == 0)
-                .filter(state -> RESUME_KIND_KEYSET.equals(state.getKind()))
-                .filter(state -> StringUtils.isNotBlank(state.getCursorJson()))
-                .reduce((first, second) -> second)
-                .map(state -> {
-                    com.alibaba.fastjson2.JSONObject cursor =
-                            com.alibaba.fastjson2.JSON.parseObject(state.getCursorJson());
-                    if (!keyColumn.equalsIgnoreCase(cursor.getString("column"))) {
-                        throw new TaskExecutionException(TaskErrorCode.EXPORT_FAILED.name(),
-                                "The stored checkpoint of this export no longer matches its primary key");
-                    }
-                    return cursor.getString("literal");
-                })
-                .orElse(null);
-    }
-
-    /**
-     * Mutable state of one checkpointed export run, shared between the page loop and its consumer.
-     */
-    private static final class KeysetRun {
-
-        private final String keyColumn;
-
-        private final boolean resuming;
-
-        private final List<List<Object>> batch = new ArrayList<>(SINK_BATCH_ROWS);
-
-        private final AdaptiveBatchSizer sizer;
-
-        private FormatSink sink;
-
-        private String cursorLiteral;
-
-        private int keyJdbcIndex = -1;
-
-        private long rowsDone;
-
-        private long pageRows;
-
-        private KeysetRun(String keyColumn, String resumedCursor, boolean resuming, boolean adaptiveSizing) {
-            this.keyColumn = keyColumn;
-            this.cursorLiteral = resumedCursor;
-            this.resuming = resuming;
-            this.sizer = new AdaptiveBatchSizer(
-                    adaptiveSizing ? FAST_MODE_SINK_BATCH_ROWS : SINK_BATCH_ROWS,
-                    adaptiveSizing, SHARD_PAGE_ROWS);
-        }
-
-        private List<KeyBound> bounds() {
-            return cursorLiteral == null
-                    ? List.of() : List.of(new KeyBound(keyColumn, cursorLiteral, true));
-        }
-
-        private String cursorJson() {
-            com.alibaba.fastjson2.JSONObject cursor = new com.alibaba.fastjson2.JSONObject();
-            cursor.put("column", keyColumn);
-            cursor.put("literal", cursorLiteral);
-            return cursor.toJSONString();
-        }
-    }
-
     private void streamResultSet(ExportTaskSpec spec, String tableName, TaskExecutionContext context,
             OutputStream output, SinkFactory sinkFactory, ExportValueMode mode, SqlExecutionPlan executionPlan,
             ResultSet resultSet, ExportProgressLogger progressLogger, boolean adaptiveSizing)
@@ -1122,7 +789,7 @@ public abstract class BaseExporter implements IExportStrategy {
             throw new IllegalStateException("SQL export has no authorized columns");
         }
         List<String> columnNames = selectByJdbcIndex(ResultSetUtils.getRsHeader(resultSet), jdbcColumns);
-        FormatSink sink = sinkFactory.create(output, spec, tableName, false);
+        FormatSink sink = sinkFactory.create(output, spec, tableName);
         IValueProcessor valueProcessor = mode == ExportValueMode.NATIVE
                 ? Chat2DBContext.getDbMetaData().getValueProcessor() : null;
         List<List<Object>> batch = new ArrayList<>(SINK_BATCH_ROWS);
@@ -1299,17 +966,15 @@ public abstract class BaseExporter implements IExportStrategy {
     }
 
     protected abstract void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-            OutputStream output, boolean resuming) throws Exception;
+            OutputStream output) throws Exception;
 
     /**
      * Creates the format sink for one table; called once per table inside the streaming loop.
-     * {@code resuming} means the output already holds the earlier pages, so the sink must not emit
-     * its leading structure again.
      */
     @FunctionalInterface
     protected interface SinkFactory {
 
-        FormatSink create(OutputStream output, ExportTaskSpec spec, String tableName, boolean resuming);
+        FormatSink create(OutputStream output, ExportTaskSpec spec, String tableName);
     }
 
     /**

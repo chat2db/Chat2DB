@@ -31,4 +31,8 @@ public class MappedImportExecution {
     private List<ImportColumnMapping> mappings;
 
     private UnmappedTargetStrategy unmappedTarget;
+
+    private String mode;
+
+    private Boolean confirmedNoStrongRelations;
 }

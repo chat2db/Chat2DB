@@ -33,15 +33,15 @@ public abstract class BaseExcelExporter extends BaseExporter {
 
     @Override
     protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-            OutputStream output, boolean resuming) {
+            OutputStream output) {
         AtomicReference<ExcelSink> created = new AtomicReference<>();
-        streamTable(spec, tableName, context, output, (stream, effectiveSpec, effectiveTable, resume) -> {
+        streamTable(spec, tableName, context, output, (stream, effectiveSpec, effectiveTable) -> {
             ExcelSink sink = new ExcelSink(stream, getExcelType(),
                     Boolean.TRUE.equals(effectiveSpec.getContainsHeader()), effectiveTable);
             created.set(sink);
             return sink;
         }, ExportValueMode.NATIVE, EXCEL_FETCH_ROWS,
-                new ExportProgressLogger(context, getExcelType().name(), tableName), resuming);
+                new ExportProgressLogger(context, getExcelType().name(), tableName));
         ExcelSink sink = created.get();
         if (sink != null && sink.truncatedCells() > 0) {
             context.logWarn(TaskEventCode.EXCEL_TEXT_TRUNCATED.name(),

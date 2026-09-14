@@ -3,6 +3,7 @@ import { useStyles } from './style';
 import { IconButton, Empty, EmptyImage, staticMessage } from '@chat2db/ui';
 import { Progress, Spin, Tooltip } from 'antd';
 import i18n from '@/i18n';
+import RunSqlModal from '@/blocks/ImportAndExport/components/RunSqlModal';
 import ImportFileModal from '@/blocks/ImportAndExport/components/ImportFileModal';
 import importExportServices from '@/service/importExport';
 import { useImportExportStore } from '@/store/importExport';
@@ -233,20 +234,6 @@ export default memo<TaskCenterProps>(({ headerLeading }) => {
                     )}
                     {!isActive && (
                       <div className={styles.taskActions}>
-                        {item.status === ImportExportTaskStatus.PENDING && item.stage === 'RESUMING' && (
-                          <IconButton
-                            icon={RotateCw}
-                            title={i18n('workspace.task.action.resume')}
-                            tooltipPlacement="left"
-                            size={{ boxSize: 18, iconSize: 13, borderRadius: 3 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              importExportServices.resumeTask({ taskId: item.id }).then(() => {
-                                void getTaskList();
-                              });
-                            }}
-                          />
-                        )}
                         {item.status === ImportExportTaskStatus.SUCCESS && item.artifactId && (
                           <IconButton
                             code={isDesktop ? 'icon-folder' : 'icon-download'}
@@ -294,6 +281,7 @@ export const TaskCenterModals = memo(() => {
   return (
     <>
       <LogModal />
+      <RunSqlModal />
       <ImportFileModal />
     </>
   );

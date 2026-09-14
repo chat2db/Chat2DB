@@ -7,7 +7,6 @@ import type {
   ImportExportTaskEvent,
   ITaskArtifact,
   IImportOptions,
-  IImportPreview,
 } from '@/typings/importExport';
 import { ImportExportFileType, ImportExportTaskType } from '@/constants/importExport';
 
@@ -66,7 +65,6 @@ export interface ExportTaskParams extends IDatabaseBaseInfo {
   exportPath?: string;
   suggestedFileName?: string;
   compression?: string;
-  checkpointRows?: number;
   /** Execution mode: ULTRA_FAST (parallel) or STANDARD (serial). Default STANDARD. */
   mode?: 'ULTRA_FAST' | 'STANDARD';
 }
@@ -114,19 +112,10 @@ const abortUserExit = createRequest<void, void>('/api/tasks/abort-user-exit', {
   method: 'post',
   errorLevel: false,
 });
-const resumeTask = createRequest<TaskIdParams, TaskSubmissionResponse>('/api/tasks/resume', {
-  method: 'post',
-  errorLevel: 'toast',
-});
 const getTaskArtifacts = createRequest<TaskIdParams, ITaskArtifact[]>('/api/tasks/artifacts', {
   method: 'get',
   errorLevel: false,
 });
-const previewImport = createRequest<ImportTaskParams, IImportPreview>('/api/tasks/import/preview', {
-  method: 'post',
-  errorLevel: 'toast',
-});
-
 export const artifactDownloadUrl = (params: TaskArtifactParams) =>
   `/api/tasks/artifact?taskId=${params.taskId}${params.artifactId ? `&artifactId=${encodeURIComponent(params.artifactId)}` : ''}`;
 
@@ -145,8 +134,6 @@ export default {
   getActiveTaskCount,
   prepareUserExit,
   abortUserExit,
-  resumeTask,
   getTaskArtifacts,
-  previewImport,
   generateJavaClass,
 };

@@ -8,7 +8,6 @@ import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
 import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -337,13 +336,13 @@ class LargeTableStressIT {
 
         @Override
         protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-                java.io.OutputStream output, boolean resuming) {
+                java.io.OutputStream output) {
             streamTable(spec, tableName, context, output,
-                    (stream, effectiveSpec, effectiveTable, resume) ->
+                    (stream, effectiveSpec, effectiveTable) ->
                             new ai.chat2db.community.domain.core.impl.task.export.sink.CsvSink(
-                                    stream, true, resume),
+                                    stream, true),
                     ExportValueMode.NATIVE, 2,
-                    new ExportProgressLogger(context, "CSV", tableName), resuming);
+                    new ExportProgressLogger(context, "CSV", tableName));
         }
     }
 
@@ -354,15 +353,6 @@ class LargeTableStressIT {
         @Override
         public Long taskId() {
             return 1L;
-        }
-
-        @Override
-        public void checkpoint(ResumeState state) {
-        }
-
-        @Override
-        public List<ResumeState> resumeStates() {
-            return List.of();
         }
 
         @Override
@@ -429,7 +419,7 @@ class LargeTableStressIT {
         private final List<Task> tasks = new ArrayList<>();
         private final List<TaskEvent> events = new ArrayList<>();
         private final List<TaskArtifact> artifacts = new ArrayList<>();
-        private final List<ResumeState> states = new ArrayList<>();
+
         private long sequence;
 
         @Override
@@ -507,24 +497,5 @@ class LargeTableStressIT {
             artifacts.removeIf(artifact -> artifact.getArtifactId().equals(artifactId));
         }
 
-        @Override
-        public List<Task> listResumableTasks() {
-            return List.of();
-        }
-
-        @Override
-        public void saveResumeState(Long taskId, ResumeState state) {
-            states.add(state);
-        }
-
-        @Override
-        public List<ResumeState> listResumeStates(Long taskId) {
-            return List.copyOf(states);
-        }
-
-        @Override
-        public void clearResumeStates(Long taskId) {
-            states.clear();
-        }
     }
 }

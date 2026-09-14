@@ -12,10 +12,9 @@ import {
   WorkspaceTabType,
   databaseTypeList,
 } from '@/constants';
-import { ImportExportFileType, ImportExportType } from '@/constants/importExport';
+import { ImportExportType } from '@/constants/importExport';
 import { ShortcutAction } from '@/constants/shortcut';
 import { TreeNodeData } from '@/typings';
-import type { ImportExportTargetScope } from '@/typings/importExport';
 import { canImportExport } from '@/utils/env';
 
 // ----- store -----
@@ -46,6 +45,7 @@ import { compatibleDataBaseName, getDatabaseSupport } from '@/utils/database';
 import { isDatabaseCapabilitySupported } from '@/utils/databaseJudgments';
 import { dropMenuConfig } from '../menuConfig';
 
+import { handleExportSqlFile } from '@/blocks/ImportAndExport/functions/exportSqlFile';
 import { useOrgStore } from '@/store/workspaceContext';
 import { ILoadDataOptions, treeConfig } from '../treeConfig';
 
@@ -116,13 +116,6 @@ function handleMenuOptions(treeNodeType, databaseType) {
   return withDataSourceColorMenuOption(menuOptions, treeNodeType);
 }
 
-function getImportExportTargetScope(treeNodeType: TreeNodeType): ImportExportTargetScope {
-  if (treeNodeType === TreeNodeType.TABLE) return 'TABLE';
-  if (treeNodeType === TreeNodeType.SCHEMA) return 'SCHEMA';
-  if (treeNodeType === TreeNodeType.DATABASE) return 'DATABASE';
-  return 'DATA_SOURCE';
-}
-
 // Node that can be double-clicked
 export const canBeDoubleClicked = [
   TreeNodeType.TABLE,
@@ -174,11 +167,16 @@ export const useCreateRightClickMenu = () => {
     };
   });
 
-  const { setImportExportDataBoundInfo } = useImportExportStore((state) => {
-    return {
-      setImportExportDataBoundInfo: state.setImportExportDataBoundInfo,
-    };
-  });
+  const { setImportExportDataBoundInfo, setRunSqlBoundInfo, getTaskList, openLogModal } = useImportExportStore(
+    (state) => {
+      return {
+        setImportExportDataBoundInfo: state.setImportExportDataBoundInfo,
+        setRunSqlBoundInfo: state.setRunSqlBoundInfo,
+        getTaskList: state.getTaskList,
+        openLogModal: state.openLogModal,
+      };
+    },
+  );
 
   const { openUnifiedConfirmationModal } = useGlobalStore((state) => {
     return {
@@ -210,7 +208,6 @@ export const useCreateRightClickMenu = () => {
       extraParams,
       clientRuntime.usesFixedIdentity,
     );
-    const importExportTargetScope = getImportExportTargetScope(treeNodeType);
 
     const persistIdentityColor = (nextIdentityColor: string | null) => {
       const targetDataSourceId = dataSourceId!;
@@ -1046,14 +1043,11 @@ export const useCreateRightClickMenu = () => {
         text: i18n('workspace.menu.runSqlFile'),
         icon: 'icon-run-sql',
         handle: () => {
-          setImportExportDataBoundInfo({
+          setRunSqlBoundInfo({
             dataSourceName: dataSourceName,
             dataSourceId: dataSourceId!,
             databaseName,
             schemaName,
-            targetScope: importExportTargetScope,
-            type: ImportExportType.IMPORT,
-            fileType: ImportExportFileType.SQL,
           });
         },
         discard:
@@ -1093,48 +1087,42 @@ export const useCreateRightClickMenu = () => {
           {
             text: i18n('workspace.menu.exportStructure'),
             handle: () => {
-              setImportExportDataBoundInfo({
+              handleExportSqlFile({
                 dataSourceId: dataSourceId!,
-                dataSourceName,
                 databaseName,
                 schemaName,
-                tableName,
-                targetScope: importExportTargetScope,
-                type: ImportExportType.EXPORT,
-                fileType: ImportExportFileType.SQL,
-                sqlExportScope: 'SCHEMA',
+                tableNames: tableName ? [tableName] : undefined,
+                scope: 'SCHEMA',
+                getTaskList,
+                openLogModal,
               });
             },
           },
           {
             text: i18n('workspace.menu.exportData'),
             handle: () => {
-              setImportExportDataBoundInfo({
+              handleExportSqlFile({
                 dataSourceId: dataSourceId!,
-                dataSourceName,
                 databaseName,
                 schemaName,
-                tableName,
-                targetScope: importExportTargetScope,
-                type: ImportExportType.EXPORT,
-                fileType: ImportExportFileType.SQL,
-                sqlExportScope: 'TABLE',
+                tableNames: tableName ? [tableName] : undefined,
+                scope: 'TABLE',
+                getTaskList,
+                openLogModal,
               });
             },
           },
           {
             text: i18n('workspace.menu.exportStructureData'),
             handle: () => {
-              setImportExportDataBoundInfo({
+              handleExportSqlFile({
                 dataSourceId: dataSourceId!,
-                dataSourceName,
                 databaseName,
                 schemaName,
-                tableName,
-                targetScope: importExportTargetScope,
-                type: ImportExportType.EXPORT,
-                fileType: ImportExportFileType.SQL,
-                sqlExportScope: 'ALL',
+                tableNames: tableName ? [tableName] : undefined,
+                scope: 'ALL',
+                getTaskList,
+                openLogModal,
               });
             },
           },
@@ -1156,7 +1144,6 @@ export const useCreateRightClickMenu = () => {
             databaseName,
             schemaName,
             tableName: tableName!,
-            targetScope: 'TABLE',
             type: ImportExportType.EXPORT,
           });
         },
@@ -1177,7 +1164,6 @@ export const useCreateRightClickMenu = () => {
             databaseName,
             schemaName,
             tableName: tableName!,
-            targetScope: 'TABLE',
             type: ImportExportType.IMPORT,
           });
         },

@@ -29,9 +29,7 @@ public final class ImportSqlExecutor {
     }
 
     /**
-     * @param atomicBatches fast mode executes the whole row batch as one transaction, because its
-     *                      resume watermark is batch-granular; standard mode keeps the historical
-     *                      500-statement chunks it has always used.
+     * @param atomicBatches whether the whole row batch is committed as one transaction
      */
     public ImportSqlExecutor(TaskExecutionContext context, boolean atomicBatches) {
         this.context = context;
@@ -93,10 +91,7 @@ public final class ImportSqlExecutor {
             return;
         }
         context.checkCancelled();
-        // Fast mode executes the whole row batch as one transaction: its resume watermark is
-        // batch-granular, so a failure must not leave a committed prefix the watermark does not
-        // cover. Standard mode keeps the historical chunked commits (batch and chunk are both 500
-        // rows there, so the watermark stays exact).
+        // Keep a failed row batch atomic so error isolation can retry healthy rows safely.
         DefaultSQLExecutor.getInstance().executeBatchInsert(
                 Chat2DBContext.getConnection(), List.copyOf(inserts), context, context::checkCancelled,
                 atomicBatches ? 0 : DefaultSQLExecutor.BATCH_INSERT_CHUNK_SIZE);

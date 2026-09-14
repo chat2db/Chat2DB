@@ -47,37 +47,6 @@ public class ArtifactServiceImpl implements ArtifactService {
                 .build();
     }
 
-    /**
-     * Builds a draft around the interrupted run's temporary file, so a checkpointed export
-     * continues appending where it stopped instead of restarting the artifact.
-     */
-    @Override
-    public ArtifactDraft resumeDraft(Long taskId, String role, String outputDirectory, String fileName,
-            String mediaType, File existingTemporaryFile) {
-        File directory = resolveDirectory(outputDirectory);
-        if (!directory.exists() && !directory.mkdirs()) {
-            throw new IllegalStateException("Could not create artifact directory");
-        }
-        String safeFileName = safeFileName(fileName);
-        File target = reserveAvailableTarget(directory, safeFileName);
-        return ArtifactDraft.builder()
-                .role(role)
-                .temporaryFile(existingTemporaryFile)
-                .targetFile(target)
-                .mediaType(mediaType)
-                .build();
-    }
-
-    /**
-     * Whether {@code file} is a draft this application wrote for this task (the only files a
-     * resume may safely reopen).
-     */
-    @Override
-    public boolean isInterruptedDraft(Long taskId, File file) {
-        String name = file.getName();
-        return file.isFile() && name.startsWith(".task-" + taskId + "-") && name.endsWith(DRAFT_FILE_SUFFIX);
-    }
-
     @Override
     public String publish(ArtifactDraft draft) {
         return publish(draft, artifactId -> {});

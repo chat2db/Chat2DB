@@ -1,7 +1,6 @@
 package ai.chat2db.community.web.api.controller;
 
 import ai.chat2db.community.domain.api.model.PageResponse;
-import ai.chat2db.community.domain.api.model.task.ImportPreview;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -68,19 +67,6 @@ public class TaskController {
         Long taskId = importTaskSubmissionService.submit(
                 taskWebConverter.importRequest2spec(request), request.getFileId());
         return DataResult.of(new TaskSubmitResponse(taskId));
-    }
-
-    @PostMapping("/import/preview")
-    public DataResult<ImportPreview> previewImport(@Valid @RequestBody TaskImportRequest request) {
-        if (StringUtils.isBlank(request.getFileId())) {
-            throw new ai.chat2db.community.tools.exception.ParamBusinessException("fileId");
-        }
-        return DataResult.of(taskService.previewImport(taskWebConverter.importRequest2spec(request)));
-    }
-
-    @PostMapping("/resume")
-    public DataResult<TaskSubmitResponse> resume(@RequestBody @Valid TaskIdRequest request) {
-        return DataResult.of(new TaskSubmitResponse(taskService.resume(request.getTaskId())));
     }
 
     @GetMapping("/list")

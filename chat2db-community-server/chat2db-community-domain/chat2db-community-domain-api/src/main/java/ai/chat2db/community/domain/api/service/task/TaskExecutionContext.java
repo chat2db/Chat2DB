@@ -1,11 +1,9 @@
 package ai.chat2db.community.domain.api.service.task;
 
 import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.TaskArtifactRole;
 import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
 
-import java.util.List;
 import java.util.Map;
 
 public interface TaskExecutionContext extends ISqlExecutionStatementListener {
@@ -45,17 +43,4 @@ public interface TaskExecutionContext extends ISqlExecutionStatementListener {
 
     void write(String content);
 
-    /**
-     * Checkpoints persisted by earlier attempts of this task, so an exporter can resume where the
-     * previous run stopped.
-     */
-    default List<ResumeState> resumeStates() {
-        return List.of();
-    }
-
-    /**
-     * Persists one shard checkpoint (keyed by {@code ResumeState.shardNo}) for a later resume.
-     */
-    default void checkpoint(ResumeState state) {
-    }
 }

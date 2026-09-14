@@ -118,7 +118,6 @@ public abstract class BaseExcelImporter extends BaseImporter {
             batcher.flush();
             taskContext.logInfo("IMPORT_SUMMARY", "Excel import finished", Map.of(
                     "importedRows", batcher.importedRows(),
-                    "alreadyAppliedRows", batcher.reconciledRows(),
                     "rejectedRows", batcher.rejectedRows()));
         }
 

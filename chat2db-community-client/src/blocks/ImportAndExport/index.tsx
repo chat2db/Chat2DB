@@ -1,6 +1,12 @@
 import { memo } from 'react';
-import ImportFileModal from './components/ImportFileModal';
+import RunSqlModal from './components/RunSqlModal';
+import ImportFileModal from './components/RunSql';
 
 export default memo(() => {
-  return <ImportFileModal />;
+  return (
+    <>
+      <RunSqlModal />
+      <ImportFileModal />
+    </>
+  );
 });

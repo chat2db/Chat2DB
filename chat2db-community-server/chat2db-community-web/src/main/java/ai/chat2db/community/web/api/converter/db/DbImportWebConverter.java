@@ -17,6 +17,8 @@ public class DbImportWebConverter {
                 .csvOptions(request.getCsvOptions())
                 .mappings(request.getMappings())
                 .unmappedTarget(request.getUnmappedTarget())
+                .mode(request.getMode())
+                .confirmedNoStrongRelations(request.getConfirmedNoStrongRelations())
                 .build();
     }
 }

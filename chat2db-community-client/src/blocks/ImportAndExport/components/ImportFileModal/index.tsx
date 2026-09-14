@@ -5,28 +5,38 @@ import i18n from '@/i18n';
 import ImportExportFile, { ImportExportFileRef } from '../ImportExportFile';
 import { useImportExportStore } from '@/store/importExport';
 import ModalFooterButton from '@/components/Modal/ModalFooterButton';
-import importExportServices, { type ExportTaskParams, type ImportTaskParams } from '@/service/importExport';
+import importExportServices from '@/service/importExport';
 import { ImportExportTaskStatus, ImportExportType } from '@/constants/importExport';
 import Log from '@/blocks/ImportAndExport/components/Log';
 import { ImportExportTaskDetails } from '@/typings/importExport';
+import ImportMappingContent from '@/blocks/ImportAndExport/components/ImportMappingContent';
 import jcefApi from '@/jcef';
 import { isDesktop } from '@/utils/env';
+import sqlService from '@/service/sql';
+import { prepareImportParams } from './submission';
 import {
   IMPORT_TARGET_TABLE_REFRESH_EVENT,
   shouldRefreshImportTargetTable,
 } from '@/store/importExport/taskCenterUtils';
+import type { FileUrl } from '@/components/UploadLocalFile';
 
 interface IProps {
   className?: string;
 }
 
+const isPreviewFile = (file?: FileUrl) => {
+  const name = (file?.fileName || file?.file?.name)?.toLowerCase();
+  return name?.endsWith('.csv') || name?.endsWith('.xls') || name?.endsWith('.xlsx');
+};
+
 export default memo<IProps>((_props) => {
   const [isReady, setIsReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const importExportFileRef = useRef<ImportExportFileRef>(null);
+  const previousTaskDetailsRef = useRef<ImportExportTaskDetails>();
   const [taskId, setTaskId] = useState<number>();
   const [taskDetails, setTaskDetails] = useState<ImportExportTaskDetails>();
-  const previousTaskDetailsRef = useRef<ImportExportTaskDetails>();
-  const [submitting, setSubmitting] = useState(false);
+  const [importFile, setImportFile] = useState<FileUrl>();
 
   const { importExportDataBoundInfo, setImportExportDataBoundInfo, getTaskList } = useImportExportStore((state) => {
     return {
@@ -38,29 +48,41 @@ export default memo<IProps>((_props) => {
 
   useEffect(() => {
     if (!importExportDataBoundInfo) {
-      setIsReady(false);
       setTaskId(undefined);
       setTaskDetails(undefined);
       previousTaskDetailsRef.current = undefined;
+      setImportFile(undefined);
     }
   }, [importExportDataBoundInfo]);
 
-  const handleRunSQl = () => {
+  const handleRunSQl = async () => {
     if (submitting) return;
     const params = importExportFileRef.current?.getValues();
     if (!params) return;
     setSubmitting(true);
-    const request =
-      params.taskType === 'DATA_FILE_IMPORT' || params.taskType === 'SQL_FILE_IMPORT'
-        ? importExportServices.submitImport(params as ImportTaskParams)
-        : importExportServices.submitExport(params as ExportTaskParams);
-    request
-      .then((res) => {
-        setTaskId(res.taskId);
-        getTaskList();
-      })
-      .catch(() => {})
-      .finally(() => setSubmitting(false));
+    try {
+      let response;
+      if ('sourceFile' in params) {
+        let importParams = params;
+        if (!importFile) return;
+        importParams = await prepareImportParams(
+          importParams, importFile, sqlService.uploadImportFile, sqlService.stageDesktopImportFile,
+        );
+        response = await importExportServices.submitImport(importParams);
+      } else {
+        response = await importExportServices.submitExport(params);
+      }
+      setTaskId(response.taskId);
+      getTaskList();
+    } catch {
+      // Request helpers display the submission error.
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleImportFileChange = (file?: FileUrl) => {
+    setImportFile(file);
   };
 
   const renderFooter = () => {
@@ -120,41 +142,50 @@ export default memo<IProps>((_props) => {
   );
 
   const handleTaskChange = (_taskDetails: ImportExportTaskDetails) => {
-    const previous = previousTaskDetailsRef.current;
+    const previousTask = previousTaskDetailsRef.current;
     previousTaskDetailsRef.current = _taskDetails;
     setTaskDetails(_taskDetails);
-    if (shouldRefreshImportTargetTable(previous, _taskDetails)) {
-      window.dispatchEvent(new CustomEvent(IMPORT_TARGET_TABLE_REFRESH_EVENT, { detail: _taskDetails.target }));
+    if (shouldRefreshImportTargetTable(previousTask, _taskDetails)) {
+      window.dispatchEvent(
+        new CustomEvent(IMPORT_TARGET_TABLE_REFRESH_EVENT, {
+          detail: _taskDetails.target,
+        }),
+      );
       void getTaskList();
     }
   };
 
-  const modalTitle = (() => {
-    if (importExportDataBoundInfo?.type === ImportExportType.IMPORT) {
-      return importExportDataBoundInfo.targetScope === 'TABLE'
-        ? i18n('workspace.menu.importData')
-        : i18n('workspace.menu.runSqlFile');
-    }
-    if (importExportDataBoundInfo?.sqlExportScope === 'SCHEMA') {
-      return i18n('workspace.menu.exportStructure');
-    }
-    if (importExportDataBoundInfo?.sqlExportScope === 'ALL') {
-      return i18n('workspace.menu.exportStructureData');
-    }
-    return i18n('workspace.menu.exportData');
-  })();
+  const importPreviewContext =
+    importExportDataBoundInfo?.type === ImportExportType.IMPORT &&
+    isPreviewFile(importFile) &&
+    importExportDataBoundInfo.dataSourceId != null &&
+    importExportDataBoundInfo.databaseName != null &&
+    importFile != null
+      ? {
+          dataSourceId: importExportDataBoundInfo.dataSourceId,
+          databaseName: importExportDataBoundInfo.databaseName,
+          schemaName: importExportDataBoundInfo.schemaName,
+          tableName: importExportDataBoundInfo.tableName || '',
+          file: importFile,
+        }
+      : null;
+  const showImportPreview = taskId == null && importPreviewContext != null;
 
   return (
     <Modal
       open={!!importExportDataBoundInfo}
       okText={i18n('common.button.start')}
       cancelText={i18n('common.button.cancel')}
-      title={modalTitle}
-      width={960}
+      title={
+        importExportDataBoundInfo?.type === ImportExportType.IMPORT
+          ? i18n('workspace.menu.importData')
+          : i18n('workspace.menu.exportData')
+      }
       headerIconCode={importExportDataBoundInfo?.type === ImportExportType.IMPORT ? 'icon-upload' : 'icon-download'}
-      headerBorder
+      width={showImportPreview ? 960 : undefined}
+      centered
       destroyOnClose
-      footer={taskId ? logRenderFooter() : renderFooter()}
+      footer={taskId ? logRenderFooter() : showImportPreview ? null : renderFooter()}
       maskClosable={false}
       onCancel={() => {
         setImportExportDataBoundInfo(null);
@@ -162,8 +193,24 @@ export default memo<IProps>((_props) => {
     >
       {taskId ? (
         <Log onTaskChange={handleTaskChange} taskId={taskId} />
+      ) : importPreviewContext ? (
+        <ImportMappingContent
+          dataSourceId={importPreviewContext.dataSourceId}
+          databaseName={importPreviewContext.databaseName}
+          schemaName={importPreviewContext.schemaName}
+          tableName={importPreviewContext.tableName}
+          file={importPreviewContext.file}
+          onSubmitted={(submittedTaskId) => {
+            setTaskId(submittedTaskId);
+            getTaskList();
+          }}
+        />
       ) : (
-        <ImportExportFile ref={importExportFileRef} setIsReady={setIsReady} />
+        <ImportExportFile
+          ref={importExportFileRef}
+          setIsReady={setIsReady}
+          onImportFileChange={handleImportFileChange}
+        />
       )}
     </Modal>
   );

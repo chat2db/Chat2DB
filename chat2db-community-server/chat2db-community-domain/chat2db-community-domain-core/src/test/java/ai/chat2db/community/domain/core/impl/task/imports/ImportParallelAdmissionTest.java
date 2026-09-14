@@ -77,6 +77,31 @@ class ImportParallelAdmissionTest {
         assertTrue(hasFinding(report, "P0", "BLOCKER"));
     }
 
+    @Test
+    void usesTheExistingCsvDelimiterInsteadOfSeparatePreviewOptions() throws Exception {
+        ImportTaskSpec spec = csvSpec("ID;NAME\n1;Alice\n", true, true);
+        var options = ai.chat2db.community.domain.api.model.task.CsvOptions.defaults();
+        options.setDelimiter(";");
+        spec.setCsvOptions(options);
+        ImportAdmissionReport report = ImportParallelAdmission.assess(spec, columns());
+        assertTrue(report.isParallelAllowed());
+        assertEquals(1L, report.getDataRows());
+    }
+
+    @Test
+    void honorsHeaderlessCsvAndSourceColumnMapping() throws Exception {
+        ImportTaskSpec spec = csvSpec("1,Alice\n2,Bob\n", true, true);
+        var options = ai.chat2db.community.domain.api.model.task.CsvOptions.defaults();
+        options.setHasHeader(false);
+        options.setDataStartRow(1);
+        spec.setCsvOptions(options);
+        spec.setColumnMappings(List.of(new ImportColumnMapping("column_1", "ID"),
+                new ImportColumnMapping("column_2", "NAME")));
+        ImportAdmissionReport report = ImportParallelAdmission.assess(spec, columns());
+        assertTrue(report.isParallelAllowed());
+        assertEquals(2L, report.getDataRows());
+    }
+
     private ImportTaskSpec csvSpec(String content, boolean confirmed, boolean mapGeneratedKey) throws Exception {
         Path source = Files.writeString(tempDirectory.resolve("input-" + System.nanoTime() + ".csv"),
                 content, StandardCharsets.UTF_8);

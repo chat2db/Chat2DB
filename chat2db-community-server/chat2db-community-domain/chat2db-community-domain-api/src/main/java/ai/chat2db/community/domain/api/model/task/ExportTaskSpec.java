@@ -47,12 +47,6 @@ public class ExportTaskSpec implements TaskSpec {
     private String suggestedFileName;
 
     /**
-     * Rows per resume checkpoint; {@code null} or non-positive disables checkpointing and keeps the
-     * single-statement streaming path.
-     */
-    private Integer checkpointRows;
-
-    /**
      * Execution mode, see {@link TaskExecutionMode}; {@code null} resolves to {@code STANDARD}.
      */
     private String mode;

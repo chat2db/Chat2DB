@@ -11,6 +11,7 @@ import ai.chat2db.community.storage.AbstractTaskStorageContractTest;
 import cn.hutool.core.io.FileUtil;
 import com.alibaba.fastjson2.JSON;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import java.io.File;
 import java.util.Date;
@@ -38,6 +39,17 @@ class FileTaskStorageTest extends AbstractTaskStorageContractTest {
 
     private FileTaskStorage fileStorage() {
         return (FileTaskStorage) storage();
+    }
+
+    @Test
+    void componentScanProvidesFileTaskStorage() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.scan(FileTaskStorage.class.getPackageName());
+            context.refresh();
+
+            assertEquals(1, context.getBeansOfType(TaskStorage.class).size());
+            assertEquals(FileTaskStorage.class, context.getBean(TaskStorage.class).getClass());
+        }
     }
 
     @Test

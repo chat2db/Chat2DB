@@ -34,7 +34,6 @@ public class DataFileImportTaskExecutor implements TaskExecutor<ImportTaskSpec> 
 
     @Override
     public void execute(ImportTaskSpec spec, TaskExecutionContext context) {
-        boolean completed = false;
         try {
             TaskExecutorSupport.requireReadableSource(spec.getSourceFile());
             String format = TaskExecutorSupport.requireFormat(spec.getFormat());
@@ -48,15 +47,13 @@ public class DataFileImportTaskExecutor implements TaskExecutor<ImportTaskSpec> 
             strategy.run(spec, context);
             context.reportProgress(95, TaskStage.IMPORTING.name(), "Data import completed");
             context.logInfo(TaskEventCode.IMPORT_COMPLETED.name(), "Data import completed");
-            completed = true;
         } catch (TaskCancelledException | TaskExecutionException e) {
             throw e;
         } catch (Exception e) {
             throw new TaskExecutionException(TaskErrorCode.IMPORT_FAILED.name(),
                     "Could not import data file", e);
         } finally {
-            // Interrupted imports still need the exact staged source to resume from checkpoints.
-            if (completed && spec.getImportFileId() != null) {
+            if (spec.getImportFileId() != null) {
                 importFileStagingService.release(spec.getImportFileId());
             }
         }

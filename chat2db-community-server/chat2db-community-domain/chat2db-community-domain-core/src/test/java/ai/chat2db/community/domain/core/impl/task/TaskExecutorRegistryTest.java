@@ -346,28 +346,6 @@ class TaskExecutorRegistryTest {
             }
         }
 
-        @Override
-        public synchronized List<Task> listResumableTasks() {
-            return List.of();
-        }
-
-        @Override
-        public synchronized void saveResumeState(Long taskId,
-                ai.chat2db.community.domain.api.model.task.ResumeState state) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public synchronized List<ai.chat2db.community.domain.api.model.task.ResumeState> listResumeStates(
-                Long taskId) {
-            return List.of();
-        }
-
-        @Override
-        public synchronized void clearResumeStates(Long taskId) {
-            throw new UnsupportedOperationException();
-        }
-
         synchronized int createCount() {
             return createCount;
         }

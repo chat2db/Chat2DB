@@ -3,7 +3,6 @@ package ai.chat2db.community.domain.api.service.task;
 import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
 import ai.chat2db.community.domain.api.model.task.TaskArtifactRole;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collections;
@@ -17,11 +16,6 @@ public interface ArtifactService {
     }
 
     ArtifactDraft createDraft(Long taskId, String role, String outputDirectory, String fileName, String mediaType);
-
-    ArtifactDraft resumeDraft(Long taskId, String role, String outputDirectory, String fileName,
-            String mediaType, File existingTemporaryFile);
-
-    boolean isInterruptedDraft(Long taskId, File file);
 
     String publish(ArtifactDraft draft);
 

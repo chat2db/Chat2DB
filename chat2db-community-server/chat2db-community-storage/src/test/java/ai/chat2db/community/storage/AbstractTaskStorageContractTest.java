@@ -1,7 +1,6 @@
 package ai.chat2db.community.storage;
 
 import ai.chat2db.community.domain.api.model.PageResponse;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskArtifactRole;
@@ -445,23 +444,20 @@ public abstract class AbstractTaskStorageContractTest {
     }
 
     @Test
-    void artifactAndResumeStateRejectUnknownTasks() {
+    void artifactRejectsUnknownTasks() {
         TaskStorage storage = storage();
         create(storage, "task");
 
         assertThrows(IllegalArgumentException.class,
                 () -> storage.saveArtifact(-1L, artifact("artifact-1", TaskArtifactRole.OUTPUT, "text/csv", 1L)));
-        assertThrows(IllegalArgumentException.class,
-                () -> storage.saveResumeState(-1L, resumeState(0, 10L)));
     }
 
     @Test
-    void terminalTaskDeletionRemovesArtifactsAndResumeStates() {
+    void terminalTaskDeletionRemovesArtifacts() {
         TaskStorage storage = storage();
         Long taskId = create(storage, "task").getId();
         assertTrue(start(storage, taskId));
         storage.saveArtifact(taskId, artifact("artifact-1", TaskArtifactRole.OUTPUT, "text/csv", 10L));
-        storage.saveResumeState(taskId, resumeState(0, 100L));
         assertTrue(storage.compareAndSetStatus(taskId, TaskStatus.RUNNING.name(), TaskStatus.SUCCESS.name(),
                 TaskStatusPatch.builder().artifactIds(List.of("artifact-1")).finishedAt(new Date()).build(),
                 event(TaskEventCode.TASK_SUCCEEDED.name())));
@@ -471,75 +467,17 @@ public abstract class AbstractTaskStorageContractTest {
 
         TaskStorage reloaded = storage();
         assertTrue(reloaded.listArtifacts(taskId).isEmpty());
-        assertTrue(reloaded.listResumeStates(taskId).isEmpty());
     }
 
     @Test
-    void nonTerminalTasksWithResumeStatesAreListedAsResumable() {
-        TaskStorage storage = storage();
-        Long runningId = create(storage, "running").getId();
-        Long finishedId = create(storage, "finished").getId();
-        Long plainId = create(storage, "plain").getId();
-        assertTrue(start(storage, runningId));
-        assertTrue(start(storage, finishedId));
-        assertTrue(storage.compareAndSetStatus(finishedId, TaskStatus.RUNNING.name(), TaskStatus.SUCCESS.name(),
-                TaskStatusPatch.builder().finishedAt(new Date()).build(),
-                event(TaskEventCode.TASK_SUCCEEDED.name())));
-
-        storage.saveResumeState(runningId, resumeState(0, 100L));
-        storage.saveResumeState(finishedId, resumeState(0, 100L));
-        storage.saveResumeState(finishedId, resumeState(1, 200L));
-
-        assertEquals(List.of(runningId), ids(storage.listResumableTasks()));
-
-        storage.clearResumeStates(runningId);
-        assertTrue(storage.listResumeStates(runningId).isEmpty());
-        assertTrue(storage.listResumableTasks().isEmpty());
-        assertEquals(2, storage.listResumeStates(finishedId).size());
-    }
-
-    @Test
-    void resumeStatesKeepTheirFieldsAndAreSortedByShard() {
-        TaskStorage storage = storage();
-        Long taskId = create(storage, "task").getId();
-        storage.saveResumeState(taskId, resumeState(2, 300L));
-        storage.saveResumeState(taskId, resumeState(0, 100L));
-        storage.saveResumeState(taskId, resumeState(0, 250L));
-
-        List<ResumeState> states = storage.listResumeStates(taskId);
-
-        assertEquals(List.of(0, 2), states.stream().map(ResumeState::getShardNo).toList());
-        assertEquals(250L, states.get(0).getRowsDone());
-        assertEquals("KEYSET", states.get(1).getKind());
-        assertEquals("{\"lastKey\":300}", states.get(1).getCursorJson());
-        assertEquals(3000L, states.get(1).getBytesDone());
-    }
-
-    @Test
-    void runningTaskCanBeRequeuedToPendingForResume() {
-        TaskStorage storage = storage();
-        Long taskId = create(storage, "task").getId();
-        assertTrue(start(storage, taskId));
-
-        assertTrue(storage.compareAndSetStatus(taskId, TaskStatus.RUNNING.name(), TaskStatus.PENDING.name(),
-                TaskStatusPatch.builder().stage(TaskStage.RESUMING.name()).build(),
-                event(TaskEventCode.RESUME_AVAILABLE.name())));
-
-        Task requeued = storage.get(taskId).orElseThrow();
-        assertEquals(TaskStatus.PENDING.name(), requeued.getStatus());
-        assertEquals(TaskStage.RESUMING.name(), requeued.getStage());
-        assertEquals(List.of(1L, 2L, 3L), sequences(storage.listEvents(taskId, 0, 20)));
-    }
-
-    @Test
-    void runningTaskCannotBeRequeuedWithoutTheResumingStage() {
+    void runningTaskCannotBeRequeued() {
         TaskStorage storage = storage();
         Long taskId = create(storage, "task").getId();
         assertTrue(start(storage, taskId));
 
         assertFalse(storage.compareAndSetStatus(taskId, TaskStatus.RUNNING.name(), TaskStatus.PENDING.name(),
                 TaskStatusPatch.builder().stage(TaskStage.PENDING.name()).build(),
-                event(TaskEventCode.RESUME_AVAILABLE.name())));
+                event(TaskEventCode.TASK_STARTED.name())));
 
         Task unchanged = storage.get(taskId).orElseThrow();
         assertEquals(TaskStatus.RUNNING.name(), unchanged.getStatus());
@@ -610,14 +548,4 @@ public abstract class AbstractTaskStorageContractTest {
                 .build();
     }
 
-    protected ResumeState resumeState(int shardNo, long rowsDone) {
-        return ResumeState.builder()
-                .shardNo(shardNo)
-                .kind("KEYSET")
-                .cursorJson("{\"lastKey\":" + rowsDone + "}")
-                .rowsDone(rowsDone)
-                .bytesDone(rowsDone * 10L)
-                .updatedAt(new Date())
-                .build();
-    }
 }

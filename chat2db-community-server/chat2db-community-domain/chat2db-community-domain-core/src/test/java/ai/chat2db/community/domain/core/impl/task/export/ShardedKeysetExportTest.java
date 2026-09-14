@@ -38,7 +38,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -232,11 +231,11 @@ class ShardedKeysetExportTest {
 
         @Override
         protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-                java.io.OutputStream output, boolean resuming) {
+                java.io.OutputStream output) {
             streamTable(spec, tableName, context, output,
-                    (stream, effectiveSpec, effectiveTable, resume) -> new CsvSink(stream, true),
+                    (stream, effectiveSpec, effectiveTable) -> new CsvSink(stream, true),
                     ExportValueMode.NATIVE, 1000,
-                    new ExportProgressLogger(context, "CSV", tableName), resuming);
+                    new ExportProgressLogger(context, "CSV", tableName));
         }
 
         private void exportDirect(RecordingContext context, java.io.ByteArrayOutputStream out,
@@ -246,7 +245,7 @@ class ShardedKeysetExportTest {
                     .target(TaskTargetSnapshot.builder().dataSourceId(1L).tableName("SHARD_ITEMS").build())
                     .mode(mode)
                     .build();
-            singleExport(spec, context, "SHARD_ITEMS", out, false);
+            singleExport(spec, context, "SHARD_ITEMS", out);
         }
     }
 
@@ -264,12 +263,12 @@ class ShardedKeysetExportTest {
 
         @Override
         protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-                java.io.OutputStream output, boolean resuming) {
+                java.io.OutputStream output) {
             streamTable(spec, tableName, context, output,
-                    (stream, effectiveSpec, effectiveTable, resume) -> new SqlSink(stream,
+                    (stream, effectiveSpec, effectiveTable) -> new SqlSink(stream,
                             Chat2DBContext.getSqlBuilder(), null, null),
                     ExportValueMode.SQL_LITERAL, 1000,
-                    new ExportProgressLogger(context, "SQL", tableName), resuming);
+                    new ExportProgressLogger(context, "SQL", tableName));
         }
 
         private void exportDirect(RecordingContext context, java.io.ByteArrayOutputStream out,
@@ -279,7 +278,7 @@ class ShardedKeysetExportTest {
                     .target(TaskTargetSnapshot.builder().dataSourceId(1L).tableName("SHARD_ITEMS").build())
                     .mode(mode)
                     .build();
-            singleExport(spec, context, "SHARD_ITEMS", out, false);
+            singleExport(spec, context, "SHARD_ITEMS", out);
         }
     }
 
@@ -291,15 +290,6 @@ class ShardedKeysetExportTest {
         @Override
         public Long taskId() {
             return 42L;
-        }
-
-        @Override
-        public void checkpoint(ai.chat2db.community.domain.api.model.task.ResumeState state) {
-        }
-
-        @Override
-        public List<ai.chat2db.community.domain.api.model.task.ResumeState> resumeStates() {
-            return List.of();
         }
 
         @Override

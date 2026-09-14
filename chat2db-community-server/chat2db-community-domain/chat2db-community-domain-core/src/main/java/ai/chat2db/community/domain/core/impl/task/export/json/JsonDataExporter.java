@@ -29,10 +29,10 @@ public class JsonDataExporter extends BaseExporter {
 
     @Override
     protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-            OutputStream output, boolean resuming) {
-        streamTable(spec, tableName, context, output, (stream, effectiveSpec, effectiveTable, resume) ->
+            OutputStream output) {
+        streamTable(spec, tableName, context, output, (stream, effectiveSpec, effectiveTable) ->
                         new JsonSink(stream),
                 ExportValueMode.NATIVE, EXPORT_BATCH_ROWS,
-                new ExportProgressLogger(context, "JSON", tableName), resuming);
+                new ExportProgressLogger(context, "JSON", tableName));
     }
 }

@@ -8,14 +8,12 @@ import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskExecutionException;
 import ai.chat2db.community.domain.api.model.task.TaskExecutionMode;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
+import ai.chat2db.community.domain.api.model.task.CsvOptions;
+import ai.chat2db.community.domain.core.impl.db.CsvParser;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -137,50 +135,57 @@ public final class ImportParallelAdmission {
 
     private static CsvFacts scanCsv(File source, ImportTaskSpec spec, List<ImportAdmissionFinding> findings) {
         try {
-            Charset charset = ImportFileProbe.effectiveCharset(source,
-                    spec.getOptions() == null ? null : spec.getOptions().getCharset());
-            char quote = ImportFileProbe.quoteChar(
-                    spec.getOptions() == null ? null : spec.getOptions().getQuoteChar());
-            char delimiter = ImportFileProbe.delimiterChar(
-                    spec.getOptions() == null ? null : spec.getOptions().getDelimiter(), charset, source);
-            CSVFormat csvFormat = ImportFileProbe.csvFormat(delimiter, quote);
-            List<String> headers = List.of();
-            long records = 0L;
-            long previousLine = 0L;
-            int expectedWidth = -1;
-            try (CSVParser parser = ImportFileProbe.openParser(source, charset, csvFormat)) {
-                for (CSVRecord record : parser) {
-                    records++;
-                    long currentLine = parser.getCurrentLineNumber();
-                    if (currentLine - previousLine > 1L) {
-                        blocker(findings, "C3", "A CSV field spans physical lines",
-                                "Logical record " + record.getRecordNumber() + " ends on physical line " + currentLine,
-                                "Use STANDARD mode or pre-process embedded newlines into escaped text.");
-                    }
-                    previousLine = currentLine;
-                    if (expectedWidth < 0) {
-                        expectedWidth = record.size();
-                        headers = List.copyOf(record.toList());
-                        validateHeaders(headers, findings);
-                    } else if (record.size() != expectedWidth) {
-                        blocker(findings, "D2", "CSV column count is inconsistent",
-                                "Record " + record.getRecordNumber() + " has " + record.size()
-                                        + " columns; expected " + expectedWidth,
-                                "Correct the CSV dialect or regenerate the source with a stable header.");
-                    }
+            CsvOptions options = (spec.getCsvOptions() == null ? CsvOptions.defaults() : spec.getCsvOptions()).validate();
+            CsvScan scan = new CsvScan();
+            new CsvParser(options).forEachRow(source.toPath(), record -> {
+                long rowNumber = ++scan.records;
+                List<String> values = new ArrayList<>(record.values());
+                if (Boolean.TRUE.equals(options.getHasHeader()) && rowNumber == options.getHeaderRow()) {
+                    scan.headers = values;
+                    scan.width = values.size();
+                    validateHeaders(values, findings);
+                    return;
                 }
+                if (rowNumber < options.getDataStartRow()
+                        || options.getDataEndRow() != null && rowNumber > options.getDataEndRow()) {
+                    return;
+                }
+                if (scan.width < 0) {
+                    scan.width = values.size();
+                    scan.headers = java.util.stream.IntStream.rangeClosed(1, scan.width)
+                            .mapToObj(index -> "column_" + index).toList();
+                }
+                scan.dataRows++;
+                if (values.stream().anyMatch(value -> value != null
+                        && (value.contains("\n") || value.contains("\r")))) {
+                    blocker(findings, "C3", "A CSV field spans physical lines",
+                            "Logical record " + rowNumber,
+                            "Use STANDARD mode or pre-process embedded newlines into escaped text.");
+                }
+                if (values.size() != scan.width) {
+                    blocker(findings, "D2", "CSV column count is inconsistent",
+                            "Record " + rowNumber + " has " + values.size() + " columns; expected " + scan.width,
+                            "Correct the CSV dialect or regenerate the source with a stable header.");
+                }
+            }, null);
+            if (scan.headers.isEmpty()) {
+                blocker(findings, "D2", "CSV has no usable columns", "No header or data columns were found",
+                        "Check the header and data row settings.");
             }
-            if (records == 0L) {
-                blocker(findings, "D2", "CSV has no header", "The file contains no logical records",
-                        "Provide a CSV header and explicit column mapping.");
-            }
-            return new CsvFacts(headers, Math.max(0L, records - 1L), true);
+            return new CsvFacts(scan.headers, scan.dataRows, true);
         } catch (Exception failure) {
             blocker(findings, "D1", "The CSV source could not be decoded and parsed deterministically",
                     failure.getClass().getSimpleName() + ": " + StringUtils.defaultString(failure.getMessage()),
                     "Specify the correct charset and CSV dialect, then preview the file again.");
             return new CsvFacts(List.of(), -1L, false);
         }
+    }
+
+    private static final class CsvScan {
+        private List<String> headers = List.of();
+        private int width = -1;
+        private long records;
+        private long dataRows;
     }
 
     private static void validateHeaders(List<String> headers, List<ImportAdmissionFinding> findings) {

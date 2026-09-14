@@ -95,8 +95,7 @@ final class ExcelSink implements FormatSink {
     }
 
     /**
-     * Best-effort push of EasyExcel's buffers; the workbook is only complete after {@link #close()},
-     * but Excel formats never carry checkpoints, so this only serves progress reporting.
+     * Flushes the underlying output for progress reporting. The workbook is complete after {@link #close()}.
      */
     @Override
     public void flush() throws IOException {

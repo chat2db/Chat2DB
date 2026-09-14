@@ -17,7 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** CSV import driven by the validated {@link CsvOptions} contract and the resumable row batcher. */
+/** CSV import driven by the validated {@link CsvOptions} contract and row batches. */
 public class CSVImporter extends BaseImporter implements IImportStrategy {
 
     @Override
@@ -55,7 +55,6 @@ public class CSVImporter extends BaseImporter implements IImportStrategy {
                 batcher[0].flush();
                 context.logInfo("IMPORT_SUMMARY", "CSV import finished", Map.of(
                         "importedRows", batcher[0].importedRows(),
-                        "alreadyAppliedRows", batcher[0].reconciledRows(),
                         "rejectedRows", batcher[0].rejectedRows()));
             }
         } catch (RuntimeException failure) {

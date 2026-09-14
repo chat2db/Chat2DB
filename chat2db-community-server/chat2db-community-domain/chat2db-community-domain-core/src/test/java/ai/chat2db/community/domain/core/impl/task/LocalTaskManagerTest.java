@@ -4,7 +4,6 @@ import ai.chat2db.community.domain.api.config.DriverConfig;
 import ai.chat2db.community.domain.api.model.PageResponse;
 import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskConstants;
@@ -17,7 +16,6 @@ import ai.chat2db.community.domain.api.model.task.TaskProgress;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
 import ai.chat2db.community.domain.api.model.task.TaskStatus;
 import ai.chat2db.community.domain.api.model.task.TaskStatusPatch;
-import ai.chat2db.community.domain.api.model.task.TaskStage;
 import ai.chat2db.community.domain.api.model.task.TaskTargetSnapshot;
 import ai.chat2db.community.domain.api.model.task.TaskType;
 import ai.chat2db.community.domain.api.model.task.extension.TaskOperation;
@@ -45,7 +43,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -507,28 +504,6 @@ class LocalTaskManagerTest {
     }
 
     @Test
-    void interruptedTaskWithResumeStateIsPreparedForResumeInsteadOfFailed() throws Exception {
-        TestTaskStorage storage = new TestTaskStorage();
-        Task task = storage.create(newTask(), event(TaskEventCode.TASK_CREATED.name()));
-        assertTrue(storage.compareAndSetStatus(task.getId(), TaskStatus.PENDING.name(),
-                TaskStatus.RUNNING.name(), TaskStatusPatch.builder().build(),
-                event(TaskEventCode.TASK_STARTED.name())));
-        Path temporary = Files.writeString(
-                tempDirectory.resolve(".task-" + task.getId() + "-resume.csv.part"), "partial");
-        storage.saveResumeState(task.getId(), ResumeState.builder()
-                .shardNo(0).kind("KEYSET").rowsDone(500L).build());
-
-        manager(storage, (spec, context) -> {}).reconcileInterruptedTasks();
-
-        Task reconciled = storage.get(task.getId()).orElseThrow();
-        assertEquals(TaskStatus.PENDING.name(), reconciled.getStatus());
-        assertEquals(TaskStage.RESUMING.name(), reconciled.getStage());
-        assertTrue(Files.exists(temporary));
-        assertEquals(TaskEventCode.RESUME_AVAILABLE.name(),
-                storage.listEventsBefore(task.getId(), null, 1).get(0).getCode());
-    }
-
-    @Test
     void allDraftsOfAMultiArtifactTaskArePublishedRecordedAndCleanable() throws Exception {
         TestTaskStorage storage = new TestTaskStorage();
         taskManager = manager(storage, (spec, context) -> {
@@ -639,7 +614,7 @@ class LocalTaskManagerTest {
         private final Map<Long, Task> tasks = new LinkedHashMap<>();
         private final Map<Long, List<TaskEvent>> events = new LinkedHashMap<>();
         private final Map<Long, List<TaskArtifact>> artifacts = new LinkedHashMap<>();
-        private final Map<Long, List<ResumeState>> resumeStates = new LinkedHashMap<>();
+
         private final CountDownLatch terminal = new CountDownLatch(1);
         private int terminalTransitions;
         private CountDownLatch createPaused;
@@ -772,7 +747,6 @@ class LocalTaskManagerTest {
             tasks.remove(taskId);
             events.remove(taskId);
             artifacts.remove(taskId);
-            resumeStates.remove(taskId);
             commitAction.run();
             return true;
         }
@@ -798,35 +772,6 @@ class LocalTaskManagerTest {
             if (stored != null) {
                 stored.removeIf(existing -> existing.getArtifactId().equals(artifactId));
             }
-        }
-
-        @Override
-        public synchronized List<Task> listResumableTasks() {
-            return tasks.values().stream()
-                    .filter(task -> !TaskStatus.isTerminal(task.getStatus()))
-                    .filter(task -> !resumeStates.getOrDefault(task.getId(), List.of()).isEmpty())
-                    .toList();
-        }
-
-        @Override
-        public synchronized void saveResumeState(Long taskId, ResumeState state) {
-            if (!tasks.containsKey(taskId)) {
-                throw new IllegalArgumentException("resume state must reference an existing task");
-            }
-            List<ResumeState> stored = resumeStates.computeIfAbsent(taskId, ignored -> new ArrayList<>());
-            stored.removeIf(existing -> existing.getShardNo().equals(state.getShardNo()));
-            stored.add(state);
-            stored.sort(Comparator.comparing(ResumeState::getShardNo));
-        }
-
-        @Override
-        public synchronized List<ResumeState> listResumeStates(Long taskId) {
-            return new ArrayList<>(resumeStates.getOrDefault(taskId, List.of()));
-        }
-
-        @Override
-        public synchronized void clearResumeStates(Long taskId) {
-            resumeStates.remove(taskId);
         }
 
         boolean awaitTerminal() throws InterruptedException {

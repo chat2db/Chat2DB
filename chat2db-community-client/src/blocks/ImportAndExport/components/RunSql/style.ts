@@ -2,6 +2,9 @@ import { createStyles } from 'antd-style';
 
 export const useStyles = createStyles(({ css }) => {
   return {
+    form: css`
+      padding-top: 20px;
+    `,
     checkboxBody: css`
       .ant-form-item {
         margin-bottom: 0;
@@ -9,18 +12,6 @@ export const useStyles = createStyles(({ css }) => {
       .ant-form-item-control-input{
         min-height: 30px;
       }
-    `,
-    exportLocationBox: css`
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    `,
-    iconButton: css`
-      flex-shrink: 0;
-      border-radius: 6px !important;
-    `,
-    form: css`
-      padding-top: 20px;
     `,
   };
 });

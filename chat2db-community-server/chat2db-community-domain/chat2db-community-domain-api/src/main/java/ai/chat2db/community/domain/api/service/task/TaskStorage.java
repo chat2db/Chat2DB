@@ -1,13 +1,11 @@
 package ai.chat2db.community.domain.api.service.task;
 
 import ai.chat2db.community.domain.api.model.PageResponse;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
 import ai.chat2db.community.domain.api.model.task.TaskProgress;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
-import ai.chat2db.community.domain.api.model.task.TaskStatus;
 import ai.chat2db.community.domain.api.model.task.TaskStatusPatch;
 
 import java.util.List;
@@ -60,18 +58,4 @@ public interface TaskStorage {
      */
     void deleteArtifact(Long taskId, String artifactId);
 
-    /**
-     * Non-terminal tasks that carry at least one persisted resume state and can therefore be resumed
-     * instead of being failed by startup reconciliation.
-     */
-    List<Task> listResumableTasks();
-
-    /**
-     * Stores one shard checkpoint, replacing any earlier row for the same {@code shardNo}. The task must exist.
-     */
-    void saveResumeState(Long taskId, ResumeState state);
-
-    List<ResumeState> listResumeStates(Long taskId);
-
-    void clearResumeStates(Long taskId);
 }

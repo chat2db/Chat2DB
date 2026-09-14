@@ -3,22 +3,18 @@ package ai.chat2db.community.domain.core.impl.task;
 import ai.chat2db.community.domain.api.config.DBConfig;
 import ai.chat2db.community.domain.api.config.DriverConfig;
 import ai.chat2db.community.domain.api.model.PageResponse;
-import ai.chat2db.community.domain.api.model.task.ArtifactDraft;
 import ai.chat2db.community.domain.api.model.task.ExportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
 import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
-import ai.chat2db.community.domain.api.model.task.ResumeState;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskArtifact;
-import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
 import ai.chat2db.community.domain.api.model.task.TaskProgress;
 import ai.chat2db.community.domain.api.model.task.TaskQuery;
 import ai.chat2db.community.domain.api.model.task.TaskStatus;
 import ai.chat2db.community.domain.api.model.task.TaskStatusPatch;
 import ai.chat2db.community.domain.api.model.task.TaskTargetSnapshot;
-import ai.chat2db.community.domain.api.service.task.TaskCancelable;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
 import ai.chat2db.community.domain.api.service.task.TaskStorage;
 import ai.chat2db.community.domain.core.impl.task.export.BaseExporter;
@@ -53,7 +49,6 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,9 +58,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Local-MySQL integration test for the task pipeline: a CSV export/import round trip, a parallel
- * (multi-worker) import against real MySQL connections, and a checkpointed export interrupted
- * mid-run and resumed from its durable checkpoint.
+ * Local-MySQL integration test for CSV export/import round trips and parallel imports
+ * against real MySQL connections.
  *
  * <p>The test talks to a dedicated local database and skips entirely unless MySQL credentials
  * are provided through environment variables:
@@ -227,12 +221,11 @@ class MySQLTaskRoundTripIT {
         return new TaskExecutionContextImpl(taskId, new RunningTask(taskId), storage, new ArtifactServiceImpl());
     }
 
-    private ExportTaskSpec exportSpec(String tableName, Integer checkpointRows) {
+    private ExportTaskSpec exportSpec(String tableName) {
         return ExportTaskSpec.builder()
                 .taskType("TABLE_DATA_EXPORT")
                 .format("CSV")
                 .tableNames(List.of(tableName))
-                .checkpointRows(checkpointRows)
                 .target(TaskTargetSnapshot.builder().dataSourceId(1L).databaseName(database)
                         .tableName(tableName).build())
                 .build();
@@ -289,7 +282,7 @@ class MySQLTaskRoundTripIT {
     @Test
     void csvExportImportRoundTripPreservesData() throws Exception {
         File artifact = tempDirectory.resolve("roundtrip.csv").toFile();
-        new CsvITExporter().run(exportSpec("C2D_SRC", null), contextFor(), artifact);
+        new CsvITExporter().run(exportSpec("C2D_SRC"), contextFor(), artifact);
 
         List<Integer> ids = exportedIds(artifact);
         assertEquals(ROWS, ids.size());
@@ -329,28 +322,6 @@ class MySQLTaskRoundTripIT {
         }
     }
 
-    @Test
-    void interruptedCheckpointedExportResumesAgainstMysql() throws Exception {
-        File artifact = tempDirectory.resolve("resumable.csv").toFile();
-        RecordingContext first = new RecordingContext(2);
-
-        assertThrows(TaskCancelledException.class,
-                () -> new CsvITExporter().run(exportSpec("C2D_SRC", 100), first, artifact));
-        assertTrue(first.checkpointCalls >= 2, "at least two checkpoint writes before cancellation");
-        ResumeState last = first.saved.get(first.saved.size() - 1);
-        assertNotNull(last.getBytesDone(), "durable byte count recorded");
-        assertNotNull(last.getCursorJson(), "keyset cursor recorded");
-
-        RecordingContext second = new RecordingContext(Integer.MAX_VALUE);
-        second.resumeStates.addAll(first.saved);
-        new CsvITExporter().run(exportSpec("C2D_SRC", 100), second, artifact);
-
-        List<Integer> ids = exportedIds(artifact);
-        assertEquals(ROWS, ids.size(), "resumed export must produce every row exactly once");
-        assertEquals(1, ids.get(0));
-        assertEquals(ROWS, ids.get(ROWS - 1));
-    }
-
     private static final class CsvITExporter extends BaseExporter {
 
         private CsvITExporter() {
@@ -365,106 +336,23 @@ class MySQLTaskRoundTripIT {
 
         @Override
         protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-                java.io.OutputStream output, boolean resuming) {
+                java.io.OutputStream output) {
             streamTable(spec, tableName, context, output,
-                    (stream, effectiveSpec, effectiveTable, resume) ->
+                    (stream, effectiveSpec, effectiveTable) ->
                             new ai.chat2db.community.domain.core.impl.task.export.sink.CsvSink(
-                                    stream, true, resume),
+                                    stream, true),
                     ExportValueMode.NATIVE, 2,
-                    new ExportProgressLogger(context, "CSV", tableName), resuming);
+                    new ExportProgressLogger(context, "CSV", tableName));
         }
     }
 
-    private static final class RecordingContext implements TaskExecutionContext {
 
-        private final List<ResumeState> saved = new ArrayList<>();
-        private final List<ResumeState> resumeStates = new ArrayList<>();
-        private final int cancelAfterCheckpoints;
-        private int checkpointCalls;
-
-        private RecordingContext(int cancelAfterCheckpoints) {
-            this.cancelAfterCheckpoints = cancelAfterCheckpoints;
-        }
-
-        @Override
-        public Long taskId() {
-            return 99L;
-        }
-
-        @Override
-        public List<ResumeState> resumeStates() {
-            return List.copyOf(resumeStates);
-        }
-
-        @Override
-        public void checkpoint(ResumeState state) {
-            checkpointCalls++;
-            saved.removeIf(existing -> existing.getShardNo().equals(state.getShardNo()));
-            saved.add(state);
-            if (checkpointCalls >= cancelAfterCheckpoints) {
-                throw new TaskCancelledException();
-            }
-        }
-
-        @Override
-        public void reportProgress(int progress, String stage, String message) {
-        }
-
-        @Override
-        public void logInfo(String code, String message) {
-        }
-
-        @Override
-        public void logInfo(String code, String message, Map<String, Object> details) {
-        }
-
-        @Override
-        public void logWarn(String code, String message, Map<String, Object> details) {
-        }
-
-        @Override
-        public void logError(String code, String message, Map<String, Object> details) {
-        }
-
-        @Override
-        public void checkCancelled() {
-        }
-
-        @Override
-        public void registerCancelable(TaskCancelable resource) {
-        }
-
-        @Override
-        public ArtifactDraft createArtifact(String outputDirectory, String fileName, String mediaType) {
-            return createArtifact(ai.chat2db.community.domain.api.model.task.TaskArtifactRole.OUTPUT,
-                    outputDirectory, fileName, mediaType);
-        }
-
-        @Override
-        public ArtifactDraft createArtifact(String role, String outputDirectory, String fileName,
-                String mediaType) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void write(String content) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void onStatementCreated(Statement statement) {
-        }
-
-        @Override
-        public void onStatementClosed(Statement statement) {
-        }
-    }
 
     private static final class StorageStub implements TaskStorage {
 
         private final List<Task> tasks = new ArrayList<>();
         private final List<TaskEvent> events = new ArrayList<>();
-        private final List<ResumeState> states = new ArrayList<>();
+
         private long sequence;
 
         @Override
@@ -540,24 +428,5 @@ class MySQLTaskRoundTripIT {
         public void deleteArtifact(Long taskId, String artifactId) {
         }
 
-        @Override
-        public List<Task> listResumableTasks() {
-            return List.of();
-        }
-
-        @Override
-        public void saveResumeState(Long taskId, ResumeState state) {
-            states.add(state);
-        }
-
-        @Override
-        public List<ResumeState> listResumeStates(Long taskId) {
-            return List.copyOf(states);
-        }
-
-        @Override
-        public void clearResumeStates(Long taskId) {
-            states.clear();
-        }
     }
 }

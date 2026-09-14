@@ -14,23 +14,12 @@ public final class MarkdownSink extends TextSink {
 
     private boolean started;
 
-    private final boolean append;
-
     public MarkdownSink(OutputStream output) {
-        this(output, false);
-    }
-
-    public MarkdownSink(OutputStream output, boolean append) {
         super(output);
-        this.append = append;
     }
 
     @Override
     public void writeSchema(ExportSchema schema, String tableName) throws IOException {
-        if (append) {
-            started = true;
-            return;
-        }
         if (started) {
             write("\n");
         }

@@ -1,7 +1,6 @@
 package ai.chat2db.community.domain.core.impl.task.export.sink;
 
 import ai.chat2db.community.domain.api.model.task.pipeline.ExportSchema;
-import ai.chat2db.community.domain.api.model.task.pipeline.FormatSink;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -22,25 +21,17 @@ public final class CsvSink extends TextSink {
 
     private final boolean containsHeader;
 
-    private final boolean append;
-
     private boolean started;
 
     public CsvSink(OutputStream output, boolean containsHeader) {
-        this(output, containsHeader, false);
-    }
-
-    public CsvSink(OutputStream output, boolean containsHeader, boolean append) {
         super(output);
         this.containsHeader = containsHeader;
-        this.append = append;
-        this.started = append;
     }
 
     @Override
     public void writeSchema(ExportSchema schema, String tableName) throws IOException {
         writePrefix();
-        if (containsHeader && !append) {
+        if (containsHeader) {
             writeRow(schema.getColumnNames().stream().map(name -> (Object) name).toList());
         }
     }
