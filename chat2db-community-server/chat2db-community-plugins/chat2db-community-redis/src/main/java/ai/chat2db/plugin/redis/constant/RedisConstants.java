@@ -13,6 +13,7 @@ public final class RedisConstants {
     public static final String COMMAND_EXISTS_KEY = "EXISTS %s";
     public static final String COMMAND_EXPIRE_ARGUMENT_PREFIX = " EX ";
     public static final String COMMAND_EXPIRE_KEY_PREFIX = "EXPIRE ";
+    public static final String COMMAND_PERSIST_KEY_PREFIX = "PERSIST ";
     public static final String COMMAND_GET_KEY_PREFIX = "GET ";
     public static final String COMMAND_HASH_DELETE_PREFIX = "HDEL ";
     public static final String COMMAND_HASH_GET_ALL_PREFIX = "HGETALL ";
@@ -53,6 +54,7 @@ public final class RedisConstants {
     public static final String ERROR_SQL_ANALYSIS = "dataSource.sqlAnalysisError";
     public static final String ERROR_SQL_MUST_NOT_BE_NULL = "SQL must not be null";
     public static final String ERROR_UNSUPPORTED_SQL_BUILDER_METHOD_PREFIX = "Redis SQL builder does not support ";
+    public static final String ERROR_UNSUPPORTED_KEY_TYPE = "Redis key type '%s' is not supported; valid types are string, list, set, zset, hash, stream.";
     public static final String FIELD_FIELD = "field";
     public static final String FIELD_FIELDS = "fields";
     public static final String FIELD_ID = "id";

@@ -155,16 +155,18 @@ test('table browse flows from the initial response through filtered 50000-row st
 
   const replacedResults = replaceViewTableResult([initialResult], transition.completedResult!);
   assert.equal(replacedResults[0].uuid, initialUuid, 'completion preserves the mounted result identity');
+  assert.equal(replacedResults[0].originalSql, BASE_SQL, 'completion preserves the original table query');
+  const nextSortedSql = composeResultQuery({
+    databaseType: DatabaseTypeCode.MYSQL,
+    orderByValue: 'status ASC',
+    originalSql: replacedResults[0].originalSql,
+  });
   assert.equal(
-    composeResultQuery({
-      databaseType: DatabaseTypeCode.MYSQL,
-      filterValue: "status = 'ACTIVE'",
-      orderByValue: 'id DESC',
-      originalSql: initialResult.originalSql,
-    }),
-    filteredSql,
-    'later searches continue composing from the stable base query instead of nesting prior filters',
+    nextSortedSql,
+    `${BASE_SQL} ORDER BY status ASC`,
+    'later searches compose from the stable base query instead of nesting the previous sort',
   );
+  assert.equal(nextSortedSql.match(/\bORDER\s+BY\b/gi)?.length, 1, 'consecutive grid sorts emit one ORDER BY clause');
 });
 
 test('table browse SQL normalization follows originalSql, sql, then request SQL', () => {
@@ -222,6 +224,31 @@ test('a cancelled table browse never publishes its buffered partial rows', () =>
     requestSequence,
   );
   assert.equal(transition.completedResult, undefined, 'cancellation leaves the visible completed result untouched');
+});
+
+test('a failed filter keeps the mounted table and allows a corrected query to replace it', () => {
+  const [initialResult] = normalizeViewTablePageResults([result()], { sql: BASE_SQL, dataSourceId: 42 });
+  const failedParams = { ...initialResult.executeSqlParams!, sql: `${BASE_SQL} WHERE %asda` };
+  const failed = reduceViewTablePagingEvent(
+    createViewTablePagingState(1, failedParams),
+    event('resultFinished', result({ success: false, headerList: [], message: 'Invalid WHERE condition' })),
+    1,
+  );
+
+  assert.equal(failed.completedResult, undefined, 'a SQL error must not replace and unmount the table');
+  assert.equal(failed.state.result?.message, 'Invalid WHERE condition', 'the request retains the error to report');
+
+  const correctedParams = { ...failedParams, sql: `${BASE_SQL} WHERE id = 1` };
+  const corrected = reduceViewTablePagingEvent(
+    createViewTablePagingState(2, correctedParams),
+    event('resultFinished', result({ dataList: [[{ value: '1' }]] as any })),
+    2,
+  );
+  assert.ok(corrected.completedResult);
+  const [replaced] = replaceViewTableResult([initialResult], corrected.completedResult);
+  assert.equal(replaced.uuid, initialResult.uuid);
+  assert.equal(replaced.originalSql, BASE_SQL);
+  assert.deepEqual(replaced.dataList, [[{ value: '1' }]]);
 });
 
 test('table browse cancellation targets the active JCEF execution and releases the request', async () => {

@@ -32,6 +32,7 @@ import {
   registerCloseActiveResultTabHandler,
 } from '@/service/resultTabShortcut';
 import { shouldProcessTabScrollRequest, type ProcessedTabScrollRequest } from './activeTabScroll';
+import { getTabAccentStyle } from './tabAccentColor';
 import { getTabWheelScrollAmount } from './wheelScroll';
 
 export interface ITabItem {
@@ -708,9 +709,7 @@ export default memo<IProps>((props) => {
 
     const tabStyle = {
       ...t.styles,
-      ...(t.accentColor !== undefined
-        ? ({ '--chat2db-tab-accent-color': t.accentColor || 'transparent' } as React.CSSProperties)
-        : {}),
+      ...getTabAccentStyle(t.accentColor),
     };
     const tabNode = enableReorder ? (
       <SortableTabItem

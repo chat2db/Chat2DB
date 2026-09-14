@@ -21,6 +21,7 @@ export interface ClientRuntime {
   showUpgradeEntry: boolean;
   showDownloadEntry: boolean;
   enableAutoUpdate: boolean;
+  supportsBetaUpdates?: boolean;
   showMcpSetting: boolean;
   showNetworkProxySetting: boolean;
   showLicenseSetting: boolean;
@@ -77,7 +78,8 @@ export const clientRuntime: ClientRuntime = {
   showAccountCenter: false,
   showUpgradeEntry: false,
   showDownloadEntry: false,
-  enableAutoUpdate: false,
+  enableAutoUpdate: isDesktop,
+  supportsBetaUpdates: false,
   showMcpSetting: isDesktop,
   showNetworkProxySetting: isDesktop,
   showLicenseSetting: false,
