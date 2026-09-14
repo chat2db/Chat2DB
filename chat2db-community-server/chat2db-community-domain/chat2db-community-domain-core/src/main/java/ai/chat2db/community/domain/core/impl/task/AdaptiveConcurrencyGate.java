@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
  * backs off on its own when the source or the target becomes the bottleneck.
  *
  * <p>Tuning never throws into the task: every adjustment runs under its own guard, so an observer
- * failure degrades to keeping the current fan-out instead of failing the export or import. The
+ * failure degrades to keeping the current fan-out instead of failing the import. The
  * total permit count is tracked explicitly and hard-capped at {@code maxPermits}, even while
  * workers hold permits, so the fan-out can never exceed its configured ceiling, and tuning never
  * shrinks it past {@link #MIN_PERMITS}. A stuck gate must not hang a task either: workers wait
@@ -40,9 +40,6 @@ public final class AdaptiveConcurrencyGate extends Semaphore {
      */
     static final int MIN_PERMITS = 1;
 
-    /** Minimum spacing between source-pressure cuts so one slow page cannot crash the fan-out. */
-    private static final long PRESSURE_CUT_SPACING_NANOS = 1_000_000_000L;
-
     private final int maxPermits;
 
     private final int floor;
@@ -53,8 +50,6 @@ public final class AdaptiveConcurrencyGate extends Semaphore {
     private final AtomicLong windowRows = new AtomicLong();
 
     private final AtomicLong windowNanos = new AtomicLong();
-
-    private volatile long lastPressureCutNanos;
 
     private double lastThroughput = -1.0D;
 
@@ -88,34 +83,6 @@ public final class AdaptiveConcurrencyGate extends Semaphore {
                 return;
             }
             tuneThroughput(windowRows.getAndSet(0L), windowNanos.getAndSet(0L));
-        }
-    }
-
-    /**
-     * Source-pressure response for readers: a page query took noticeably longer than healthy, so
-     * give back a quarter of the fan-out immediately instead of waiting for the throughput window
-     * to notice, letting the source database recover. Cooldown-limited and failure-tolerant; the
-     * regular AIMD window tuning remains the recovery path once the source speeds up again.
-     */
-    public void reduceForSourcePressure() {
-        long now = System.nanoTime();
-        synchronized (this) {
-            if (now - lastPressureCutNanos < PRESSURE_CUT_SPACING_NANOS
-                    || totalPermits.get() <= floor) {
-                return;
-            }
-            lastPressureCutNanos = now;
-            try {
-                int cut = Math.max(1, totalPermits.get() / 4);
-                int target = Math.max(floor, totalPermits.get() - cut);
-                while (totalPermits.get() > target) {
-                    reducePermits(1);
-                    totalPermits.decrementAndGet();
-                }
-            } catch (Throwable tuningFailure) {
-                log.warn("Source-pressure permit reduction failed; keeping the current fan-out",
-                        tuningFailure);
-            }
         }
     }
 

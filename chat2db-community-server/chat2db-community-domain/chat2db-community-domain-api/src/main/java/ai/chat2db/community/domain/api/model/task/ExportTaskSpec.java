@@ -40,9 +40,4 @@ public class ExportTaskSpec implements TaskSpec {
     private String exportPath;
 
     private String suggestedFileName;
-
-    /**
-     * Execution mode, see {@link TaskExecutionMode}; {@code null} resolves to {@code STANDARD}.
-     */
-    private String mode;
 }

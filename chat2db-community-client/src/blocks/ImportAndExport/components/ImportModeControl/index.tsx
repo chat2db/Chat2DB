@@ -6,14 +6,13 @@ interface Props {
   value: ImportExecutionMode;
   onChange: (value: ImportExecutionMode) => void;
   disabled?: boolean;
-  confirmImport?: boolean;
 }
 
-export default function ExecutionModeControl({ value, onChange, disabled, confirmImport }: Props) {
+export default function ImportModeControl({ value, onChange, disabled }: Props) {
   const [modal, contextHolder] = Modal.useModal();
 
   const toggle = (checked: boolean) => {
-    if (checked && confirmImport) {
+    if (checked) {
       modal.confirm({
         title: i18n('workspace.importExport.ultraModeConfirmTitle'),
         content: i18n('workspace.importExport.ultraModeAcknowledge'),
@@ -23,7 +22,7 @@ export default function ExecutionModeControl({ value, onChange, disabled, confir
       });
       return;
     }
-    onChange(checked ? 'ULTRA_FAST' : 'STANDARD');
+    onChange('STANDARD');
   };
 
   return (

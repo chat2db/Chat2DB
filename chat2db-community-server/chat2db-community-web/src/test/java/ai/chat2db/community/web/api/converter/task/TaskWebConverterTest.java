@@ -20,14 +20,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class TaskWebConverterTest {
 
     @Test
-    void importPreviewPreservesStagedSourceAndNullStrategy() {
+    void importPreservesStagedSourceAndExecutionMode() {
         var request = new ai.chat2db.community.web.api.model.request.task.TaskImportRequest();
         request.setFileId("staged-source");
         request.setFormat("CSV");
-        request.setUnmappedTarget(ai.chat2db.community.domain.api.model.task.UnmappedTargetStrategy.NULL);
+        request.setMode("ULTRA_FAST");
         var result = new TaskWebConverter().importRequest2spec(request);
         assertEquals("staged-source", result.getImportFileId());
-        assertEquals(ai.chat2db.community.domain.api.model.task.UnmappedTargetStrategy.NULL, result.getUnmappedTarget());
+        assertEquals("ULTRA_FAST", result.getMode());
     }
 
     private final TaskWebConverter converter = new TaskWebConverter();

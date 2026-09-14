@@ -45,10 +45,6 @@ public final class MysqlDBManagerConstants {
     public static final String EXPORT_TRIGGERS_MESSAGE = ":Exporting triggers";
     public static final String EXPORT_FUNCTIONS_MESSAGE = ":Exporting functions";
     public static final String ROUTINE_DELIMITER = ";;";
-    public static final String SQL_SET_REPEATABLE_READ =
-            "SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ";
-    public static final String SQL_START_CONSISTENT_SNAPSHOT =
-            "START TRANSACTION WITH CONSISTENT SNAPSHOT";
 
     private MysqlDBManagerConstants() {
     }

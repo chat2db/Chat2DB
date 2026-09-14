@@ -11,7 +11,6 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Regression test for {@link H2DBManager#connectDatabase}.
@@ -21,11 +20,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class H2DBManagerTest {
 
     private H2DBManager manager = new H2DBManager();
-
-    @Test
-    void explicitlyEnablesKeysetSharding() {
-        assertTrue(manager.getExportCapability().isKeysetSharding());
-    }
 
     @AfterEach
     void cleanup() {

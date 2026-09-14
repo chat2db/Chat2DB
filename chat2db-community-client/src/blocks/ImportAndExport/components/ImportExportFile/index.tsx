@@ -10,8 +10,6 @@ import { ExportTaskParams, ImportTaskParams } from '@/service/importExport';
 import { isDesktop, isDevelopment } from '@/utils/env';
 import jcefApi from '@/jcef';
 import { hasSelectedImportFile } from './selection';
-import type { ImportExecutionMode } from '@/typings/importExport';
-import ExecutionModeControl from '../ExecutionModeControl';
 
 interface IProps {
   className?: string;
@@ -41,7 +39,6 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
   const { setIsReady, onImportFileChange } = props;
   const { styles } = useStyles();
   const [form] = Form.useForm();
-  const [mode, setMode] = useState<ImportExecutionMode>('STANDARD');
   const [selectedFilePaths, setSelectedFilePaths] = useState<string[]>([]);
   const [exportLocation, setExportLocation] = useState<string>('');
   const [formValue, setFormValue] = useState<ImportExportFormValue>({
@@ -101,7 +98,6 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
         return {
           ...commonValues,
           taskType: ImportExportTaskType.TABLE_DATA_EXPORT,
-          mode,
           tableNames: [tableName],
           containsHeader: formValue.containsHeader,
           exportPath: exportLocation || formValue.fileUrl,
@@ -172,7 +168,6 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
           <Input autoComplete="off" />
         </Form.Item>
       )}
-      {isExport && <ExecutionModeControl value={mode} onChange={setMode} />}
       {/* <Form.Item name="containsHeader" valuePropName="checked">
         <Checkbox>{i18n('workspace.importExport.containsHeader')}</Checkbox>
       </Form.Item> */}

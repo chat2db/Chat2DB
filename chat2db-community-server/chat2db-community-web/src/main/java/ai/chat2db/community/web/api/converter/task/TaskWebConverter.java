@@ -45,7 +45,6 @@ public class TaskWebConverter {
                 .containsHeader(request.getContainsHeader())
                 .exportPath(request.getExportPath())
                 .suggestedFileName(request.getSuggestedFileName())
-                .mode(normalize(request.getMode()))
                 .build();
     }
 
@@ -65,8 +64,6 @@ public class TaskWebConverter {
                 .format(format)
                 .dataTimeFormat(request.getDataTimeFormat())
                 .csvOptions(csvOptions(format, request.getCsvOptions()))
-                .options(request.getOptions())
-                .unmappedTarget(request.getUnmappedTarget())
                 .mode(normalize(request.getMode()))
                 .confirmedNoStrongRelations(request.getConfirmedNoStrongRelations())
                 .build();

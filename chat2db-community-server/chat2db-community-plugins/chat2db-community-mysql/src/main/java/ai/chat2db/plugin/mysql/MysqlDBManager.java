@@ -42,21 +42,6 @@ import static ai.chat2db.plugin.mysql.constant.MysqlDBManagerConstants.*;
 public class MysqlDBManager extends DefaultDBManager implements IDbManager {
 
     @Override
-    public ai.chat2db.spi.model.export.ExportCapability getExportCapability() {
-        return ai.chat2db.spi.model.export.ExportCapability.KEYSET_SHARDING;
-    }
-
-    @Override
-    public boolean startConsistentExportSnapshot(Connection connection) throws SQLException {
-        try (PreparedStatement isolation = connection.prepareStatement(SQL_SET_REPEATABLE_READ);
-             PreparedStatement snapshot = connection.prepareStatement(SQL_START_CONSISTENT_SNAPSHOT)) {
-            isolation.execute();
-            snapshot.execute();
-            return true;
-        }
-    }
-
-    @Override
     public void exportDatabase(Connection connection, String databaseName, String schemaName, boolean containData,
             TaskExecutionContext context) throws SQLException {
         context.write(String.format(EXPORT_TITLE, DateUtil.format(new Date(), NORM_DATETIME_PATTERN)));

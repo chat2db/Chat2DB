@@ -4,7 +4,6 @@ import ai.chat2db.community.domain.api.config.DBConfig;
 import ai.chat2db.community.domain.api.config.DriverConfig;
 import ai.chat2db.community.domain.api.model.PageResponse;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
-import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -75,7 +74,7 @@ class ImportRowBatcherParallelTest {
     static void isolateHomeAndSeedDriver() throws Exception {
         // JdbcJarUtils resolves driver names against the driver library under user.home and
         // cannot load an absolute jar path, so seed a copy of the H2 jar and isolate the home
-        // directory exactly like ShardedKeysetExportTest does.
+        // directory so worker connections can load the fixture driver.
         previousUserHome = System.getProperty("user.home");
         File tempHome = Files.createTempDirectory("chat2db-parallel-import-home").toFile();
         System.setProperty("user.home", tempHome.getAbsolutePath());
@@ -163,13 +162,9 @@ class ImportRowBatcherParallelTest {
                 .target(TaskTargetSnapshot.builder().dataSourceId(1L).tableName("BULK_ROWS").build())
                 .mode("ULTRA_FAST")
                 .confirmedNoStrongRelations(true)
-                .options(ImportOptions.builder()
-                        .charset("UTF-8")
-                        .delimiter(",")
-                        .columnMappings(List.of(
-                                new ImportColumnMapping("ID", "ID"),
-                                new ImportColumnMapping("NAME", "NAME")))
-                        .build())
+                .columnMappings(List.of(
+                        new ImportColumnMapping("ID", "ID"),
+                        new ImportColumnMapping("NAME", "NAME")))
                 .build();
     }
 

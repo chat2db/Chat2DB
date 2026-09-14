@@ -196,9 +196,6 @@ public class JDBCDataValue {
             if (Objects.isNull(characterStream)) {
                 return null;
             }
-            if (!limitSize) {
-                return IOUtils.toString(characterStream);
-            }
             char[] buffer = new char[8192];
             int charsRead;
             while ((charsRead = characterStream.read(buffer)) != -1) {

@@ -3,10 +3,8 @@ package ai.chat2db.community.domain.api.model.task;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * Execution mode of a bulk import/export task. {@code ULTRA_FAST} enables the parallel machinery
- * (keyset sharding, multi-worker batches, multi-row INSERT merging, adaptive tuning);
- * {@code STANDARD} is the conservative single-threaded path with fixed small batches. Absent or
- * unknown values resolve to {@code STANDARD} so older clients keep a well-defined behaviour.
+ * CSV import execution mode. ULTRA_FAST uses parallel row batches with adaptive tuning;
+ * absent or unknown values resolve to STANDARD.
  */
 public final class TaskExecutionMode {
 

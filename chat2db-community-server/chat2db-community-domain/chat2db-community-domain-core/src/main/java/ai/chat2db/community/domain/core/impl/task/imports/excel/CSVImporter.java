@@ -25,11 +25,8 @@ public class CSVImporter extends BaseImporter implements IImportStrategy {
             List<TableColumn> columns) {
         CsvOptions options = (spec.getCsvOptions() == null ? CsvOptions.defaults() : spec.getCsvOptions()).validate();
         spec.setCsvOptions(options);
-        int skipRows = spec.getOptions() == null || spec.getOptions().getSkipRows() == null
-                ? 0 : Math.max(0, spec.getOptions().getSkipRows());
         ImportRowBatcher[] batcher = {null};
         int[] sourceRow = {0};
-        int[] skippedDataRows = {0};
         try {
             new CsvParser(options).forEachRow(Path.of(spec.getSourceFile()), row -> {
                 int rowNumber = ++sourceRow[0];
@@ -39,10 +36,6 @@ public class CSVImporter extends BaseImporter implements IImportStrategy {
                 }
                 if (rowNumber < options.getDataStartRow()
                         || options.getDataEndRow() != null && rowNumber > options.getDataEndRow()) {
-                    return;
-                }
-                if (skippedDataRows[0] < skipRows) {
-                    skippedDataRows[0]++;
                     return;
                 }
                 if (batcher[0] == null) {

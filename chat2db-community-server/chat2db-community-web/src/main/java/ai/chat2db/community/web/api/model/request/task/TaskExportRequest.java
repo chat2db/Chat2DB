@@ -33,7 +33,4 @@ public class TaskExportRequest extends DataSourceBaseRequest {
     private String exportPath;
 
     private String suggestedFileName;
-
-    /** Execution mode: ULTRA_FAST or STANDARD (default when absent). */
-    private String mode;
 }

@@ -4,7 +4,7 @@ import ai.chat2db.community.domain.api.config.DBConfig;
 import ai.chat2db.community.domain.api.config.DriverConfig;
 import ai.chat2db.community.domain.api.model.PageResponse;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
-import ai.chat2db.community.domain.api.model.task.ImportOptions;
+import ai.chat2db.community.domain.api.model.task.CsvOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.Task;
 import ai.chat2db.community.domain.api.model.task.TaskEvent;
@@ -127,14 +127,40 @@ class CsvImportPipelineTest {
     @Test
     void legacySkipOptionCannotEnableErrorTolerance() throws Exception {
         ImportTaskSpec spec = csvSpec(writeCsv("ROW_ID,ROW_NAME\n1,ok\n1,duplicate\n"));
-        String optionsJson = com.alibaba.fastjson2.JSON.toJSONString(spec.getOptions());
-        spec.setOptions(com.alibaba.fastjson2.JSON.parseObject(optionsJson.substring(0, optionsJson.length() - 1)
-                + ",\"onError\":\"SKIP\",\"maxErrors\":100}", ImportOptions.class));
+        String json = com.alibaba.fastjson2.JSON.toJSONString(spec);
+        ImportTaskSpec legacySpec = com.alibaba.fastjson2.JSON.parseObject(json.substring(0, json.length() - 1)
+                + ",\"options\":{\"onError\":\"SKIP\",\"maxErrors\":100}}", ImportTaskSpec.class);
 
-        assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(spec, contextFor(spec)));
+        assertThrows(TaskExecutionException.class, () -> new CSVImporter().run(legacySpec, contextFor(legacySpec)));
 
         assertEquals(List.of(), importedIds());
         assertFailedWithoutSummary();
+    }
+
+    @Test
+    void existingCsvSettingsAndMappingsIgnoreLegacyNestedOptions() throws Exception {
+        ImportTaskSpec spec = csvSpec(writeCsv("ROW_ID;ROW_NAME\n1;kept\n2;NULL\n"));
+        CsvOptions csvOptions = CsvOptions.defaults();
+        csvOptions.setDelimiter(";");
+        csvOptions.setEmptyAsNull(false);
+        spec.setCsvOptions(csvOptions);
+        String json = com.alibaba.fastjson2.JSON.toJSONString(spec);
+        ImportTaskSpec legacySpec = com.alibaba.fastjson2.JSON.parseObject(json.substring(0, json.length() - 1)
+                + ",\"options\":{\"delimiter\":\",\",\"skipRows\":99,\"nullString\":\"NULL\","
+                + "\"columnMappings\":[{\"sourceColumn\":\"ROW_NAME\",\"targetColumn\":\"ID\"}]}}",
+                ImportTaskSpec.class);
+
+        new CSVImporter().run(legacySpec, contextFor(legacySpec));
+
+        assertEquals(List.of(1, 2), importedIds());
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT NAME FROM TARGET_ROWS ORDER BY ID")) {
+            assertTrue(rows.next());
+            assertEquals("kept", rows.getString(1));
+            assertTrue(rows.next());
+            assertEquals("NULL", rows.getString(1));
+            assertFalse(rows.next());
+        }
     }
 
     private Path writeCsv(String content) throws Exception {
@@ -149,13 +175,9 @@ class CsvImportPipelineTest {
                 .sourceFile(csv.toString())
                 .format("CSV")
                 .target(TaskTargetSnapshot.builder().dataSourceId(1L).tableName("TARGET_ROWS").build())
-                .options(ImportOptions.builder()
-                        .charset("UTF-8")
-                        .delimiter(",")
-                        .columnMappings(List.of(
-                                new ImportColumnMapping("ROW_ID", "ID"),
-                                new ImportColumnMapping("ROW_NAME", "NAME")))
-                        .build())
+                .columnMappings(List.of(
+                        new ImportColumnMapping("ROW_ID", "ID"),
+                        new ImportColumnMapping("ROW_NAME", "NAME")))
                 .build();
     }
 

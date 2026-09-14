@@ -1,12 +1,7 @@
 import createRequest from './base';
 import { IDatabaseBaseInfo } from '@/typings/database';
 import { IPageResponse } from '@/typings';
-import type {
-  ICsvOptions,
-  ImportExportTaskDetails,
-  ImportExportTaskEvent,
-  IImportOptions,
-} from '@/typings/importExport';
+import type { ICsvOptions, ImportExportTaskDetails, ImportExportTaskEvent } from '@/typings/importExport';
 import { ImportExportFileType, ImportExportTaskType } from '@/constants/importExport';
 
 export interface GenerateJavaClassParams extends IDatabaseBaseInfo {
@@ -58,8 +53,6 @@ export interface ExportTaskParams extends IDatabaseBaseInfo {
   containsHeader?: boolean;
   exportPath?: string;
   suggestedFileName?: string;
-  /** Execution mode: ULTRA_FAST (parallel) or STANDARD (serial). Default STANDARD. */
-  mode?: 'ULTRA_FAST' | 'STANDARD';
 }
 
 export interface ImportTaskParams extends IDatabaseBaseInfo {
@@ -72,9 +65,6 @@ export interface ImportTaskParams extends IDatabaseBaseInfo {
   format: ImportExportFileType;
   dataTimeFormat?: string;
   csvOptions?: ICsvOptions;
-  options?: IImportOptions;
-  unmappedTarget?: 'DEFAULT' | 'NULL';
-  /** Execution mode: ULTRA_FAST (parallel) or STANDARD (serial). Default STANDARD. */
   mode?: 'ULTRA_FAST' | 'STANDARD';
   confirmedNoStrongRelations?: boolean;
 }
@@ -105,6 +95,7 @@ const abortUserExit = createRequest<void, void>('/api/tasks/abort-user-exit', {
   method: 'post',
   errorLevel: false,
 });
+
 // Generate Java classes
 const generateJavaClass = createRequest<GenerateJavaClassParams, number>('/api/rdb/table/generate/class', {
   method: 'post',

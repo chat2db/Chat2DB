@@ -3,7 +3,6 @@ package ai.chat2db.community.domain.core.impl.task.imports;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.task.ImportAdmissionReport;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
-import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -110,8 +109,7 @@ class ImportParallelAdmissionTest {
                 : List.of(new ImportColumnMapping("NAME", "NAME"));
         return ImportTaskSpec.builder().sourceFile(source.toString()).importFileId("staged")
                 .format("CSV").mode("ULTRA_FAST").confirmedNoStrongRelations(confirmed)
-                .options(ImportOptions.builder().charset("UTF-8").delimiter(",")
-                        .columnMappings(mappings).build())
+                .columnMappings(mappings)
                 .build();
     }
 

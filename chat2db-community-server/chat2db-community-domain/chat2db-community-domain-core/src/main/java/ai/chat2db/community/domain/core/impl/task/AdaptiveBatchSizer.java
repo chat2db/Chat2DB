@@ -23,31 +23,12 @@ public final class AdaptiveBatchSizer {
     /** Smoothing of the reference throughput so one noisy batch cannot flip the direction. */
     private static final double REFERENCE_ALPHA = 0.5D;
 
-    private final int maxBatch;
-
     private final AtomicInteger batchSize;
-
-    /** When {@code false} the sizer stays fixed at its initial size (standard mode). */
-    private final boolean adaptive;
 
     private double referenceThroughput = -1.0D;
 
     public AdaptiveBatchSizer(int initialBatch) {
-        this(initialBatch, true, Integer.MAX_VALUE);
-    }
-
-    public AdaptiveBatchSizer(int initialBatch, boolean adaptive) {
-        this(initialBatch, adaptive, Integer.MAX_VALUE);
-    }
-
-    /**
-     * @param maxBatch largest size the tuner may grow to; callers whose batches are buffered by a
-     *                 single writer bound it (SINK_BATCH style) instead of growing without limit.
-     */
-    public AdaptiveBatchSizer(int initialBatch, boolean adaptive, int maxBatch) {
-        this.maxBatch = Math.max(MIN_BATCH, maxBatch);
         this.batchSize = new AtomicInteger(clamp(initialBatch));
-        this.adaptive = adaptive;
     }
 
     public int batchSize() {
@@ -59,7 +40,7 @@ public final class AdaptiveBatchSizer {
      * {@link #batchSize()} calls reflect the tuned size.
      */
     public synchronized void record(int rows, long nanos) {
-        if (!adaptive || rows <= 0 || nanos <= 0) {
+        if (rows <= 0 || nanos <= 0) {
             return;
         }
         double throughput = rows * 1_000_000_000.0D / nanos;
@@ -77,6 +58,6 @@ public final class AdaptiveBatchSizer {
     }
 
     private int clamp(int value) {
-        return Math.max(MIN_BATCH, Math.min(maxBatch, value));
+        return Math.max(MIN_BATCH, value);
     }
 }

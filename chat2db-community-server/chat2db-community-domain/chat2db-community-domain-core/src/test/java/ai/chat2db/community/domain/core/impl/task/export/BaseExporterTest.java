@@ -9,144 +9,69 @@ import ai.chat2db.community.domain.core.impl.db.extension.SqlExecutionPolicyMana
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Statement;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BaseExporterTest {
 
     @TempDir
     Path temporaryDirectory;
 
-    private static final class RecordingExporter extends BaseExporter {
-
-        private final Map<String, ByteArrayOutputStream> written = new LinkedHashMap<>();
-
-        private RecordingExporter() {
-            super(new ExportCellProcessorChain(List.of()), new SqlExecutionPolicyManager(List.of()));
-            this.suffix = ".sql";
-        }
-
-        @Override
-        protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
-                java.io.OutputStream output) throws Exception {
-            ByteArrayOutputStream capture = new ByteArrayOutputStream();
-            capture.write(("data of " + tableName).getBytes(StandardCharsets.UTF_8));
-            output.write(capture.toByteArray());
-            output.flush();
-            written.put(tableName, capture);
-        }
-
-        @Override
-        public String type() {
-            return "sql";
-        }
-    }
-
     @Test
-    void singleTableExportWritesTheFormatStreamIntoTheArtifactFile() throws Exception {
-        RecordingExporter exporter = new RecordingExporter();
-        File output = temporaryDirectory.resolve("one.sql").toFile();
+    void cancellationInterruptsMultiTableZipCompressionAndCleansIntermediateFiles() throws Exception {
+        BaseExporter exporter = new BaseExporter(new ExportCellProcessorChain(List.of()),
+                new SqlExecutionPolicyManager(List.of())) {
+            {
+                suffix = ".sql";
+            }
 
-        exporter.run(ExportTaskSpec.builder().tableNames(List.of("orders")).build(),
-                new NoopContext(), output);
+            @Override
+            protected void singleExport(ExportTaskSpec spec, TaskExecutionContext context, String tableName,
+                    File file) throws Exception {
+                Files.write(file.toPath(), new byte[32 * 1024]);
+            }
 
-        assertArrayEquals("data of orders".getBytes(StandardCharsets.UTF_8), Files.readAllBytes(output.toPath()));
-    }
-
-    @Test
-    void multiTableExportStreamsEveryEntryWithoutIntermediateFiles() throws Exception {
-        RecordingExporter exporter = new RecordingExporter();
+            @Override
+            public String type() {
+                return "sql";
+            }
+        };
+        ExportTaskSpec spec = ExportTaskSpec.builder()
+                .tableNames(List.of("first", "second"))
+                .build();
         File output = temporaryDirectory.resolve("tables.zip").toFile();
 
-        exporter.run(ExportTaskSpec.builder().tableNames(List.of("first", "second")).build(),
-                new NoopContext(), output);
-
-        Map<String, String> entries = unzip(output);
-        assertEquals(Map.of("first.sql", "data of first", "second.sql", "data of second"), entries);
-        try (var files = Files.list(temporaryDirectory)) {
-            assertFalse(files.anyMatch(path -> path.getFileName().toString().startsWith(".task-export-")));
-        }
-    }
-
-    @Test
-    void legacyCompressionOptionDoesNotCompressTheArtifact() throws Exception {
-        ExportTaskSpec spec = com.alibaba.fastjson2.JSON.parseObject(
-                "{\"tableNames\":[\"orders\"],\"compression\":\"GZIP\"}", ExportTaskSpec.class);
-        File output = temporaryDirectory.resolve("one.sql").toFile();
-
-        new RecordingExporter().run(spec, new NoopContext(), output);
-
-        assertArrayEquals("data of orders".getBytes(StandardCharsets.UTF_8), Files.readAllBytes(output.toPath()));
-    }
-
-    @Test
-    void cancellationDuringMultiTableExportStopsBeforeTheNextEntry() throws Exception {
-        RecordingExporter exporter = new RecordingExporter();
-        File output = temporaryDirectory.resolve("tables.zip").toFile();
-
-        assertThrows(TaskCancelledException.class, () -> exporter.run(
-                ExportTaskSpec.builder().tableNames(List.of("first", "second")).build(),
-                new CancellingContext(3), output));
+        assertThrows(TaskCancelledException.class,
+                () -> exporter.run(spec, new CancellingContext(7), output));
 
         try (var files = Files.list(temporaryDirectory)) {
             assertFalse(files.anyMatch(path -> path.getFileName().toString().startsWith(".task-export-")));
         }
     }
 
-    @Test
-    void shardRangeMathRejectsOverflowAndKeepsTheFinalLongValue() {
-        assertEquals(20_001L, BaseExporter.inclusiveKeySpan(Long.MAX_VALUE - 20_000L,
-                Long.MAX_VALUE));
-        assertEquals(6_667L, BaseExporter.shardStep(20_001L, 3));
-        assertEquals(null, BaseExporter.inclusiveKeySpan(Long.MIN_VALUE, Long.MAX_VALUE));
-        assertFalse(BaseExporter.reachedShardEnd(Long.MAX_VALUE, 0L, true));
-    }
+    private static final class CancellingContext implements TaskExecutionContext {
 
-    @Test
-    void shardCancellationKeepsItsTaskCancellationType() {
-        TaskCancelledException cancellation = new TaskCancelledException();
+        private final int cancelAtCheck;
+        private final AtomicInteger checks = new AtomicInteger();
 
-        TaskCancelledException thrown = assertThrows(TaskCancelledException.class,
-                () -> BaseExporter.throwShardFailure(cancellation));
+        private CancellingContext(int cancelAtCheck) {
+            this.cancelAtCheck = cancelAtCheck;
+        }
 
-        assertSame(cancellation, thrown);
-    }
-
-    private static Map<String, String> unzip(File archive) throws Exception {
-        Map<String, String> entries = new LinkedHashMap<>();
-        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive.toPath()))) {
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                ByteArrayOutputStream content = new ByteArrayOutputStream();
-                byte[] buffer = new byte[4096];
-                int length;
-                while ((length = zip.read(buffer)) != -1) {
-                    content.write(buffer, 0, length);
-                }
-                entries.put(entry.getName(), content.toString(StandardCharsets.UTF_8));
+        @Override
+        public void checkCancelled() {
+            if (checks.incrementAndGet() >= cancelAtCheck) {
+                throw new TaskCancelledException();
             }
         }
-        return entries;
-    }
-
-    private static class NoopContext implements TaskExecutionContext {
 
         @Override
         public void reportProgress(int progress, String stage, String message) {
@@ -169,16 +94,11 @@ class BaseExporterTest {
         }
 
         @Override
-        public void checkCancelled() {
-        }
-
-        @Override
         public void registerCancelable(TaskCancelable resource) {
         }
 
         @Override
-        public ArtifactDraft createArtifact(String outputDirectory, String fileName,
-                String mediaType) {
+        public ArtifactDraft createArtifact(String outputDirectory, String fileName, String mediaType) {
             throw new UnsupportedOperationException();
         }
 
@@ -193,23 +113,6 @@ class BaseExporterTest {
 
         @Override
         public void onStatementClosed(Statement statement) {
-        }
-    }
-
-    private static final class CancellingContext extends NoopContext {
-
-        private final int cancelAtCheck;
-        private final AtomicInteger checks = new AtomicInteger();
-
-        private CancellingContext(int cancelAtCheck) {
-            this.cancelAtCheck = cancelAtCheck;
-        }
-
-        @Override
-        public void checkCancelled() {
-            if (checks.incrementAndGet() >= cancelAtCheck) {
-                throw new TaskCancelledException();
-            }
         }
     }
 }

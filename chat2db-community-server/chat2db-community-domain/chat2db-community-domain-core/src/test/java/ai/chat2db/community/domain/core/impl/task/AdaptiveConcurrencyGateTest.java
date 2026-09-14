@@ -8,8 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * AIMD tuning of the concurrency gate: permits grow on throughput improvement, shrink fast on
- * regression, stay hard-capped at the configured max even while workers hold permits, and react
- * to source pressure by cutting a quarter of the fan-out. Tuning windows are row-based: one
+ * regression, and stay hard-capped at the configured max even while workers hold permits. Tuning windows are row-based: one
  * observation with at least {@link AdaptiveConcurrencyGate#WINDOW_ROWS} rows triggers one
  * evaluation, so successive windows model faster execution with smaller wall times.
  */
@@ -94,16 +93,6 @@ class AdaptiveConcurrencyGateTest {
         gate.record(0, MILLI);
         gate.record(100, 0L);
         assertEquals(2, gate.currentPermits());
-    }
-
-    @Test
-    void sourcePressureCutsAQuarterImmediatelyButNeverPastTheFloor() {
-        AdaptiveConcurrencyGate gate = AdaptiveConcurrencyGate.create(4, 4);
-        gate.reduceForSourcePressure();
-        assertEquals(3, gate.currentPermits(), "a slow page cuts a quarter of the fan-out");
-        AdaptiveConcurrencyGate floored = AdaptiveConcurrencyGate.create(2, 4);
-        floored.reduceForSourcePressure();
-        assertEquals(1, floored.currentPermits(), "the floor holds under source pressure");
     }
 
     @Test

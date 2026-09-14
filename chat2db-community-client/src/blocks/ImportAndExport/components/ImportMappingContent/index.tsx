@@ -19,7 +19,7 @@ import { useStyles } from './style';
 import type { FileUrl } from '@/components/UploadLocalFile';
 import { stageSelectedImportFile } from './fileStaging';
 import CsvOptionsSections from './CsvOptionsSections';
-import ExecutionModeControl from '../ExecutionModeControl';
+import ImportModeControl from '../ImportModeControl';
 import useImportDataSections from './ImportDataSections';
 import {
   buildCsvOptionsForTaskSubmit,
@@ -281,11 +281,10 @@ const ImportMappingContent = ({ dataSourceId, databaseName, schemaName, tableNam
       {preview && (
         <div className={styles.actions}>
           {isCsv && (
-            <ExecutionModeControl
+            <ImportModeControl
               value={mode}
               onChange={setMode}
               disabled={executing || loading || loadedPreviewKey !== currentPreviewKey}
-              confirmImport
             />
           )}
           <Button

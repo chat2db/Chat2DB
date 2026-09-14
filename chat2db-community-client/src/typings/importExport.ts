@@ -1,9 +1,5 @@
 import { IDatabaseBaseInfo } from '@/typings/database';
-import {
-  ImportExportType,
-  ImportExportTaskType,
-  ImportExportTaskStatus,
-} from '@/constants/importExport';
+import { ImportExportType, ImportExportTaskType, ImportExportTaskStatus } from '@/constants/importExport';
 
 export interface ImportExportDataBoundInfo extends IDatabaseBaseInfo {
   tableName: string;
@@ -33,21 +29,7 @@ export interface ImportExportTaskDetails {
   updatedAt?: number | string;
 }
 
-export interface IImportColumnMapping {
-  sourceColumn: string;
-  targetColumn: string;
-}
-
-export interface IImportOptions {
-  charset?: string;
-  delimiter?: string;
-  quoteChar?: string;
-  skipRows?: number;
-  nullString?: string;
-  columnMappings?: IImportColumnMapping[];
-}
-
-/** Execution mode of bulk import/export tasks; absent resolves to STANDARD on the backend. */
+/** CSV import execution mode; absent resolves to STANDARD on the backend. */
 export type ImportExecutionMode = 'ULTRA_FAST' | 'STANDARD';
 
 export interface ImportExportTaskEvent {

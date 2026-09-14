@@ -3,7 +3,6 @@ package ai.chat2db.community.domain.core.impl.task.imports;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMapping;
 import ai.chat2db.community.domain.api.model.task.ImportColumnMatch;
-import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.UnmappedTargetStrategy;
 import ai.chat2db.community.tools.exception.ParamBusinessException;
@@ -32,19 +31,9 @@ public final class ImportColumnResolver {
     private ImportColumnResolver() {
     }
 
-    public static Resolution resolve(List<TableColumn> tableColumns, List<String> fileHeaders,
-            ImportOptions options) {
-        return resolve(tableColumns, fileHeaders, options == null ? null : options.getColumnMappings(),
-                UnmappedTargetStrategy.DEFAULT);
-    }
-
     public static Resolution resolveForSpec(List<TableColumn> tableColumns, List<String> fileHeaders,
             ImportTaskSpec spec) {
-        List<ImportColumnMapping> mappings = spec.getColumnMappings();
-        if (mappings == null && spec.getOptions() != null) {
-            mappings = spec.getOptions().getColumnMappings();
-        }
-        return resolve(tableColumns, fileHeaders, mappings, spec.getUnmappedTarget());
+        return resolve(tableColumns, fileHeaders, spec.getColumnMappings(), spec.getUnmappedTarget());
     }
 
     public static void validateForImport(List<TableColumn> columns, Resolution resolution, ImportTaskSpec spec) {
@@ -147,9 +136,7 @@ public final class ImportColumnResolver {
     }
 
     /**
-     * Case-insensitive match on trimmed names, ignoring a leading UTF-8 BOM: commons-csv does not
-     * strip it, and without this the first column of every BOM-prefixed file (including files
-     * written by our own CsvSink) would never match.
+     * Case-insensitive match on trimmed names, ignoring a leading UTF-8 BOM.
      */
     private static String normalize(String name) {
         if (name == null) {

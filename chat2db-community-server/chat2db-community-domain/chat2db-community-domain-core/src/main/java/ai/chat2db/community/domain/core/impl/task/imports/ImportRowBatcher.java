@@ -3,7 +3,6 @@ package ai.chat2db.community.domain.core.impl.task.imports;
 import ai.chat2db.community.domain.api.model.metadata.DataType;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.task.CsvOptions;
-import ai.chat2db.community.domain.api.model.task.ImportOptions;
 import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
@@ -83,8 +82,6 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     private final Resolution resolution;
 
-    private final ImportOptions options;
-
     private final CsvOptions csvOptions;
 
     private final IValueProcessor valueProcessor;
@@ -141,7 +138,6 @@ public final class ImportRowBatcher implements AutoCloseable {
         this.spec = spec;
         this.context = context;
         this.resolution = resolution;
-        this.options = spec.getOptions() == null ? new ImportOptions() : spec.getOptions();
         this.csvOptions = spec.getCsvOptions() == null ? null : spec.getCsvOptions().validate();
         this.valueProcessor = valueProcessor;
         this.sqlBuilder = Chat2DBContext.getSqlBuilder();
@@ -544,7 +540,7 @@ public final class ImportRowBatcher implements AutoCloseable {
     }
 
     private String toSqlLiteral(TableColumn column, String raw, long fileRowNumber) {
-        if (raw == null || (options.getNullString() != null && options.getNullString().equals(raw))) {
+        if (raw == null) {
             return null;
         }
         if (csvOptions != null) {

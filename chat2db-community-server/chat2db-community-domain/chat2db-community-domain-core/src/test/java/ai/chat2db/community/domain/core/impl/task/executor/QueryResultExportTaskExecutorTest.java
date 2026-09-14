@@ -29,7 +29,6 @@ import java.util.function.LongConsumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class QueryResultExportTaskExecutorTest {
@@ -45,20 +44,6 @@ class QueryResultExportTaskExecutorTest {
         assertEquals(TaskErrorCode.EXPORT_FAILED.name(), exception.getCode());
         assertEquals(0, service.prepareCalls);
         assertEquals(0, service.exportCalls);
-    }
-
-    @Test
-    void removedFormatsAreRejectedBeforePreparingOrWritingAnArtifact(@TempDir Path tempDirectory) {
-        for (String format : List.of("JSON", "NDJSON", "MARKDOWN")) {
-            RecordingExportService service = new RecordingExportService();
-            RecordingContext context = new RecordingContext(tempDirectory);
-
-            assertThrows(TaskExecutionException.class,
-                    () -> new QueryResultExportTaskExecutor(service).execute(spec(format), context));
-            assertEquals(0, service.prepareCalls);
-            assertEquals(0, service.exportCalls);
-            assertNull(context.createdArtifact);
-        }
     }
 
     @Test
