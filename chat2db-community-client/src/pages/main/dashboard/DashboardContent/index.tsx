@@ -79,9 +79,11 @@ export default memo<IProps>((props) => {
   const refreshChartList = () => {
     if (currentDashboard?.id) {
       setRefreshLoading(true);
-      refreshCurrentDashboard().then(() => {
-        setRefreshLoading(false);
-      });
+      refreshCurrentDashboard()
+        .catch(() => undefined)
+        .finally(() => {
+          setRefreshLoading(false);
+        });
     }
   };
 

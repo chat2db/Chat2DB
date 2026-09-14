@@ -1,4 +1,5 @@
 export default {
+  'connection.message.testSshTimeout': 'La prueba de conexión SSH agotó el tiempo de espera. Comprueba el host y la red e inténtalo de nuevo.',
   'connection.title': 'Conexiones',
   'connection.title.connections': 'Conexiones',
   'connection.title.createConnection': 'Nueva conexión',
