@@ -86,7 +86,7 @@
     "test:monaco-lifecycle": "tsx src/utils/monaco.test.ts && tsx src/components/SingleFileMonacoEditor/refAdapter.test.ts",
     "test:mcp-lifecycle": "tsx src/blocks/Setting/McpSetting/mcpLifecycle.test.ts",
     "test:sql-completion-context": "tsx src/components/SQLEditor/core/sqlCompletionContext.test.ts && tsx src/components/SQLEditor/core/sqlCompletionRequestError.test.ts",
-    "test:sql-in-clipboard": "tsx src/utils/sqlInClipboard.test.ts && tsx src/components/SQLEditor/helper/sqlInsertValueDefaults.test.ts",
+    "test:sql-in-clipboard": "tsx src/utils/clipboardText.test.ts && tsx src/utils/internalClipboard.test.ts && tsx src/utils/sqlInClipboard.test.ts && tsx src/components/SQLEditor/helper/sqlInsertValueDefaults.test.ts",
     "test:console-tab-name": "tsx src/store/workspace/utils/consoleTabName.test.ts && tsx src/utils/workspaceObjectTabTitle.test.ts",
     "test:workspace-tab-scroll": "tsx src/store/workspace/utils/workspaceTabScrollRequest.test.ts && tsx src/components/Tabs/activeTabScroll.test.ts && tsx src/components/Tabs/wheelScroll.test.ts && tsx src/components/Tabs/tabAccentColor.test.ts",
     "test:workspace-split-lifecycle": "tsx src/pages/main/workspace/components/WorkspaceTabs/workspaceTabContentLayout.test.ts && tsx src/pages/main/workspace/components/WorkspaceTabs/workspaceTabLayout.test.ts",
