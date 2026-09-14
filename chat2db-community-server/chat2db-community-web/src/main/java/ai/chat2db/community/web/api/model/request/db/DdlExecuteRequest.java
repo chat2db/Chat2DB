@@ -19,4 +19,7 @@ public class DdlExecuteRequest implements IDataSourceSchemaRequestInfo {
     private String sql;
 
     private String tableName;
+
+    /** Omit to retain the executor's default; false stops after the first failed statement. */
+    private Boolean errorContinue;
 }
