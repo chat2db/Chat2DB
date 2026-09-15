@@ -183,16 +183,7 @@ public class DataSourceStorage extends SmallDataStorage<DataSource> {
             }
             throw exception;
         }
-        try {
-            createDataSourceNode(id, dataSource.getSpaceId());
-        } catch (RuntimeException exception) {
-            try {
-                super.delete(id);
-            } catch (RuntimeException rollback) {
-                exception.addSuppressed(rollback);
-            }
-            throw exception;
-        }
+        createDataSourceNode(id, dataSource.getSpaceId());
         return id;
     }
 
@@ -247,26 +238,12 @@ public class DataSourceStorage extends SmallDataStorage<DataSource> {
         Node node = new Node();
         node.setId(datasourceId);
         node.setType(NodeTypeEnum.DATA_SOURCE.name());
-        if (!TreeNodeStorage.INSTANCE.insertNode(dropToNode, node)) {
-            throw new IllegalStateException("Parent namespace does not exist");
-        }
+        TreeNodeStorage.INSTANCE.insertNode(dropToNode, node);
     }
 
-    public synchronized void delete(Long id) {
-        List<Node> treeBefore = TreeNodeStorage.INSTANCE.snapshotNodes();
-        List<Namespace> namespacesBefore = NamespaceStorage.INSTANCE.snapshotNamespaces();
-        try {
-            TreeNodeStorage.INSTANCE.deleteNode(Node.builder().id(id).type(NodeTypeEnum.DATA_SOURCE.name()).build());
-            NamespaceStorage.INSTANCE.deleteDataSourcePosition(id);
-            super.delete(id);
-        } catch (RuntimeException exception) {
-            try {
-                TreeNodeStorage.INSTANCE.restoreNodes(treeBefore);
-                NamespaceStorage.INSTANCE.restoreNamespaces(namespacesBefore);
-            } catch (RuntimeException rollback) {
-                exception.addSuppressed(rollback);
-            }
-            throw exception;
-        }
+    public void delete(Long id) {
+        super.delete(id);
+        NamespaceStorage.INSTANCE.deleteDataSourcePosition(id);
+        TreeNodeStorage.INSTANCE.deleteNode(Node.builder().id(id).type(NodeTypeEnum.DATA_SOURCE.name()).build());
     }
 }

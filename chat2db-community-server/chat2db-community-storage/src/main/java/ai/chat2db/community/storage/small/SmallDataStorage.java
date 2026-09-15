@@ -17,10 +17,8 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
 @Slf4j
@@ -80,10 +78,13 @@ public class SmallDataStorage<T> implements IWorkspaceLocalStorage<T> {
         }
         try {
             Long id = LocalStorageConverter.ensureId(data, this::generateId);
-            Map<Long, T> candidate = new TreeMap<>(dataMap);
-            candidate.put(id, data);
-            saveDataList(new ArrayList<>(candidate.values()));
-            dataMap.put(id, data);
+            if (dataMap.get(id) != null) {
+                dataMap.put(id, data);
+                saveDataList();
+            } else {
+                dataMap.put(id, data);
+                FileUtil.appendUtf8String(JSON.toJSONString(data) + "\n", filePath);
+            }
             return id;
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -100,15 +101,13 @@ public class SmallDataStorage<T> implements IWorkspaceLocalStorage<T> {
             if (id == null) {
                 return;
             }
-            T current = dataMap.get(id);
-            if (current == null) {
+            T before = dataMap.get(id);
+            if (before == null) {
                 return;
             }
-            T replacement = getAfterSave(current, data);
-            Map<Long, T> candidate = new TreeMap<>(dataMap);
-            candidate.put(id, replacement);
-            saveDataList(new ArrayList<>(candidate.values()));
-            dataMap.put(id, replacement);
+            before = getAfterSave(before, data);
+            dataMap.put(id, before);
+            saveDataList();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -117,13 +116,8 @@ public class SmallDataStorage<T> implements IWorkspaceLocalStorage<T> {
 
     @Override
     public synchronized void delete(Long id) {
-        if (id == null || !dataMap.containsKey(id)) {
-            return;
-        }
-        Map<Long, T> candidate = new TreeMap<>(dataMap);
-        candidate.remove(id);
-        saveDataList(new ArrayList<>(candidate.values()));
         dataMap.remove(id);
+        saveDataList();
     }
 
     protected synchronized void saveDataList() {

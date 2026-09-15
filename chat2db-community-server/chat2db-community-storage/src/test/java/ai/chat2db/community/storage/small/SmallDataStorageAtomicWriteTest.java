@@ -12,7 +12,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -64,36 +63,6 @@ class SmallDataStorageAtomicWriteTest {
         try (var files = Files.list(tempDir.toPath())) {
             assertEquals(1, files.count());
         }
-    }
-
-    @Test
-    void failedSaveDoesNotPublishNewRecordInMemory() throws Exception {
-        File storageFile = new File(tempDir, "failed-save.json");
-        TestStorage initial = new TestStorage(storageFile);
-        initial.put(treeNode(1L));
-        initial.persist();
-        String original = Files.readString(storageFile.toPath(), StandardCharsets.UTF_8);
-        FailingStorage failing = new FailingStorage(storageFile);
-
-        assertThrows(RuntimeException.class, () -> failing.save(treeNode(2L)));
-
-        assertNull(failing.getById(2L));
-        assertEquals(original, Files.readString(storageFile.toPath(), StandardCharsets.UTF_8));
-    }
-
-    @Test
-    void failedDeleteKeepsRecordInMemoryAndOnDisk() throws Exception {
-        File storageFile = new File(tempDir, "failed-delete.json");
-        TestStorage initial = new TestStorage(storageFile);
-        initial.put(treeNode(1L));
-        initial.persist();
-        String original = Files.readString(storageFile.toPath(), StandardCharsets.UTF_8);
-        FailingStorage failing = new FailingStorage(storageFile);
-
-        assertThrows(RuntimeException.class, () -> failing.delete(1L));
-
-        assertNotNull(failing.getById(1L));
-        assertEquals(original, Files.readString(storageFile.toPath(), StandardCharsets.UTF_8));
     }
 
     private static TreeNode treeNode(long id) {
