@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { agentEventTrace, buildAgentTranscript } from './agentEvents';
-import { formatOutputPreview, parseOutputReference, toolOutputItems } from './agentOutput';
+import { formatToolResult, parseOutputReference, toolOutputItems } from './agentOutput';
 import { toolExecutions, toolSummary } from './components/AgentV2Session/presentation';
 import type { AgentEvent } from '@/service/agent';
 import zh from '@/i18n/zh-CN/stream';
@@ -27,7 +27,8 @@ assert.deepEqual(trace.outputs, [{ output }]);
 const contentOnly = structuredClone(finished);
 delete (contentOnly.payload.result as Record<string, unknown>).details;
 assert.deepEqual(agentEventTrace(contentOnly)?.outputs, [{ output }], 'Replayed content envelopes retain their file reference');
-assert.deepEqual(JSON.parse(formatOutputPreview(trace.content!)), { ok: true, data: { rows: [[1, null]] } });
+assert.deepEqual(JSON.parse(formatToolResult(trace.content!)), { ok: true, data: { rows: [[1, null]] }, output },
+  'Displayed tool results must retain the file reference received by the model');
 const tools = toolExecutions([agentEventTrace(started)!, trace]);
 assert.equal(tools.length, 1);
 assert.equal(tools[0].description, 'Load rows');
@@ -52,9 +53,13 @@ multipleFinished.payload.result = {
 const multipleTrace = agentEventTrace(multipleFinished)!;
 assert.equal(multipleTrace.outputs?.length, 2, 'Content and details references must not duplicate attachments');
 assert.deepEqual(toolSummary([agentEventTrace(started)!, multipleTrace]), { count: 1, durationMs: 25 });
-assert.deepEqual(JSON.parse(formatOutputPreview(JSON.stringify(multiple))), {
-  ok: true, data: { results: multiple.data.results.map(({ output: file, ...preview }) => preview) },
-});
+assert.deepEqual(JSON.parse(formatToolResult(JSON.stringify(multiple))), multiple,
+  'Each statement keeps its own output reference in the displayed JSON');
+
+const paged = { ok: true, page: { number: 2, size: 200, returned: 200, hasMore: true, nextPage: 3 },
+  data: { results: [{ data: { columns: ['id', 'message'], rows: [['1', 'preview'], ['2']] }, output }] }, output };
+assert.deepEqual(JSON.parse(formatToolResult(JSON.stringify(paged))), paged,
+  'Preview truncation, file completeness and SQL pagination must remain visible together');
 
 assert.equal(parseOutputReference({ ...output, sizeBytes: -1 }), undefined);
 assert.equal(parseOutputReference({ ...output, artifactId: '' }), undefined);
@@ -62,8 +67,8 @@ assert.equal(parseOutputReference({ path: 'user supplied path' }), undefined);
 assert.deepEqual(parseOutputReference({ mode: 'unavailable', warning: 'Disk full' }), {
   mode: 'unavailable', warning: 'Disk full', complete: false, previewTruncated: true,
 });
-assert.equal(formatOutputPreview('ordinary tool text'), 'ordinary tool text');
-assert.deepEqual(JSON.parse(formatOutputPreview('{"output":"business value"}')), { output: 'business value' });
+assert.equal(formatToolResult('ordinary tool text'), 'ordinary tool text');
+assert.deepEqual(JSON.parse(formatToolResult('{"output":"business value"}')), { output: 'business value' });
 
 let messages: Record<string, string> = zh;
 const translate = (key: string) => messages[key] || key;

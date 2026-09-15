@@ -5,7 +5,7 @@ import type { AgentTraceEntry } from '../../agentEvents';
 import { Check, ChevronRight, CircleX, Clock3, Wrench } from 'lucide-react';
 import AgentActivityIndicator from './AgentActivityIndicator';
 import AgentToolOutput from './AgentToolOutput';
-import { formatOutputPreview } from '../../agentOutput';
+import { formatToolResult } from '../../agentOutput';
 import { toolExecutions, toolSummary, type AgentActivity } from './presentation';
 
 const THINKING_DELAY_MS = 600;
@@ -74,11 +74,6 @@ const useStyles = createStyles(({ css, token }) => ({
   `,
 }));
 
-const formatJson = (value: string) => {
-  try { return JSON.stringify(JSON.parse(value), null, 2); }
-  catch { return value; }
-};
-
 export default function AgentTraceGroup({ entries, activity, status, runActive = false, onInspect, sessionId }: {
   sessionId?: string;
   entries: AgentTraceEntry[]; activity?: AgentActivity; status?: 'failed' | 'cancelled' | 'unknown';
@@ -142,16 +137,16 @@ export default function AgentTraceGroup({ entries, activity, status, runActive =
           </summary>
           <div className={styles.trace}>
             <div className={styles.label}>{tool.name} · {i18n('stream.trace.toolCall')}</div>
-            <pre className={styles.code} tabIndex={0}>{formatJson(tool.arguments || '{}')}</pre>
+            <pre className={styles.code} tabIndex={0}>{formatToolResult(tool.arguments || '{}')}</pre>
             {tool.completed && <>
               <div className={styles.label}>{i18n('stream.trace.toolResult')}
                 {tool.durationMs !== undefined && ` · ${i18n('stream.trace.duration', tool.durationMs)}`}
               </div>
-              <pre className={styles.code} tabIndex={0}>{formatOutputPreview(tool.content || '')}</pre>
               {tool.outputs?.map(({ output, resultIndex }) => <AgentToolOutput
                 key={`${sessionId}:${output.mode === 'file' ? output.artifactId : tool.id}:${resultIndex ?? ''}`}
                 sessionId={sessionId} output={output} resultIndex={resultIndex}
                                                               />)}
+              <pre className={styles.code} tabIndex={0}>{formatToolResult(tool.content || '')}</pre>
             </>}
           </div>
         </details>;

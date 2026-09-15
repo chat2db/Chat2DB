@@ -36,18 +36,7 @@ export const toolOutputItems = (content: string, details?: unknown): AgentOutput
   catch { return []; }
 };
 
-export const formatOutputPreview = (content: string): string => {
-  try {
-    const stripReference = (value: unknown) => {
-      if (!value || typeof value !== 'object' || !('output' in value) || !parseOutputReference(value.output)) return value;
-      const { output, ...preview } = value;
-      return preview;
-    };
-    const preview = stripReference(JSON.parse(content));
-    if (preview && typeof preview === 'object' && 'data' in preview) {
-      const data = preview.data as { results?: unknown[] } | undefined;
-      if (Array.isArray(data?.results)) data.results = data.results.map(stripReference);
-    }
-    return JSON.stringify(preview, null, 2);
-  } catch { return content; }
+export const formatToolResult = (content: string): string => {
+  try { return JSON.stringify(JSON.parse(content), null, 2); }
+  catch { return content; }
 };
