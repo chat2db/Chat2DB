@@ -11,6 +11,11 @@ on:
         description: 'Beta build version, without the v prefix; beta builds must run from main'
         required: true
         type: string
+      release_epoch:
+        description: 'Positive update release sequence for the test package'
+        required: true
+        type: string
+        default: '1'
 
 concurrency:
   group: community-desktop-${{ github.ref }}-${{ inputs.version || github.ref_name }}
@@ -28,7 +33,12 @@ jobs:
       tag_name: ${{ steps.metadata.outputs.tag_name }}
       channel: ${{ steps.metadata.outputs.channel }}
       publish: ${{ steps.metadata.outputs.publish }}
+      release_epoch: ${{ steps.update_metadata.outputs.release_epoch }}
+      build_sha: ${{ steps.update_metadata.outputs.build_sha }}
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
       - name: Validate version
         id: metadata
         shell: bash
@@ -81,6 +91,28 @@ jobs:
             echo "channel=${channel}"
             echo "publish=${publish}"
           } >> "${GITHUB_OUTPUT}"
+
+      - name: Resolve update metadata
+        id: update_metadata
+        shell: bash
+        env:
+          TAG_NAME: ${{ steps.metadata.outputs.tag_name }}
+          PUBLISH: ${{ steps.metadata.outputs.publish }}
+          INPUT_EPOCH: ${{ inputs.release_epoch }}
+        run: |
+          set -euo pipefail
+          if [ "${PUBLISH}" = true ]; then
+            test "$(git cat-file -t "refs/tags/${TAG_NAME}")" = tag
+            epoch=$(git for-each-ref "refs/tags/${TAG_NAME}" --format='%(contents)' | sed -n 's/^release_epoch: *//p')
+          else
+            epoch="${INPUT_EPOCH}"
+          fi
+          if [[ ! "${epoch}" =~ ^[1-9][0-9]*$ ]]; then
+            echo 'A positive release_epoch is required in the annotated release tag or test inputs.' >&2
+            exit 1
+          fi
+          echo "release_epoch=${epoch}" >> "${GITHUB_OUTPUT}"
+          echo "build_sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
   notify_start:
     name: Notify Feishu Community beta build start
@@ -227,8 +259,13 @@ jobs:
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           TARGET: ${{ matrix.target }}
+          COMMUNITY_RELEASE_EPOCH: ${{ needs.resolve.outputs.release_epoch }}
+          COMMUNITY_UPDATE_KEY_ID: ${{ secrets.COMMUNITY_UPDATE_KEY_ID }}
+          COMMUNITY_UPDATE_PUBLIC_KEY_B64: ${{ secrets.COMMUNITY_UPDATE_PUBLIC_KEY_B64 }}
         run: |
           set -euo pipefail
+          test -n "${COMMUNITY_UPDATE_KEY_ID}"
+          test -n "${COMMUNITY_UPDATE_PUBLIC_KEY_B64}"
           script/package/package-community-jcef.sh "${VERSION}" "${TARGET}"
 
       - name: Notarize macOS package
@@ -309,6 +346,74 @@ jobs:
           xcrun stapler staple "${dmg}"
           xcrun stapler validate "${dmg}"
 
+      - name: Install Windows signing client
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install winscp -y --no-progress
+
+      - name: Sign Windows MSI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          WIN_SERVER_IP: ${{ secrets.WIN_SERVER_IP }}
+          WIN_SERVER_USER: ${{ secrets.WIN_SERVER_USER }}
+          WIN_SSH_PRIVATE_KEY: ${{ secrets.WIN_SSH_PRIVATE_KEY }}
+          REMOTE_SIGN_PATH: ${{ secrets.REMOTE_SIGN_PATH }}
+          REMOTE_SIGN_SCRIPT: ${{ secrets.REMOTE_SIGN_SCRIPT }}
+          HOST_KEY: ${{ secrets.HOST_KEY }}
+        run: script/package/sign_windows_package.ps1 -PackagePath "jpackage/output/Chat2DB-Community-$env:VERSION.msi"
+
+      - name: Install Windows EXE packaging tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Wrap Windows installer
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: bash script/package/wrap_win_installer_community.sh "${VERSION}"
+
+      - name: Sign Windows EXE
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          WIN_SERVER_IP: ${{ secrets.WIN_SERVER_IP }}
+          WIN_SERVER_USER: ${{ secrets.WIN_SERVER_USER }}
+          WIN_SSH_PRIVATE_KEY: ${{ secrets.WIN_SSH_PRIVATE_KEY }}
+          REMOTE_SIGN_PATH: ${{ secrets.REMOTE_SIGN_PATH }}
+          REMOTE_SIGN_SCRIPT: ${{ secrets.REMOTE_SIGN_SCRIPT }}
+          HOST_KEY: ${{ secrets.HOST_KEY }}
+        run: script/package/sign_windows_package.ps1 -PackagePath "jpackage/output/Chat2DB-Community-$env:VERSION.exe"
+
+      - name: Generate signed update packages
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          RELEASE_EPOCH: ${{ needs.resolve.outputs.release_epoch }}
+          BUILD_SHA: ${{ needs.resolve.outputs.build_sha }}
+          ARTIFACT_NAME: ${{ matrix.artifact_name }}
+          CHAT2DB_UPDATE_KEY_ID: ${{ secrets.COMMUNITY_UPDATE_KEY_ID }}
+          CHAT2DB_UPDATE_PUBLIC_KEY_B64: ${{ secrets.COMMUNITY_UPDATE_PUBLIC_KEY_B64 }}
+          CHAT2DB_UPDATE_SIGNING_PRIVATE_KEY_B64: ${{ secrets.COMMUNITY_UPDATE_SIGNING_PRIVATE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          case "${ARTIFACT_NAME}" in
+            macos-arm64) platform=MACOS; arch=ARM64 ;;
+            macos-x64) platform=MACOS; arch=X64 ;;
+            windows) platform=WINDOWS; arch=X64 ;;
+            linux-x64) platform=LINUX; arch=X64 ;;
+            linux-arm64) platform=LINUX; arch=ARM64 ;;
+          esac
+          if [ "${RUNNER_OS}" = macOS ]; then
+            CHAT2DB_OPENSSL_BIN="$(brew --prefix openssl@3)/bin/openssl"
+            export CHAT2DB_OPENSSL_BIN
+          fi
+          bash script/package/prepare_community_update.sh "${VERSION}" "${RELEASE_EPOCH}" "${BUILD_SHA}" "${platform}" "${arch}"
+
       - name: Upload platform artifacts to GitHub Actions
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -321,8 +426,8 @@ jobs:
             jpackage/output/*.deb
             jpackage/output/*.rpm
             jpackage/output/*.AppImage
+            jpackage/output/updates/*
             jpackage/input/sourceFile/version.json
-            jpackage/input/sourceFile/local_version.json
             jpackage/input/sourceFile/*.jar
             jpackage/input/sourceFile/*.zip
 
@@ -432,6 +537,7 @@ jobs:
       actions: read
       contents: write
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Download platform artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -457,7 +563,7 @@ jobs:
           )
 
           mapfile -d '' installers < <(
-            find downloaded-artifacts -type f \
+            find downloaded-artifacts -type f -not -path '*/updates/*' \
               \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) \
               -print0
           )
@@ -482,6 +588,33 @@ jobs:
             cd release-assets
             sha256sum "${expected[@]}" > SHA256SUMS
           )
+
+      - name: Validate and collect update resources
+        shell: bash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          RELEASE_EPOCH: ${{ needs.resolve.outputs.release_epoch }}
+          BUILD_SHA: ${{ needs.resolve.outputs.build_sha }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' asset; do
+            destination="release-assets/$(basename "${asset}")"
+            test ! -e "${destination}"
+            cp "${asset}" "${destination}"
+          done < <(find downloaded-artifacts -type f -path '*/updates/*' -print0)
+          for manifest in release-assets/manifest-*.json; do
+            jq -e --arg version "${VERSION}" --arg sha "${BUILD_SHA}" --argjson epoch "${RELEASE_EPOCH}" \
+              '.product == "COMMUNITY" and .channel == "STABLE" and .version == $version and .buildSha == $sha and .releaseEpoch == $epoch' "${manifest}" >/dev/null
+            package_url=$(jq -r '.packageUrl' "${manifest}")
+            package="release-assets/${package_url##*/}"
+            test "$(wc -c < "${package}" | tr -d ' ')" = "$(jq -r '.packageSize' "${manifest}")"
+            test "$(sha256sum "${package}" | cut -d ' ' -f1)" = "$(jq -r '.packageSha256' "${manifest}")"
+          done
+          bash script/package/generate_update_index_v2.sh STABLE "${RELEASE_EPOCH}" \
+            "https://github.com/OtterMind/Chat2DB/releases/download/v${VERSION}" \
+            release-assets/release-index.json release-assets/manifest-*.json
+          (cd release-assets && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum) > checksums.tmp
+          mv checksums.tmp release-assets/SHA256SUMS
 
       - name: Upload validated release bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

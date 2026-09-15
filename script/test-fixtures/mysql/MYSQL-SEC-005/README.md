@@ -3,11 +3,17 @@
 ## Fixture
 
 - `init.sql` creates `sec005_employees` with sensitive `salary`/`notes` columns, a
-  manager account with GRANT OPTION, and an unprivileged user.
+  manager account with GRANT OPTION and `mysql.user` read access for account listing
+  and `SHOW GRANTS FOR`, and an unprivileged user.
 - `grants.sql` is a no-op placeholder; column grants are applied through the UI.
 - `cleanup.sql` drops test objects and users.
 
 ## Verification
+
+The opt-in `MysqlColumnPrivilegeIntegrationTest` uses the fixture JDBC URL and the
+`CHAT2DB_SEC005_URL`, `CHAT2DB_SEC005_ADMIN_PASSWORD`, and
+`CHAT2DB_SEC005_USER_PASSWORD` environment variables. It executes the plugin's
+grant and revoke commands and checks both permitted and denied queries.
 
 1. Connect as `sec005_admin`, open the account page for `sec005_user`.
 2. Choose Grant privilege with scope Column, select `sec005_test`/`sec005_employees`,

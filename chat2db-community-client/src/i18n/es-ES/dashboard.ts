@@ -1,4 +1,6 @@
 export default {
+  'dashboard.list.loadFailed': 'No se pudieron cargar los paneles',
+  'dashboard.list.retry': 'Reintentar',
   'dashboard.title': 'Panel',
   'dashboard.edit': 'Editar',
   'dashboard.modal.editTitle': 'Editar panel',

@@ -89,7 +89,7 @@ const AccountPrivilegePanel = memo((props: IProps) => {
   const watchedDatabaseName = Form.useWatch('databaseName', form);
   const watchedTableName = Form.useWatch('tableName', form);
   const watchedColumnList = Form.useWatch('columnList', form);
-  const watchedPrivileges = Form.useWatch('privileges', form);
+  const watchedPrivileges = Form.useWatch('privileges', form) as AccountPrivilege[] | undefined;
   const watchedGrantOption = Form.useWatch('grantOption', form);
   const watchedActionType = Form.useWatch('actionType', form);
 
@@ -689,7 +689,7 @@ const AccountPrivilegePanel = memo((props: IProps) => {
                     />
                   )}
                   {watchedActionType === AccountActionType.REVOKE_PRIVILEGE &&
-                    watchedPrivileges?.length > 0 &&
+                    (watchedPrivileges?.length ?? 0) > 0 &&
                     watchedColumnList?.length > 0 &&
                     !canRevokeDirectColumnGrant(
                       grantState,

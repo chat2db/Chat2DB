@@ -1,0 +1,344 @@
+package ai.chat2db.community.updater;
+
+import ai.chat2db.community.updater.v2.runtime.UpdateStartupCoordinator;
+import ai.chat2db.community.updater.v2.audit.UpdateAuditLog;
+import ai.chat2db.community.updater.v2.installation.FullPackageSwitcher;
+import ai.chat2db.community.updater.v2.model.UpdateHealth;
+import ai.chat2db.community.updater.v2.model.UpdateHelperPlan;
+import ai.chat2db.community.updater.v2.installation.UpdateLayout;
+import ai.chat2db.community.updater.v2.enums.UpdatePackageTypeEnum;
+import ai.chat2db.community.updater.v2.enums.UpdatePhaseEnum;
+import ai.chat2db.community.updater.v2.model.UpdateTransaction;
+import ai.chat2db.community.updater.v2.runtime.InstalledAppVersionReader;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+
+public final class UpdateHelperMain {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Duration OLD_PROCESS_TIMEOUT = Duration.ofMinutes(2);
+
+    private UpdateHelperMain() {
+    }
+
+    public static void main(String[] args) {
+        if (args.length != 1) {
+            System.err.println("Usage: chat2db-updater <plan.json>");
+            System.exit(2);
+        }
+        int exitCode;
+        try {
+            exitCode = run(Path.of(args[0]));
+        } catch (Exception exception) {
+            exception.printStackTrace(System.err);
+            exitCode = 1;
+        }
+        System.exit(exitCode);
+    }
+
+    static int run(Path planFile) throws Exception {
+        UpdateHelperPlan plan = OBJECT_MAPPER.readValue(planFile.toFile(), UpdateHelperPlan.class);
+        UpdateLayout layout = layout(plan);
+        UpdateTransaction transaction = Objects.requireNonNull(plan.transaction(),
+            "Updater helper plan is missing its transaction snapshot");
+        if (transaction.transactionId() == null || transaction.transactionId().isBlank()) {
+            throw new IllegalStateException("Updater helper plan transaction id is missing");
+        }
+        UpdateAuditLog audit = UpdateAuditLog.open(layout, plan.transactionId(), "HELPER");
+        audit.versions(transaction.fromVersion(), transaction.toVersion());
+        audit.critical("HANDOFF", "ACK", "helper accepted persisted plan");
+        return execute(plan, layout, transaction, audit);
+    }
+
+    private static int execute(UpdateHelperPlan plan, UpdateLayout layout,
+            UpdateTransaction transaction, UpdateAuditLog audit) throws Exception {
+        FullPackageSwitcher switcher = new FullPackageSwitcher(layout);
+        NativePackageInstaller nativeInstaller = new NativePackageInstaller();
+        Process trialProcess = null;
+        Process normalProcess = null;
+        Path healthFile = UpdateStartupCoordinator.healthFile(layout, plan.transactionId());
+        try {
+            audit.critical("QUIESCING", "WAIT_OLD_PROCESS", "pid=" + plan.oldProcessId());
+            waitForOldProcess(plan.oldProcessId());
+            audit.critical("QUIESCING", "OLD_PROCESS_EXITED", "pid=" + plan.oldProcessId());
+            transaction = transition(transaction, UpdatePhaseEnum.READY_TO_SWITCH, audit);
+            transaction = transition(transaction, UpdatePhaseEnum.SWITCHING, audit);
+            if (plan.packageType().nativeInstaller()) {
+                // A native installer can change package-manager state before returning a failure code.
+                audit.critical("SWITCHING", "NATIVE_INSTALL_INTENT",
+                    "packageType=" + plan.packageType());
+                nativeInstaller.install(
+                    plan.packageType(),
+                    layout.stagedPackage(plan.packageType()),
+                    layout.installTarget(),
+                    plan.candidateLauncherRelativePath(),
+                    audit
+                );
+                audit.critical("SWITCHING", "NATIVE_INSTALL_COMPLETE",
+                    "packageType=" + plan.packageType());
+            } else {
+                audit.critical("SWITCHING", "DIRECT_SWITCH_INTENT",
+                    "packageType=" + plan.packageType());
+                switcher.switchToCandidate(plan.transactionId(), plan.packageType());
+                audit.critical("SWITCHING", "DIRECT_SWITCH_COMPLETE",
+                    "packageType=" + plan.packageType());
+            }
+            verifyInstalledTarget(layout, transaction, plan.packageType());
+            verifyNativeInstalledLauncher(layout, plan);
+            if (plan.packageType().nativeInstaller()) {
+                audit.critical("SWITCHING", "INSTALL_RESULT",
+                    "status=VERIFIED packageType=" + plan.packageType()
+                        + " installRoot=" + layout.installTarget()
+                        + " launcherRelativePath=" + plan.candidateLauncherRelativePath()
+                        + " releaseVersion=" + transaction.toVersion()
+                        + " releaseEpoch=" + transaction.releaseEpoch());
+            }
+            transaction = transition(transaction, UpdatePhaseEnum.STARTING_CANDIDATE, audit);
+            Files.deleteIfExists(layout.updateWorkspace().resolve("health.json"));
+            Files.deleteIfExists(healthFile);
+            trialProcess = startApplication(plan, layout, LaunchMode.TRIAL);
+            waitForHealthyProcess(plan, layout, trialProcess, UpdateHealth.TRIAL_HEALTHY);
+            audit.critical("STARTING_CANDIDATE", "HEALTHY",
+                "trial health confirmed pid=" + trialProcess.pid());
+            transaction = transition(transaction, UpdatePhaseEnum.POSTCHECKING, audit);
+            stopProcess(trialProcess);
+            trialProcess = null;
+            Files.deleteIfExists(healthFile);
+            try {
+                switcher.commit(plan.transactionId());
+            } catch (RuntimeException cleanupFailure) {
+                audit.warn("POSTCHECKING", "CLEANUP_FAILED", cleanupFailure.getMessage());
+            }
+            transaction = transition(transaction, UpdatePhaseEnum.RESTARTING_NORMAL, audit);
+            normalProcess = startApplication(plan, layout, LaunchMode.NORMAL);
+            audit.critical("RESTARTING_NORMAL", "PROCESS_STARTED",
+                "pid=" + normalProcess.pid());
+            waitForHealthyProcess(plan, layout, normalProcess, UpdateHealth.NORMAL_HEALTHY);
+            audit.critical("RESTARTING_NORMAL", "HEALTHY",
+                "normal health confirmed pid=" + normalProcess.pid());
+            Files.deleteIfExists(healthFile);
+            transaction = transition(transaction, UpdatePhaseEnum.COMMITTED, audit);
+            try {
+                audit.status(UpdateAuditLog.STATUS_SUCCESS, UpdatePhaseEnum.COMMITTED.name(), "update committed");
+            } catch (RuntimeException ignored) {
+                // The installed normal application is already healthy and committed.
+            }
+            return 0;
+        } catch (Exception failure) {
+            audit.error(transaction.phase().name(), "UPDATE_FAILED", failure);
+            stopFailedProcess(trialProcess, "STARTING_CANDIDATE", failure, audit);
+            stopFailedProcess(normalProcess, "RESTARTING_NORMAL", failure, audit);
+            persistTerminalFailure(transaction, failure, audit);
+            return 1;
+        }
+    }
+
+    private static void persistTerminalFailure(UpdateTransaction transaction,
+            Exception updateFailure, UpdateAuditLog audit) {
+        String message = failureMessage(updateFailure);
+        try {
+            long failedAt = System.currentTimeMillis();
+            audit.phase(transaction.phase(), UpdatePhaseEnum.FAILED,
+                failedAt - transaction.updatedAtEpochMillis(), "INTENT");
+            audit.state(transaction.fail(message, failedAt));
+            audit.phase(transaction.phase(), UpdatePhaseEnum.FAILED,
+                failedAt - transaction.updatedAtEpochMillis(), "COMMITTED");
+            audit.status(UpdateAuditLog.STATUS_FAILED, UpdatePhaseEnum.FAILED.name(), message);
+        } catch (Exception stateFailure) {
+            audit.error(UpdatePhaseEnum.FAILED.name(), "STATE_PERSIST_FAILED", stateFailure);
+        }
+    }
+
+    private static String failureMessage(Exception failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
+    }
+
+    private static UpdateTransaction transition(UpdateTransaction transaction,
+            UpdatePhaseEnum phase, UpdateAuditLog audit) {
+        long now = System.currentTimeMillis();
+        audit.phase(transaction.phase(), phase, now - transaction.updatedAtEpochMillis(), "INTENT");
+        UpdateTransaction updated = transaction.transition(phase, now);
+        audit.state(updated);
+        audit.phase(transaction.phase(), phase, now - transaction.updatedAtEpochMillis(), "COMMITTED");
+        return updated;
+    }
+
+    private static void verifyInstalledTarget(UpdateLayout layout, UpdateTransaction transaction,
+            UpdatePackageTypeEnum packageType) {
+        Path versionFile = layout.appDirectory().resolve("version.json");
+        if (!Files.isRegularFile(versionFile)) {
+            if (packageType == UpdatePackageTypeEnum.LINUX_APPIMAGE) {
+                return;
+            }
+            throw new IllegalStateException("Installed target version metadata is missing: " + versionFile);
+        }
+        var installed = new InstalledAppVersionReader(layout).read();
+        if (!transaction.toVersion().equals(installed.version())) {
+            throw new IllegalStateException(
+                "Installed target version mismatch: expected " + transaction.toVersion()
+                    + " but found " + installed.version());
+        }
+        if (transaction.releaseEpoch() != installed.releaseEpoch()) {
+            throw new IllegalStateException(
+                "Installed target release epoch mismatch: expected " + transaction.releaseEpoch()
+                    + " but found " + installed.releaseEpoch());
+        }
+    }
+
+    private static Process startApplication(UpdateHelperPlan plan, UpdateLayout layout,
+            LaunchMode mode) throws Exception {
+        List<String> command = candidateLaunchCommand(plan, layout);
+        if (command == null || command.isEmpty()) {
+            throw new IllegalStateException("Application launcher command is missing");
+        }
+        ProcessBuilder builder = new ProcessBuilder(command);
+        Path workingDirectory = Files.isDirectory(layout.installTarget())
+            ? layout.installTarget()
+            : layout.installTarget().getParent();
+        builder.directory(workingDirectory.toFile());
+        builder.redirectErrorStream(true);
+        builder.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        builder.environment().put(
+            UpdateStartupCoordinator.INSTALL_TARGET_ENV,
+            layout.installTarget().toString()
+        );
+        builder.environment().put(
+            UpdateStartupCoordinator.TARGET_VERSION_ENV,
+            plan.transaction().toVersion()
+        );
+        if (mode == LaunchMode.TRIAL) {
+            builder.environment().put(UpdateStartupCoordinator.TRANSACTION_ENV, plan.transactionId());
+            builder.environment().remove(UpdateStartupCoordinator.NORMAL_TRANSACTION_ENV);
+        } else {
+            builder.environment().remove(UpdateStartupCoordinator.TRANSACTION_ENV);
+            builder.environment().put(
+                UpdateStartupCoordinator.NORMAL_TRANSACTION_ENV,
+                plan.transactionId()
+            );
+        }
+        return builder.start();
+    }
+
+    static Path appDirectory(UpdateHelperPlan plan) {
+        Path installRoot = Path.of(plan.installRoot());
+        if (plan.packageType() == UpdatePackageTypeEnum.MACOS_APP_ARCHIVE) {
+            return installRoot.resolve("Contents/app");
+        }
+        return installRoot.resolve("app");
+    }
+
+    private static UpdateLayout layout(UpdateHelperPlan plan) {
+        Path installRoot = Path.of(plan.installRoot());
+        return new UpdateLayout(
+            installRoot,
+            appDirectory(plan),
+            Path.of(plan.cacheRoot()),
+            Path.of(plan.supportRoot())
+        );
+    }
+
+    private static void waitForOldProcess(long processId) throws Exception {
+        ProcessHandle handle = ProcessHandle.of(processId).orElse(null);
+        if (handle == null || !handle.isAlive()) {
+            return;
+        }
+        handle.onExit().get(OLD_PROCESS_TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+    }
+
+    private static void verifyNativeInstalledLauncher(UpdateLayout layout, UpdateHelperPlan plan) {
+        if (!plan.packageType().nativeInstaller()
+                || plan.packageType() == UpdatePackageTypeEnum.WINDOWS_EXE) {
+            return;
+        }
+        String launcherPath = plan.candidateLauncherRelativePath();
+        if (launcherPath == null || launcherPath.isBlank() || ".".equals(launcherPath)) {
+            throw new IllegalStateException("Native package launcher path is missing");
+        }
+        Path launcher = layout.installTarget().resolve(launcherPath).normalize();
+        if (!launcher.startsWith(layout.installTarget()) || !Files.isRegularFile(launcher)) {
+            throw new IllegalStateException("Native package launcher is missing: " + launcher);
+        }
+    }
+
+    static List<String> candidateLaunchCommand(UpdateHelperPlan plan, UpdateLayout layout) {
+        if (plan.candidateLaunchCommand() != null && !plan.candidateLaunchCommand().isEmpty()) {
+            return List.copyOf(plan.candidateLaunchCommand());
+        }
+        Path launcher = plan.packageType().singleFile()
+            ? layout.installTarget()
+            : layout.installTarget().resolve(plan.candidateLauncherRelativePath()).normalize();
+        if (!launcher.startsWith(layout.installTarget()) || !Files.isRegularFile(launcher)) {
+            throw new IllegalStateException("Installed candidate launcher is missing: " + launcher);
+        }
+        java.util.ArrayList<String> command = new java.util.ArrayList<>();
+        command.add(launcher.toString());
+        if (plan.candidateLaunchArguments() != null) {
+            command.addAll(plan.candidateLaunchArguments());
+        }
+        return List.copyOf(command);
+    }
+
+    private static void stopProcess(Process process) throws Exception {
+        if (process == null || !process.isAlive()) {
+            return;
+        }
+        process.destroy();
+        if (!process.waitFor(5, TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+            process.waitFor(10, TimeUnit.SECONDS);
+        }
+    }
+
+    private static void stopFailedProcess(Process process, String stage, Exception failure,
+            UpdateAuditLog audit) {
+        if (process == null || !process.isAlive()) {
+            return;
+        }
+        try {
+            stopProcess(process);
+        } catch (Exception stopFailure) {
+            failure.addSuppressed(stopFailure);
+            audit.error(stage, "STOP_FAILED", stopFailure);
+        }
+    }
+
+    private static void waitForHealthyProcess(UpdateHelperPlan plan, UpdateLayout layout, Process process,
+            String expectedStatus) throws Exception {
+        Path healthFile = UpdateStartupCoordinator.healthFile(layout, plan.transactionId());
+        long deadline = System.nanoTime() + Duration.ofSeconds(plan.healthTimeoutSeconds()).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (Files.isRegularFile(healthFile)) {
+                UpdateHealth health = OBJECT_MAPPER.readValue(healthFile.toFile(), UpdateHealth.class);
+                if (plan.transactionId().equals(health.transactionId())
+                        && plan.transaction().toVersion().equals(health.version())
+                        && expectedStatus.equals(health.status())
+                        && process.pid() == health.processId()) {
+                    if (!process.isAlive()) {
+                        throw new IllegalStateException(
+                            "Application exited while reporting " + expectedStatus);
+                    }
+                    return;
+                }
+                throw new IllegalStateException("Application health marker is invalid for " + expectedStatus);
+            }
+            if (!process.isAlive()) {
+                throw new IllegalStateException("Application exited before reporting " + expectedStatus);
+            }
+            Thread.sleep(200L);
+        }
+        throw new IllegalStateException("Application health confirmation timed out for " + expectedStatus);
+    }
+
+    private enum LaunchMode {
+        TRIAL,
+        NORMAL
+    }
+
+}

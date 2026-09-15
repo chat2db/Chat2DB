@@ -92,7 +92,6 @@ public abstract class DbWebConverter {
             @Mapping(target = "pageSizeAll", ignore = true),
             @Mapping(target = "single", ignore = true),
             @Mapping(target = "resultSetId", ignore = true),
-            @Mapping(target = "errorContinue", ignore = true),
             @Mapping(target = "explain", ignore = true)
     })
     public abstract DbDlExecuteRequest request2param(DdlExecuteRequest request);

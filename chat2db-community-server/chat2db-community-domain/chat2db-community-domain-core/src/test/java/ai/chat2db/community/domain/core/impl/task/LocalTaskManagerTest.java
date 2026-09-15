@@ -27,6 +27,8 @@ import ai.chat2db.spi.model.datasource.ConnectInfo;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
@@ -165,6 +168,34 @@ class LocalTaskManagerTest {
     }
 
     @Test
+    void unexpectedExecutorCancellationExceptionFailsRunningTask() throws Exception {
+        TestTaskStorage storage = new TestTaskStorage();
+        taskManager = manager(storage, (spec, context) -> {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("Executor stopped without a cancellation request");
+        });
+        Task task = newTask();
+
+        taskManager.submit(task, event(TaskEventCode.TASK_CREATED.name()), spec(), null, null);
+
+        assertUnexpectedCancellationFailed(storage, task);
+    }
+
+    @Test
+    void unexpectedExecutionGuardCancellationExceptionFailsRunningTask() throws Exception {
+        TestTaskStorage storage = new TestTaskStorage();
+        TaskExtensionManager extensionManager = new TaskExtensionManager(List.of(), List.of(context -> {
+            throw new CancellationException("Guard stopped without a cancellation request");
+        }));
+        taskManager = manager(storage, (spec, context) -> {}, extensionManager);
+        Task task = newTask();
+
+        taskManager.submit(task, event(TaskEventCode.TASK_CREATED.name()), spec(), null, null);
+
+        assertUnexpectedCancellationFailed(storage, task);
+    }
+
+    @Test
     void executionExceptionDetailsUseBoundedSingleLineReason() throws Exception {
         TestTaskStorage storage = new TestTaskStorage();
         String unboundedReason = "Export failed\n"
@@ -282,7 +313,7 @@ class LocalTaskManagerTest {
                 new TaskSubmission<>(task.getId(), spec(), null, invalidConnectInfo,
                         new TaskSubmissionContext(task.getId(), TaskType.QUERY_RESULT_EXPORT, null,
                                 null, null, List.of(), TaskOperation.EXPORT).toExecutionContext()),
-                runningTask, registry, storage, executor, new ArtifactService(), emptyExtensionManager());
+                runningTask, registry, storage, executor, new ArtifactServiceImpl(), emptyExtensionManager());
 
         runner.run();
 
@@ -340,8 +371,9 @@ class LocalTaskManagerTest {
         assertEquals(0, taskManager.activeTaskCount(null, null));
     }
 
-    @Test
-    void startupReconciliationCleansPreparedAndPublishedArtifactPaths() throws Exception {
+    @ParameterizedTest
+    @EnumSource(value = TaskEventCode.class, names = {"ARTIFACT_PUBLICATION_STARTED", "ARTIFACT_PUBLISHED"})
+    void startupReconciliationCleansPreparedAndPublishedArtifactPaths(TaskEventCode publicationEvent) throws Exception {
         TestTaskStorage storage = new TestTaskStorage();
         Task task = storage.create(newTask(), event(TaskEventCode.TASK_CREATED.name()));
         Path temporary = Files.writeString(
@@ -359,7 +391,7 @@ class LocalTaskManagerTest {
         storage.appendEvent(TaskEvent.builder()
                 .taskId(task.getId())
                 .level(TaskEventLevel.INFO.name())
-                .code(TaskEventCode.ARTIFACT_PUBLISHED.name())
+                .code(publicationEvent.name())
                 .message("Artifact published")
                 .details(Map.of(TaskConstants.ARTIFACT_ID_DETAIL_KEY, target.toString()))
                 .build());
@@ -433,7 +465,19 @@ class LocalTaskManagerTest {
 
     @Test
     void artifactPreparationIsPersistedBeforePublication() throws Exception {
-        TestTaskStorage storage = new TestTaskStorage();
+        AtomicReference<String> recordedTarget = new AtomicReference<>();
+        TestTaskStorage storage = new TestTaskStorage() {
+            @Override
+            public synchronized TaskEvent appendEvent(TaskEvent event) {
+                if (TaskEventCode.ARTIFACT_PUBLICATION_STARTED.name().equals(event.getCode())) {
+                    String target = (String) event.getDetails().get(TaskConstants.ARTIFACT_ID_DETAIL_KEY);
+                    assertTrue(Path.of(target).toFile().isFile());
+                    assertEquals(0, Path.of(target).toFile().length());
+                    recordedTarget.set(target);
+                }
+                return super.appendEvent(event);
+            }
+        };
         taskManager = manager(storage, (spec, context) -> {
             context.createArtifact(tempDirectory.toString(), "export.csv", "text/csv");
             context.write("value");
@@ -443,10 +487,15 @@ class LocalTaskManagerTest {
         taskManager.submit(task, event(TaskEventCode.TASK_CREATED.name()), spec(), null, null);
 
         assertTrue(storage.awaitTerminal());
+        Task completed = storage.get(task.getId()).orElseThrow();
+        assertEquals(TaskStatus.SUCCESS.name(), completed.getStatus());
+        assertEquals(completed.getArtifactId(), recordedTarget.get());
         List<String> codes = storage.listEvents(task.getId(), 0, 100).stream()
                 .map(TaskEvent::getCode)
                 .toList();
         assertTrue(codes.indexOf(TaskEventCode.ARTIFACT_PREPARED.name())
+                < codes.indexOf(TaskEventCode.ARTIFACT_PUBLICATION_STARTED.name()));
+        assertTrue(codes.indexOf(TaskEventCode.ARTIFACT_PUBLICATION_STARTED.name())
                 < codes.indexOf(TaskEventCode.ARTIFACT_PUBLISHED.name()));
         assertTrue(codes.indexOf(TaskEventCode.ARTIFACT_PUBLISHED.name())
                 < codes.indexOf(TaskEventCode.TASK_SUCCEEDED.name()));
@@ -475,7 +524,7 @@ class LocalTaskManagerTest {
                 execution.execute(spec, context);
             }
         };
-        return new LocalTaskManager(storage, new TaskExecutorRegistry(List.of(executor)), new ArtifactService(),
+        return new LocalTaskManager(storage, new TaskExecutorRegistry(List.of(executor)), new ArtifactServiceImpl(),
                 new ConnectionContextConverter(), extensionManager, 1, 4);
     }
 
@@ -507,12 +556,21 @@ class LocalTaskManagerTest {
                 .build();
     }
 
+    private void assertUnexpectedCancellationFailed(TestTaskStorage storage, Task task) throws InterruptedException {
+        assertTrue(storage.awaitTerminal());
+        Task failed = storage.get(task.getId()).orElseThrow();
+        assertEquals(TaskStatus.FAILED.name(), failed.getStatus());
+        assertEquals(TaskErrorCode.TASK_INTERNAL_ERROR.name(), failed.getErrorCode());
+        assertEquals("Task execution failed", failed.getErrorMessage());
+        assertEquals(1, storage.terminalTransitionCount());
+    }
+
     @FunctionalInterface
     private interface TestExecution {
         void execute(ExportTaskSpec spec, TaskExecutionContext context);
     }
 
-    private static final class TestTaskStorage implements TaskStorage {
+    private static class TestTaskStorage implements TaskStorage {
 
         private final AtomicLong ids = new AtomicLong();
         private final Map<Long, Task> tasks = new LinkedHashMap<>();

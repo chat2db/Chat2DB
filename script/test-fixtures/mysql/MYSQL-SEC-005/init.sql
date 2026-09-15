@@ -20,3 +20,4 @@ CREATE USER IF NOT EXISTS 'sec005_admin'@'%' IDENTIFIED BY 'Sec005_admin_2026';
 CREATE USER IF NOT EXISTS 'sec005_user'@'%' IDENTIFIED BY 'Sec005_user_2026';
 
 GRANT SELECT, INSERT, UPDATE ON `sec005_test`.* TO 'sec005_admin'@'%' WITH GRANT OPTION;
+GRANT SELECT ON `mysql`.`user` TO 'sec005_admin'@'%';

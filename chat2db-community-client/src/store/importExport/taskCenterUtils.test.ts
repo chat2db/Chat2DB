@@ -10,6 +10,7 @@ import {
   mergeTasks,
   reconcileCompletedTaskNotifications,
   shouldKeepTaskPolling,
+  shouldRefreshImportTargetTable,
   shouldRetryTaskPolling,
 } from './taskCenterUtils';
 import { ErrorCode } from '@/constants/request';
@@ -99,6 +100,25 @@ function testTaskMerge() {
   assert.equal(tasks[1].progress, 50);
 }
 
+function testTaskMergePreservesLatestRevision() {
+  const oldTask = { ...task(1, ImportExportTaskStatus.RUNNING, '2026-08-06T10:00:00Z', 20), updatedAt: 1000 };
+  const latestTask = { ...oldTask, progress: 80, updatedAt: '1970-01-01T00:00:02.000Z' };
+  assert.deepEqual(mergeTasks([latestTask], [oldTask]), [latestTask]);
+  assert.deepEqual(mergeTasks([oldTask], [latestTask]), [latestTask]);
+
+  const terminalStatuses = [
+    ImportExportTaskStatus.SUCCESS, ImportExportTaskStatus.FAILED, ImportExportTaskStatus.CANCELLED,
+  ];
+  for (const status of terminalStatuses) {
+    const terminal = { ...oldTask, status, progress: 100 };
+    assert.deepEqual(mergeTasks([terminal], [latestTask]), [terminal]);
+    assert.deepEqual(mergeTasks([latestTask], [terminal]), [terminal]);
+  }
+
+  const withoutRevision = task(1, ImportExportTaskStatus.SUCCESS, '2026-08-06T10:00:00Z', 100);
+  assert.deepEqual(mergeTasks([withoutRevision], [oldTask]), [withoutRevision]);
+}
+
 function testEventMerge() {
   const events = mergeTaskEvents([event(1, 'created'), event(2, 'old')], [event(3, 'finished'), event(2, 'running')]);
 
@@ -171,12 +191,45 @@ function testCompletedTaskNotifications() {
   assert.deepEqual(afterDeletion.newlyCompletedTaskIds, []);
 }
 
+function testImportTargetRefreshWaitsForTerminalImportResult() {
+  const runningImport = {
+    ...task(10, ImportExportTaskStatus.RUNNING, '2026-08-06T10:00:00Z', 45),
+    type: ImportExportTaskType.DATA_FILE_IMPORT,
+    target: {
+      dataSourceId: 7,
+      databaseName: 'app',
+      tableName: 'orders',
+    },
+  };
+  const successfulImport = {
+    ...runningImport,
+    status: ImportExportTaskStatus.SUCCESS,
+    progress: 100,
+  };
+  const failedImport = {
+    ...runningImport,
+    status: ImportExportTaskStatus.FAILED,
+  };
+  const activeExport = {
+    ...runningImport,
+    type: ImportExportTaskType.TABLE_DATA_EXPORT,
+  };
+
+  assert.equal(shouldRefreshImportTargetTable(undefined, runningImport), false);
+  assert.equal(shouldRefreshImportTargetTable(undefined, successfulImport), true);
+  assert.equal(shouldRefreshImportTargetTable(runningImport, activeExport), false);
+  assert.equal(shouldRefreshImportTargetTable(runningImport, failedImport), false);
+  assert.equal(shouldRefreshImportTargetTable(runningImport, successfulImport), true);
+  assert.equal(shouldRefreshImportTargetTable(successfulImport, successfulImport), false);
+}
+
 void testActiveTaskPagination().then(async () => {
   await testCompletedTrackedTaskOutsideRecentPage();
   testTaskMerge();
+  testTaskMergePreservesLatestRevision();
   testEventMerge();
   testPollingDelay();
   testPollingRetryPolicy();
   testCompletedTaskNotifications();
-  console.log('Task center utility tests passed');
+  testImportTargetRefreshWaitsForTerminalImportResult();
 });
