@@ -20,6 +20,7 @@ import ai.chat2db.community.domain.core.cache.MemoryCacheManage;
 import ai.chat2db.community.domain.core.impl.db.extension.MetadataAccessPolicyManager;
 import ai.chat2db.community.domain.core.util.ListSorter;
 import ai.chat2db.community.tools.exception.BusinessException;
+import ai.chat2db.community.tools.util.ExceptionUtils;
 import ai.chat2db.spi.IDbManager;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.ISqlBuilder;
@@ -171,12 +172,13 @@ public class DbTableServiceImpl implements IDbTableService {
             return PageResponse.of(new ArrayList<>(), 0L, param.getPageNo(), param.getPageSize());
         }
         long total = tables.size();
-        int start = (param.getPageNo() - 1) * param.getPageSize();
-        if (start >= total) {
+        long start = ((long) param.getPageNo() - 1L) * param.getPageSize();
+        if (start < 0L || start >= total) {
             return PageResponse.of(Lists.newArrayList(), total, param.getPageNo(), param.getPageSize());
         }
-        int end = Math.min(start + param.getPageSize(), tables.size());
-        List<Table> subList = tables.subList(start, end);
+        int startIndex = (int) start;
+        int end = (int) Math.min(start + param.getPageSize(), total);
+        List<Table> subList = tables.subList(startIndex, end);
         return PageResponse.of(subList, total, param.getPageNo(), param.getPageSize());
     }
 
@@ -333,11 +335,9 @@ public class DbTableServiceImpl implements IDbTableService {
     @Override
     public void truncateTable(DbTableQueryRequest param) {
         try {
-            IDbMetaData metaData = Chat2DBContext.getDbMetaData();
             Connection connection = Chat2DBContext.getConnection();
-            String name = metaData.getMetaDataName(param.getTableName());
             String sql = Chat2DBContext.getDbManager()
-                    .truncateTable(connection, param.getDatabaseName(), param.getSchemaName(), name);
+                    .truncateTable(connection, param.getDatabaseName(), param.getSchemaName(), param.getTableName());
             DefaultSQLExecutor.getInstance().execute(connection, sql, resultSet -> null);
         } catch (Exception e) {
             log.error("truncate table error", e);
@@ -346,24 +346,26 @@ public class DbTableServiceImpl implements IDbTableService {
     }
 
     @Override
+    public String prepareCopyTable(String tableName) {
+        String suffix = "_copy_" + DateUtil.format(new Date(), "MMddHHmmss");
+        return StringUtils.left(tableName, 32 - suffix.length()) + suffix;
+    }
+
+    @Override
     public void copyTable(DbTableCopyRequest param) {
         try {
-            IDbMetaData metaData = Chat2DBContext.getDbMetaData();
             String newName = param.getNewName();
             if (StringUtils.isBlank(newName)) {
-                newName = param.getTableName() + "_copy_" + DateUtil.format(new Date(), "MMddHHmmss");
-                if (newName.length() > 32) {
-                    newName = newName.substring(0, 32);
-                }
+                newName = prepareCopyTable(param.getTableName());
             }
-            String tableName = metaData.getMetaDataName(param.getTableName());
-            String newTableName = metaData.getMetaDataName(newName);
             Chat2DBContext.getDbManager().copyTable(
                     Chat2DBContext.getConnection(),
-                    param.getDatabaseName(), param.getSchemaName(), tableName, newTableName, param.isCopyData());
+                    param.getDatabaseName(), param.getSchemaName(), param.getTableName(), newName, param.isCopyData());
         } catch (Exception e) {
             log.error("copy table error", e);
-            throw new BusinessException("copy table error", new Object[]{e.getMessage()}, e);
+            Throwable cause = ExceptionUtils.getRootCause(e);
+            String reason = StringUtils.defaultIfBlank(cause.getMessage(), cause.getClass().getSimpleName());
+            throw new BusinessException("table.copy.failed", new Object[]{reason}, e);
         }
     }
 

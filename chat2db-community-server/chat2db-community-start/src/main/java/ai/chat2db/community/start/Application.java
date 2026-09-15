@@ -1,8 +1,11 @@
 package ai.chat2db.community.start;
 
+import ai.chat2db.community.updater.v2.runtime.UpdateStartupCoordinator;
+import ai.chat2db.community.jcef.utils.ApplicationExitCoordinator;
 import ai.chat2db.community.jcef.context.JcefContext;
 import ai.chat2db.community.jcef.frame.MainJFrame;
 import ai.chat2db.community.jcef.utils.CallJsFunctionUtil;
+import ai.chat2db.community.jcef.utils.SingleInstanceUtil;
 import ai.chat2db.community.tools.console.ConsoleCodec;
 import ai.chat2db.community.tools.console.ConsoleOutboundRegistry;
 import ai.chat2db.community.tools.console.bridge.JcefServerBridgeRegistry;
@@ -40,6 +43,9 @@ public class Application {
 
     public static void main(String[] args) {
         initializeCommunityRuntimeMode();
+        if (!SingleInstanceUtil.registerDesktopInstance(args)) {
+            return;
+        }
         validateCommunityEncryptionKey();
         log.info("Starting Application, args: {}", Arrays.toString(args));
         log.info("Chat2DB runtime mode: {}, networkStatus: {}, basePath: {}",
@@ -49,14 +55,16 @@ public class Application {
         initializeDesktopBridge();
         NetworkProxyUtil.applySavedSettingsToJvm();
         boolean cliRuntimeMode = isCliRuntimeMode();
-        boolean mcpEnabled = !cliRuntimeMode && SystemSettingsUtil.isMcpEnabled();
+        UpdateStartupCoordinator.configureProduct("COMMUNITY");
+        boolean updateTrial = UpdateStartupCoordinator.prepareTrialMode();
+        boolean mcpEnabled = !cliRuntimeMode && !updateTrial && SystemSettingsUtil.isMcpEnabled();
         McpRuntimeStatus.initialize(mcpEnabled);
         System.setProperty("spring.ai.mcp.server.enabled", String.valueOf(mcpEnabled));
         if (cliRuntimeMode || (ConfigUtils.isDesktop() && ConfigUtils.isShowGUI() && mcpEnabled)) {
             System.setProperty("server.address", "127.0.0.1");
         }
         if (!cliRuntimeMode && ConfigUtils.isShowGUI()) {
-            MainJFrame.getInstance().start(args);
+            MainJFrame.getInstance().start(args, !updateTrial);
         }
         SpringApplication app = new SpringApplication(Application.class);
         if (!cliRuntimeMode && ConfigUtils.isDesktop() && ConfigUtils.isRelease() && !mcpEnabled) {
@@ -65,7 +73,11 @@ public class Application {
         try {
             app.run(args);
             McpRuntimeStatus.markReady();
+            if (!cliRuntimeMode && ConfigUtils.isDesktop() && ConfigUtils.isShowGUI()) {
+                UpdateStartupCoordinator.reportReadyWhen(ApplicationExitCoordinator::isFrontendReady);
+            }
         } catch (RuntimeException | Error exception) {
+            UpdateStartupCoordinator.reportStartupFailure(exception);
             McpRuntimeStatus.markFailed(exception);
             throw exception;
         }

@@ -6,6 +6,9 @@ import ai.chat2db.community.web.api.model.request.db.SqlEditorExecuteRequest;
 import ai.chat2db.community.web.api.model.request.db.TableBrowseRequest;
 import ai.chat2db.community.web.api.model.request.db.TableEditExecuteRequest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,6 +18,21 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class DbWebConverterDmlRequestTest {
 
     private final DbWebConverter converter = Mappers.getMapper(DbWebConverter.class);
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(booleans = {false, true})
+    void preservesDdlErrorContinuationPolicy(Boolean errorContinue) {
+        DdlExecuteRequest request = new DdlExecuteRequest();
+        request.setDataSourceId(1L);
+        request.setSql("CREATE DATABASE reports; COMMENT ON DATABASE reports IS 'reporting';");
+        request.setErrorContinue(errorContinue);
+
+        DbDlExecuteRequest result = converter.ddlExecutionRequest(request).getExecuteRequest();
+
+        assertEquals(errorContinue, result.getErrorContinue());
+        assertEquals(request.getSql(), result.getSql());
+    }
 
     @Test
     void mapsSqlEditorRequestWithoutTableContext() {

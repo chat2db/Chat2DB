@@ -1,6 +1,7 @@
 package ai.chat2db.community.storage;
 
 import ai.chat2db.community.domain.api.model.PageResponse;
+import ai.chat2db.community.domain.api.enums.DataSourceKindEnum;
 import ai.chat2db.community.domain.api.enums.StorageTypeEnum;
 import ai.chat2db.community.domain.api.model.datasource.DataSource;
 import ai.chat2db.community.domain.api.model.datasource.DataSourceIdentityColorUtils;
@@ -29,11 +30,12 @@ import ai.chat2db.community.tools.exception.DataNotFoundException;
 import ai.chat2db.community.tools.wrapper.result.DataResult;
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
-import org.springframework.stereotype.Component;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 
 @Component
 public class LocalWorkspaceStorage implements IWorkspaceStorage {
@@ -104,7 +106,17 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
 
     @Override
     public PageResponse<WorkspaceDataSource> listDataSources(DbDataSourcePageQueryRequest dataSourcePageQueryRequest) {
-        List<DataSource> dataSources = DataSourceStorage.INSTANCE.getDataList();
+        String searchKey = dataSourcePageQueryRequest.getSearchKey();
+        String kind = dataSourcePageQueryRequest.getKind();
+        List<DataSource> dataSources = DataSourceStorage.INSTANCE.getDataList().stream()
+                .filter(dataSource -> StringUtils.isBlank(searchKey)
+                        || StringUtils.containsIgnoreCase(dataSource.getAlias(), searchKey))
+                .filter(dataSource -> StringUtils.isBlank(kind)
+                        || StringUtils.equalsIgnoreCase(
+                                dataSource.getKind() == null
+                                        ? DataSourceKindEnum.PRIVATE.getCode() : dataSource.getKind(),
+                                kind))
+                .toList();
         List<WorkspaceDataSource> result = storageConverter.dataSource2workspace(dataSources);
         result.forEach(dataSource -> dataSource.setStorageType(StorageTypeEnum.LOCAL.name()));
         return page(result, dataSourcePageQueryRequest.getPageNo(), dataSourcePageQueryRequest.getPageSize());
@@ -172,7 +184,9 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
 
     @Override
     public PageResponse<OperationLog> operationLogList(OpsOperationLogPageQueryRequest operationLogPageQueryRequest) {
-        List<OperationLog> logs = OperationLogStorage.INSTANCE.getDataList();
+        List<OperationLog> logs = OperationLogStorage.INSTANCE.getDataList().stream()
+                .filter(operationLog -> matchesOperationLog(operationLog, operationLogPageQueryRequest))
+                .toList();
         return page(logs, operationLogPageQueryRequest.getPageNo(), operationLogPageQueryRequest.getPageSize());
     }
 
@@ -328,6 +342,26 @@ public class LocalWorkspaceStorage implements IWorkspaceStorage {
             return null;
         }
         return encryptString(incoming);
+    }
+
+    private boolean matchesOperationLog(OperationLog operationLog, OpsOperationLogPageQueryRequest request) {
+        if (operationLog == null) {
+            return false;
+        }
+        if (request.getDataSourceId() != null
+                && !Objects.equals(request.getDataSourceId(), operationLog.getDataSourceId())) {
+            return false;
+        }
+        if (StringUtils.isNotBlank(request.getDatabaseName())
+                && !Objects.equals(request.getDatabaseName(), operationLog.getDatabaseName())) {
+            return false;
+        }
+        if (StringUtils.isNotBlank(request.getSchemaName())
+                && !Objects.equals(request.getSchemaName(), operationLog.getSchemaName())) {
+            return false;
+        }
+        String searchKey = StringUtils.trimToNull(request.getSearchKey());
+        return searchKey == null || StringUtils.containsIgnoreCase(operationLog.getDdl(), searchKey);
     }
 
     private int normalizePageNo(Integer pageNo) {
