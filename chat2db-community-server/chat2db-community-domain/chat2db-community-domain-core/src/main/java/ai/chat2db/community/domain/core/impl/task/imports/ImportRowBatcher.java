@@ -261,10 +261,7 @@ public final class ImportRowBatcher implements AutoCloseable {
                 gate.record(rows, elapsed);
             }
             batchSizer.record(rows, elapsed);
-            importedCount.add(rows);
-            reportProgress();
-            context.logInfo("BATCH_EXECUTED", "SQL batch executed",
-                    Map.of("batch", batch.seq() + 1, "statementCount", rows));
+            reportBatchSuccess(batch);
         } catch (RuntimeException | Error batchFailure) {
             // Publish failure before decrementing in-flight work, so flush cannot report success.
             recordFailure(batchFailure);
@@ -282,13 +279,16 @@ public final class ImportRowBatcher implements AutoCloseable {
         }
     }
 
-    private synchronized void reportProgress() {
+    private synchronized void reportBatchSuccess(PendingBatch batch) {
+        importedCount.add(batch.sqls().size());
         long rows = importedCount.sum();
         if (rows > reportedRows) {
             context.reportProgress((int) (20 + Math.min(70L, rows / 100)), TaskStage.IMPORTING.name(),
                     "Imported " + rows + " rows");
             reportedRows = rows;
         }
+        context.logInfo("BATCH_EXECUTED", "SQL batch executed",
+                Map.of("batch", batch.seq() + 1, "statementCount", batch.sqls().size(), "importedRows", rows));
     }
 
     private static int machineThreadCeiling() {

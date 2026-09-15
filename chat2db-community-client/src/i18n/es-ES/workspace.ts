@@ -172,6 +172,10 @@ export default {
   'workspace.task.event.importingRecords': 'Importando {1} registros',
   'workspace.task.event.sqlFileReadStarted': 'Leyendo el archivo SQL de importación',
   'workspace.task.event.sqlFileParsed': 'Archivo SQL analizado',
+  'workspace.task.event.batchCompletedTotal': 'Lote completado: {1} filas importadas, {2} filas importadas en total',
+  'workspace.task.event.csvImportSummary': 'Importación CSV completada: {1} filas importadas en {2} segundos',
+  'workspace.task.event.csvImportFinished': 'Importación CSV completada',
+  'workspace.task.event.batchCompletedRows': 'Lote completado: {1} filas importadas',
   'workspace.task.event.sqlBatchExecuted': 'Lote SQL ejecutado',
   'workspace.task.event.sqlStatementExecuted': 'Sentencia SQL ejecutada',
   'workspace.task.delete.confirm':

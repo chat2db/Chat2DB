@@ -49,6 +49,7 @@ class ParallelImportLifecycleTest {
     private Context requestContext;
     private IPlugin previousPlugin;
     private final List<Connection> opened = new CopyOnWriteArrayList<>();
+    private final List<TaskEvent> events = new CopyOnWriteArrayList<>();
     private final List<TaskProgress> progress = new CopyOnWriteArrayList<>();
     private final List<Long> batchChars = new CopyOnWriteArrayList<>();
     private final List<Integer> batchRows = new CopyOnWriteArrayList<>();
@@ -137,6 +138,17 @@ class ParallelImportLifecycleTest {
             lastProgress = update.getProgress();
         }
         assertEquals(40_001, lastRows);
+        long cumulativeRows = 0;
+        for (TaskEvent event : events) {
+            if ("BATCH_EXECUTED".equals(event.getCode())) {
+                cumulativeRows += ((Number) event.getDetails().get("statementCount")).longValue();
+                assertEquals(cumulativeRows, ((Number) event.getDetails().get("importedRows")).longValue());
+            }
+        }
+        assertEquals(40_001, cumulativeRows);
+        TaskEvent summary = events.stream().filter(e -> "IMPORT_SUMMARY".equals(e.getCode())).findFirst().orElseThrow();
+        assertEquals(40_001L, ((Number) summary.getDetails().get("importedRows")).longValue());
+        assertTrue(((Number) summary.getDetails().get("elapsedMillis")).longValue() >= 0);
         assertEquals(90, lastProgress);
         var pool = ConnectionPool.class.getDeclaredField("CONNECTION_MAP");
         pool.setAccessible(true);
@@ -250,7 +262,7 @@ class ParallelImportLifecycleTest {
         TaskStorage storage = (TaskStorage) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{TaskStorage.class},
                 (proxy, method, args) -> {
                     if (method.getName().equals("updateProgressIfRunning")) { progress.add((TaskProgress) args[1]); return true; }
-                    if (method.getName().equals("appendEvent")) return args[0];
+                    if (method.getName().equals("appendEvent")) { events.add((TaskEvent) args[0]); return args[0]; }
                     throw new UnsupportedOperationException(method.getName());
                 });
         new CSVImporter().run(spec, new TaskExecutionContextImpl(task.taskId(), task, storage, new ArtifactServiceImpl()));

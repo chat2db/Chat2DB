@@ -12,6 +12,7 @@ import ai.chat2db.community.domain.core.impl.task.imports.ImportRowSqlBuilder;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /** CSV row parsing and submission for the explicitly selected fast mode. */
 final class ParallelCSVImporter extends BaseImporter {
@@ -19,6 +20,7 @@ final class ParallelCSVImporter extends BaseImporter {
     @Override
     protected void doImportData(ImportTaskSpec spec, TaskExecutionContext context,
             List<TableColumn> columns) {
+        long startedNanos = System.nanoTime();
         CsvOptions options = (spec.getCsvOptions() == null ? CsvOptions.defaults() : spec.getCsvOptions()).validate();
         spec.setCsvOptions(options);
         ImportRowBatcher[] batcher = {null};
@@ -43,8 +45,6 @@ final class ParallelCSVImporter extends BaseImporter {
             }, context::checkCancelled);
             if (batcher[0] != null) {
                 batcher[0].flush();
-                context.logInfo("IMPORT_SUMMARY", "CSV import finished", Map.of(
-                        "importedRows", batcher[0].importedRows()));
             }
         } catch (RuntimeException failure) {
             if (batcher[0] != null) {
@@ -56,6 +56,9 @@ final class ParallelCSVImporter extends BaseImporter {
                 batcher[0].close();
             }
         }
+        context.logInfo("IMPORT_SUMMARY", "CSV import finished", Map.of(
+                "importedRows", batcher[0] == null ? 0L : batcher[0].importedRows(),
+                "elapsedMillis", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos)));
     }
 
     private ImportRowBatcher createBatcher(TaskExecutionContext context,
