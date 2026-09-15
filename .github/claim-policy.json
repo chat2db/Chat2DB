@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "eligibleLabels": [
+    "contribution/help-wanted",
+    "contribution/good-first-issue"
+  ],
+  "leaseDays": 7,
+  "maxRenewals": 1,
+  "maxActiveClaimsPerUser": 1
+}
