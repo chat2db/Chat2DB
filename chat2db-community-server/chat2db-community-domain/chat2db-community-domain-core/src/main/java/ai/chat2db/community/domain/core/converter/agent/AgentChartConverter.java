@@ -38,6 +38,7 @@ public final class AgentChartConverter {
         String title = request.title() == null || request.title().isBlank()
                 ? (request.yField() == null ? request.chartType() : request.yField()) : request.title().trim();
         return new AiAgentChart(id, context.runId(), source.id(), request.chartType(), title,
-                request.xField(), request.yField(), series, data, source.page(), source.warnings());
+                request.xField(), request.yField(), series, data, source.page(), source.warnings(),
+                request.groupBy(), request.stack());
     }
 }

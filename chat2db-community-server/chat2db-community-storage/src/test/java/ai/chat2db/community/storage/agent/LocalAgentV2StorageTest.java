@@ -165,6 +165,19 @@ class LocalAgentV2StorageTest {
     }
 
     @Test
+    void resetsEventWatermarkWhenSessionIdIsRecreated() {
+        events.append(event(1, AgentEventType.RUN_STARTED), USER_ID);
+
+        sessions.delete(SESSION_ID, USER_ID);
+        sessions.create(session());
+
+        events.append(event(1, AgentEventType.RUN_STARTED), USER_ID);
+
+        assertEquals(List.of(event(1, AgentEventType.RUN_STARTED)),
+                events.list(SESSION_ID, USER_ID, 0, 10));
+    }
+
+    @Test
     void updatesApprovalDecisionWithoutChangingItsSubject() {
         AgentApproval pending = approval(AgentApprovalStatus.PENDING, "a".repeat(64));
         approvals.create(pending, USER_ID);

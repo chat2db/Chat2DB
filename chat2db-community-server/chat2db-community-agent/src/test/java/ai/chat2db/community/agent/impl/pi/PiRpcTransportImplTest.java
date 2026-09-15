@@ -70,6 +70,20 @@ class PiRpcTransportImplTest {
     }
 
     @Test
+    void reportsTerminationBeforeCompletingPendingRequests() throws Exception {
+        client = new PiRpcTransportImpl(runtimeOutput, runtimeInput, events::add);
+        List<String> notifications = new CopyOnWriteArrayList<>();
+        var response = client.request("prompt", objectMapper.createObjectNode());
+        client.termination().whenComplete((ignored, error) -> notifications.add("terminated"));
+        var observed = response.whenComplete((ignored, error) -> notifications.add("request-failed"));
+
+        writeLine("not-json\n");
+
+        assertThrows(ExecutionException.class, () -> observed.get(1, TimeUnit.SECONDS));
+        assertEquals(List.of("terminated", "request-failed"), notifications);
+    }
+
+    @Test
     void rejectsUnknownResponseIds() throws Exception {
         client = new PiRpcTransportImpl(runtimeOutput, runtimeInput, events::add);
 

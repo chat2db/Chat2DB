@@ -13,7 +13,19 @@ public record AiAgentChartRenderRequest(
         @Size(max = 256) String xField,
         @Size(max = 256) String yField,
         @Size(max = 200) String title,
-        @Valid @Size(max = 8) List<@NotNull AiAgentChartSeriesRequest> series) {
+        @Valid @Size(max = 8) List<@NotNull AiAgentChartSeriesRequest> series,
+        @Size(max = 3) List<@NotBlank @Size(max = 256) String> groupBy,
+        Boolean stack) {
+
+    public AiAgentChartRenderRequest {
+        groupBy = groupBy == null ? List.of() : groupBy;
+        stack = Boolean.TRUE.equals(stack);
+    }
+
+    public AiAgentChartRenderRequest(String resultId, String chartType, String xField, String yField,
+            String title, List<AiAgentChartSeriesRequest> series) {
+        this(resultId, chartType, xField, yField, title, series, List.of(), false);
+    }
 
     public record AiAgentChartSeriesRequest(
             @NotBlank @Size(max = 256) String field,

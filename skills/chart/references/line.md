@@ -10,6 +10,7 @@ Use for a metric over time or another meaningful ordered axis. A line implies an
 
 - Use the ordered time/category column as xField and the numeric metric as yField.
 - Omit series. These two field names must differ.
+- Use groupBy to draw a separate line per category tuple, such as region or region/provider. Line does not accept stack=true; use AreaLine for a stacked area chart.
 
 Use the exact resultId and column names from a suitable successful db_query result in this conversation. Follow the [shared result and pagination rules](common.md).
 

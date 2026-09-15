@@ -119,11 +119,7 @@ public class AgentToolGatewayService implements AgentToolAccessService {
             Map<String, Object> arguments) throws Exception {
         arguments = toolArguments(arguments);
         Access access = requireAccess(ticket, address);
-        AgentRun run = runs.list(access.sessionId, access.userId).stream()
-                .filter(candidate -> candidate.status() == AgentRunStatus.RUNNING
-                        || candidate.status() == AgentRunStatus.ACCEPTED
-                        || candidate.status() == AgentRunStatus.WAITING_APPROVAL)
-                .findFirst().orElseThrow(() -> new IllegalStateException("Agent run is not active"));
+        AgentRun run = activeRun(access);
         if (!tools.names().contains(toolName) && !AgentQuestionTool.NAME.equals(toolName)
                 && !AgentChartTool.NAME.equals(toolName) && !isFileTool(toolName)) return tools.execute(toolName, arguments);
         String body = json.writeValueAsString(arguments);
@@ -187,9 +183,7 @@ public class AgentToolGatewayService implements AgentToolAccessService {
         if (!nativeToolEnabled(toolName)) {
             throw new IllegalArgumentException("Native tool is disabled or unavailable");
         }
-        AgentRun run = runs.list(access.sessionId, access.userId).stream()
-                .filter(candidate -> isActive(access, candidate.id())).findFirst()
-                .orElseThrow(() -> new IllegalStateException("Agent run is not active"));
+        AgentRun run = activeRun(access);
         String body = json.writeValueAsString(arguments);
         if (body.length() > 2 * 1024 * 1024) throw new IllegalArgumentException("Tool arguments exceed the size limit");
         String argumentsDigest = digest(toolName + "\n" + body);
@@ -336,6 +330,15 @@ public class AgentToolGatewayService implements AgentToolAccessService {
         return access.expiresAt.isAfter(Instant.now()) && tickets.containsValue(access) && run != null
                 && (run.status() == AgentRunStatus.ACCEPTED || run.status() == AgentRunStatus.RUNNING
                         || run.status() == AgentRunStatus.WAITING_APPROVAL);
+    }
+
+    private AgentRun activeRun(Access access) {
+        return runs.list(access.sessionId, access.userId).stream()
+                .filter(candidate -> isActive(access, candidate.id()))
+                // Recovery can temporarily expose more than one non-terminal snapshot.
+                // Route tool calls to the newest run so an older orphan cannot receive them.
+                .max(Comparator.comparingLong(AgentRun::firstEventSequence).thenComparing(AgentRun::id))
+                .orElseThrow(() -> new IllegalStateException("Agent run is not active"));
     }
 
     private Access requireAccess(String ticket, String address) {

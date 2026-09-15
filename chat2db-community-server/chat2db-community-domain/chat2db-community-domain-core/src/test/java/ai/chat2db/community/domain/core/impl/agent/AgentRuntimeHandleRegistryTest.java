@@ -134,4 +134,29 @@ class AgentRuntimeHandleRegistryTest {
         assertEquals(0, registry.size());
         assertTrue(handle.closed);
     }
+
+    @Test
+    void removesAndClosesHandleWhenItsRuntimeFails() {
+        AgentRuntimeHandleRegistry registry = new AgentRuntimeHandleRegistry();
+        RecordingHandle handle = new RecordingHandle("external-one");
+        registry.register("session-one", handle);
+
+        handle.termination.completeExceptionally(new IllegalStateException("Pi exited"));
+
+        assertEquals(0, registry.size());
+        assertTrue(handle.closed);
+        assertNull(registry.get("session-one"));
+    }
+
+    @Test
+    void registeringAnAlreadyTerminatedHandleDoesNotLeaveItInTheRegistry() {
+        AgentRuntimeHandleRegistry registry = new AgentRuntimeHandleRegistry();
+        RecordingHandle handle = new RecordingHandle("external-one");
+        handle.termination.complete(null);
+
+        registry.register("session-one", handle);
+
+        assertEquals(0, registry.size());
+        assertTrue(handle.closed);
+    }
 }

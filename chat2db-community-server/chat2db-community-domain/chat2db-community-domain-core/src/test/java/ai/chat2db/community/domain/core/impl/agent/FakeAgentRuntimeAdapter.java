@@ -38,6 +38,10 @@ final class FakeAgentRuntimeAdapter implements IAgentRuntimeAdapter {
     private RuntimeException startFailure;
     private AgentEventType terminalEventOnStart;
     private AgentRuntimeRunRequest lastRequest;
+    private IAgentRuntimeEventSink lastEventSink;
+    private Runnable beforeOpen = () -> { };
+    private FakeSessionHandle lastHandle;
+    private CompletableFuture<AgentRuntimeSnapshot> snapshotFuture;
 
     FakeAgentRuntimeAdapter(AgentRuntimeType runtimeType) {
         this(runtimeType, AgentRuntimeEnvironmentStatus.READY);
@@ -80,12 +84,15 @@ final class FakeAgentRuntimeAdapter implements IAgentRuntimeAdapter {
             AgentRuntimeSessionOpenRequest request,
             IAgentRuntimeEventSink eventSink) {
         openSessionCount++;
+        lastEventSink = eventSink;
+        beforeOpen.run();
         if (openFailure != null) {
             throw openFailure;
         }
-        return new FakeSessionHandle(
+        lastHandle = new FakeSessionHandle(
                 request.sessionId(), request.externalSessionId(), null, eventSink,
-                startFailure, terminalEventOnStart);
+                startFailure, terminalEventOnStart, snapshotFuture);
+        return lastHandle;
     }
 
     @Override
@@ -98,7 +105,8 @@ final class FakeAgentRuntimeAdapter implements IAgentRuntimeAdapter {
                 request.binding().resumeReference(),
                 eventSink,
                 startFailure,
-                terminalEventOnStart);
+                terminalEventOnStart,
+                snapshotFuture);
     }
 
     @Override
@@ -116,6 +124,8 @@ final class FakeAgentRuntimeAdapter implements IAgentRuntimeAdapter {
 
     AgentRuntimeRunRequest lastRequest() { return lastRequest; }
 
+    void beforeOpen(Runnable action) { beforeOpen = action; }
+
     void failOpenWith(RuntimeException failure) {
         openFailure = failure;
     }
@@ -128,6 +138,19 @@ final class FakeAgentRuntimeAdapter implements IAgentRuntimeAdapter {
         terminalEventOnStart = type;
     }
 
+    void emitLate(String sessionId, String runId, AgentEventType type) {
+        lastEventSink.emit(new AgentRuntimeEvent("late-event", sessionId, runId, type, Map.of(), LocalDateTime.now()));
+    }
+
+    void emitLate(String runId, AgentEventType type) {
+        if (lastHandle == null) throw new IllegalStateException("No runtime session opened");
+        lastHandle.emit(runId, type);
+    }
+
+    void hangSnapshots() {
+        snapshotFuture = new CompletableFuture<>();
+    }
+
     private final class FakeSessionHandle implements IAgentRuntimeSessionHandle {
 
         private final String sessionId;
@@ -135,6 +158,7 @@ final class FakeAgentRuntimeAdapter implements IAgentRuntimeAdapter {
         private final IAgentRuntimeEventSink eventSink;
         private RuntimeException startFailure;
         private final AgentEventType terminalEventOnStart;
+        private final CompletableFuture<AgentRuntimeSnapshot> snapshotFuture;
         private AgentRuntimeHealth health = AgentRuntimeHealth.READY;
         private String activeRunId;
 
@@ -144,12 +168,14 @@ final class FakeAgentRuntimeAdapter implements IAgentRuntimeAdapter {
                 String resumeReference,
                 IAgentRuntimeEventSink eventSink,
                 RuntimeException startFailure,
-                AgentEventType terminalEventOnStart) {
+                AgentEventType terminalEventOnStart,
+                CompletableFuture<AgentRuntimeSnapshot> snapshotFuture) {
             this.sessionId = sessionId;
             this.session = new AgentRuntimeSessionRef(externalSessionId, resumeReference);
             this.eventSink = eventSink;
             this.startFailure = startFailure;
             this.terminalEventOnStart = terminalEventOnStart;
+            this.snapshotFuture = snapshotFuture;
         }
 
         @Override
@@ -191,6 +217,7 @@ final class FakeAgentRuntimeAdapter implements IAgentRuntimeAdapter {
 
         @Override
         public CompletionStage<AgentRuntimeSnapshot> snapshot() {
+            if (snapshotFuture != null) return snapshotFuture;
             return CompletableFuture.completedFuture(new AgentRuntimeSnapshot(session, health, activeRunId));
         }
 

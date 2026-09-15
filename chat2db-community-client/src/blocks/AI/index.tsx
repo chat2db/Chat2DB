@@ -62,9 +62,9 @@ import agentService, { AgentEvent } from '@/service/agent';
 import importExportService from '@/service/importExport';
 import { useImportExportStore } from '@/store/importExport';
 import { confirmBetaFeature } from '@/utils/confirmBetaFeature';
-import { AgentApprovalItem, updateAgentApprovals, agentErrorText, agentEventTrace, appendAgentText, appendAgentTimeline, buildAgentTranscript, isTerminalAgentEvent, AgentTimelineEntry } from './agentEvents';
-import { followAgentRun, readAgentHistory, traceAgentStage } from './agentEventStream';
-import { getChatSessionId, getChatSessionUrl } from './chatSessionRoute';
+import { AgentApprovalItem, updateAgentApprovals, agentErrorText, agentEventTrace, appendAgentText, appendAgentTimeline, buildAgentTranscript, AgentTimelineEntry } from './agentEvents';
+import { activeAgentRunId, followAgentRun, readAgentHistory, traceAgentStage } from './agentEventStream';
+import { getChatSessionId, getChatSessionUrl, resolveChatSessionVersion } from './chatSessionRoute';
 import AgentV2Session, { AgentV2Message } from './components/AgentV2Session';
 
 /** detects unclosed text in flowing text ```chart block, return chart and whether there are any unfinished diagrams */
@@ -1686,9 +1686,7 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
           listAvailableModelOptions(),
         ]);
         if (operation.controller.signal.aborted) return;
-        const accepted = [...events].reverse().find((event) => event.type === 'RUN_ACCEPTED');
-        const activeRunId = accepted?.runId && !events.some((event) =>
-          event.runId === accepted.runId && isTerminalAgentEvent(event)) ? accepted.runId : undefined;
+        const activeRunId = activeAgentRunId(events);
         const charts = updateAgentCharts([], events);
         setAgentCharts(charts);
         const transcript = buildAgentTranscript(events)
@@ -1751,25 +1749,28 @@ export default function AI({ variant = 'page', onTableClick, onPinSql, onSession
 
   useEffect(() => {
     let active = true;
+    const probeController = new AbortController();
     {
       const chatId = isPanel ? sessionStorage.getItem(ACTIVE_AGENT_SESSION_KEY) : getChatIdFromPath();
       if (chatId) {
-        aiStreamService
-          .getChatSessions(undefined as void)
-          .then((sessions) => {
-            if (!active) return;
-            const session = (sessions || []).find((item) => item.id === chatId);
-            if (session?.sessionVersion === 2) {
-              void handleLoadAgentSessionById(session.id, session.title);
-              return;
-            }
-            handleLoadSessionById(chatId, session?.title);
-          })
-          .catch(() => { if (active) void handleLoadSessionById(chatId); });
+        const resolveAndLoad = async (sessions?: IChatSession[]) => {
+          const session = await resolveChatSessionVersion(chatId, sessions,
+            () => agentService.getSession(
+              { sessionId: chatId, sessionVersion: 2 }, { signal: probeController.signal }));
+          if (!active || probeController.signal.aborted) return;
+          if (session.sessionVersion === 2) {
+            void handleLoadAgentSessionById(session.id, session.title);
+            return;
+          }
+          void handleLoadSessionById(chatId, session.title);
+        };
+        aiStreamService.getChatSessions(undefined as void)
+          .then((sessions) => resolveAndLoad(sessions || []))
+          .catch(() => resolveAndLoad());
       }
     }
-    return () => { active = false; };
-  }, []);
+    return () => { active = false; probeController.abort(); };
+  }, [getChatIdFromPath, handleLoadAgentSessionById, handleLoadSessionById, isPanel]);
 
   // Handle stream:newChat in every mode, including the Cmd+L shortcut.
 

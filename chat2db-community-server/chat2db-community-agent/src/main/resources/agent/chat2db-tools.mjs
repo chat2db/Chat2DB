@@ -25,6 +25,8 @@ export default function (pi) {
     description: "Reload the model configuration selected by Chat2DB for the next message.",
     async handler(_args, ctx) {
       await ctx.modelRegistry.refresh(AbortSignal.timeout(10000));
+      const active = await request("/catalog", { signal: AbortSignal.timeout(10000) });
+      pi.setActiveTools(active);
     },
   });
   const accessFile = join(process.env.PI_CODING_AGENT_DIR, "tools.json");
@@ -213,10 +215,4 @@ export default function (pi) {
     });
   }
 
-  const refreshTools = async () => {
-    const active = await request("/catalog");
-    pi.setActiveTools(active);
-  };
-  pi.on("session_start", refreshTools);
-  pi.on("before_agent_start", refreshTools);
 }

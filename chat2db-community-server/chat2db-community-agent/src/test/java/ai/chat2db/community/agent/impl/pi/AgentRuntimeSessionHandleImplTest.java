@@ -25,6 +25,7 @@ import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -236,6 +237,120 @@ class AgentRuntimeSessionHandleImplTest {
 
         assertEquals(AgentEventType.RUN_OUTCOME_UNKNOWN, events.get(0).type());
         assertEquals(AgentRuntimeHealth.FAILED, handle.snapshot().toCompletableFuture().join().health());
+    }
+
+    @Test
+    void settlesTheRunBeforeTerminationObserversCloseTheHandle() {
+        handle.startRun(runRequest());
+        handle.termination().whenComplete((ignored, error) -> {
+            assertEquals(List.of(AgentEventType.RUN_OUTCOME_UNKNOWN),
+                    events.stream().map(AgentRuntimeEvent::type).toList());
+            handle.close();
+        });
+
+        transport.termination.completeExceptionally(new RuntimeException("Pi exited"));
+
+        assertEquals(List.of(AgentEventType.RUN_OUTCOME_UNKNOWN),
+                events.stream().map(AgentRuntimeEvent::type).toList());
+        assertTrue(handle.termination().toCompletableFuture().isCompletedExceptionally());
+        assertEquals(AgentRuntimeHealth.STOPPED, handle.snapshot().toCompletableFuture().join().health());
+    }
+
+    @Test
+    void invokesEventsAndTerminationObserversWithoutHoldingTheHandleMonitor() throws Exception {
+        var reference = new java.util.concurrent.atomic.AtomicReference<AgentRuntimeSessionHandleImpl>();
+        List<AgentRuntimeEvent> delivered = new ArrayList<>();
+        AgentRuntimeSessionHandleImpl observed = new AgentRuntimeSessionHandleImpl(
+                "session", new AgentRuntimeSessionRef("external-session", null),
+                new PiProcessHandle("session", new FakeProcess()), transport,
+                new PiEventConverter(), event -> {
+                    assertFalse(Thread.holdsLock(reference.get()));
+                    delivered.add(event);
+                }, objectMapper, () -> assertFalse(Thread.holdsLock(reference.get())),
+                new IPiModelConfiguration() {
+                    @Override public AgentModelAccess prepare(AgentModelSnapshot model) {
+                        return new AgentModelAccess("chat2db", model.modelId(), "openai-responses", "http://127.0.0.1/v1", "ticket");
+                    }
+                    @Override public void close() { }
+                });
+        reference.set(observed);
+        observed.termination().whenComplete((ignored, error) -> assertFalse(Thread.holdsLock(observed)));
+        observed.startRun(runRequest());
+        observed.accept(objectMapper.readTree("{\"type\":\"agent_start\"}"));
+        observed.cancel(new AgentRuntimeCancelRequest("session", "run", "run"));
+        transport.complete(objectMapper.createObjectNode());
+        observed.startRun(runRequest());
+        transport.termination.completeExceptionally(new RuntimeException("Pi exited"));
+        observed.close();
+        observed.close();
+
+        assertEquals(List.of(AgentEventType.RUN_STARTED, AgentEventType.RUN_CANCELLED,
+                AgentEventType.RUN_OUTCOME_UNKNOWN), delivered.stream().map(AgentRuntimeEvent::type).toList());
+    }
+
+    @Test
+    void snapshotAndRuntimeCallbacksDoNotDeadlockWithTheDomainCoordinator() throws Exception {
+        for (boolean terminate : List.of(false, true)) {
+            var domainLock = new java.util.concurrent.locks.ReentrantLock();
+            var coordinatorEntered = new java.util.concurrent.CountDownLatch(1);
+            var eventEntered = new java.util.concurrent.CountDownLatch(1);
+            FakeTransport rpc = new FakeTransport();
+            List<AgentRuntimeEvent> delivered = new java.util.concurrent.CopyOnWriteArrayList<>();
+            AgentRuntimeSessionHandleImpl observed = new AgentRuntimeSessionHandleImpl(
+                    "session", new AgentRuntimeSessionRef("external-session", null),
+                    new PiProcessHandle("session", new FakeProcess()), rpc,
+                    new PiEventConverter(), event -> {
+                        eventEntered.countDown();
+                        // Interruptible only so a regression can be cleaned up after a timeout.
+                        // This has the same ownership as the domain coordinator's monitor.
+                        try {
+                            domainLock.lockInterruptibly();
+                            try { delivered.add(event); } finally { domainLock.unlock(); }
+                        } catch (InterruptedException error) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException("Interrupted blocked domain callback", error);
+                        }
+                    }, objectMapper, () -> { }, new IPiModelConfiguration() {
+                        @Override public AgentModelAccess prepare(AgentModelSnapshot model) {
+                            return new AgentModelAccess("chat2db", model.modelId(), "openai-responses", "http://127.0.0.1/v1", "ticket");
+                        }
+                        @Override public void close() { }
+                    });
+            observed.startRun(runRequest());
+            // This is the registry's cleanup callback, attached after the handle's callback.
+            observed.termination().whenComplete((ignored, error) -> observed.close());
+            var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+            java.util.concurrent.Future<?> runtime = null;
+            try {
+                var snapshot = executor.submit(() -> {
+                    domainLock.lock();
+                    try {
+                        coordinatorEntered.countDown();
+                        assertTrue(eventEntered.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                        return observed.snapshot().toCompletableFuture().join();
+                    } finally {
+                        domainLock.unlock();
+                    }
+                });
+                assertTrue(coordinatorEntered.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                JsonNode started = objectMapper.readTree("{\"type\":\"agent_start\"}");
+                runtime = executor.submit(() -> {
+                    if (terminate) rpc.termination.completeExceptionally(new RuntimeException("Pi exited"));
+                    else observed.accept(started);
+                });
+                snapshot.get(2, java.util.concurrent.TimeUnit.SECONDS);
+                runtime.get(2, java.util.concurrent.TimeUnit.SECONDS);
+                assertEquals(terminate ? AgentEventType.RUN_OUTCOME_UNKNOWN : AgentEventType.RUN_STARTED,
+                        delivered.get(0).type());
+                if (terminate) assertEquals(AgentRuntimeHealth.STOPPED,
+                        observed.snapshot().toCompletableFuture().join().health());
+            } finally {
+                if (runtime != null) runtime.cancel(true);
+                executor.shutdownNow();
+                assertTrue(executor.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS));
+                observed.close();
+            }
+        }
     }
 
     private static final class FakeTransport implements IPiRpcTransport {

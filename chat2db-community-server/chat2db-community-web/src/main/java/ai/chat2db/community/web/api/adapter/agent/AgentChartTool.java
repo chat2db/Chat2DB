@@ -40,10 +40,14 @@ public class AgentChartTool {
                 "xField", Map.of("type", "string", "maxLength", 256, "description", "Exact category or X column. Required except for Statistics. For pie charts this is the category."),
                 "yField", Map.of("type", "string", "maxLength", 256, "description", "Exact numeric metric column. Required except for Combo. Statistics requires a one-row query result."),
                 "title", Map.of("type", "string", "maxLength", 200),
-                "series", Map.of("type", "array", "minItems", 1, "maxItems", 8, "items", series, "description", "Only supported for Combo. Omit for every other chart type. Use distinct numeric metric columns.")),
+                "series", Map.of("type", "array", "minItems", 1, "maxItems", 8, "items", series, "description", "Only supported for Combo. Omit for every other chart type. Use distinct numeric metric columns."),
+                "groupBy", Map.of("type", "array", "maxItems", 3, "uniqueItems", true, "items", field,
+                        "description", "Optional exact dimension columns to split Column, Bar, Line, AreaLine, Scatter or Combo into series. Distinct from xField and metrics. Aggregate category charts in SQL to one row per xField + groupBy tuple. At most 32 derived series (distinct groups multiplied by metric count); reduce groups in SQL if needed."),
+                "stack", Map.of("type", "boolean", "default", false,
+                        "description", "Stack Column, Bar or AreaLine series. Combo requires Column or AreaLine metrics: with groupBy, stack groups per metric and axis; without groupBy, stack metrics of the same type and axis. Line and Scatter remain unstacked. Other chart types do not support stacking.")),
                 "required", List.of("description", "resultId", "chartType"), "additionalProperties", false);
         return new AgentToolAccess.Tool(NAME,
-                "Render a chart from a saved db_query result. This tool uses the actual query values and never executes SQL. Choose fields and chart type; do not supply or rewrite data. The chart is displayed and saved in the conversation. Partial query pages are labelled as partial. Errors describe how to correct the request.",
+                "Render a chart from a saved db_query result. This tool uses the actual query values and never executes SQL. Choose fields, chart type, optional groupBy dimensions and stack; do not supply or rewrite data. The chart is displayed and saved in the conversation. Partial query pages are labelled as partial. Errors describe how to correct the request.",
                 schema, "Display and save a chart using a db_query resultId.", List.of());
     }
 
@@ -53,7 +57,7 @@ public class AgentChartTool {
             request = converter.arguments2request(arguments);
         } catch (IllegalArgumentException error) {
             return AiAgentChartRenderResponse.failure("INVALID_ARGUMENT", null,
-                    "Use only resultId, chartType, xField, yField, title and series with their declared types. Data must come from db_query.");
+                    "Use only resultId, chartType, xField, yField, title, series, groupBy and stack with their declared types. Data must come from db_query.");
         }
         var violations = validator.validate(request);
         if (!violations.isEmpty()) {

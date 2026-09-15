@@ -61,9 +61,9 @@ const completedTool: AgentTraceEntry[] = [
 assert.deepEqual(toolSummary(completedTool), { count: 1, durationMs: 12 });
 assert.deepEqual(activity(calls), { kind: 'tool', tool: { name: 'read' } });
 assert.deepEqual(activity([...calls, done(3, 'second')]), { kind: 'tool', tool: { name: 'db_query' } });
-assert.equal(activity([...calls, done(3, 'second'), done(4, 'first', true)]), undefined);
+assert.deepEqual(activity([...calls, done(3, 'second'), done(4, 'first', true)]), { kind: 'starting' });
 assert.equal(activity([done(1, 'restored-result')]), undefined,
-  'A restored completed result must not look like a run waiting for its first token');
+  'A restored result without its call does not look like an active wait');
 assert.equal(activity(calls, false), undefined);
 assert.equal(activity([{ sequence: 5, kind: 'text', text: 'Answer' }]), undefined);
 const question: AgentQuestionItem = { id: 'q', sessionId: 'session', runId: 'run', question: 'Which one?', options: [], status: 'pending' };
@@ -89,7 +89,8 @@ const live = appendAgentTimeline([], [{ id: 'start', sessionId: 'session', runId
 assert.deepEqual(activity(live), { kind: 'tool', tool: { name: 'read', description: '读取技能文件' } });
 const finished = appendAgentTimeline(live, [{ id: 'end', sessionId: 'session', runId: 'run', sequence: 2,
   type: 'TOOL_CALL_COMPLETED', payload: { toolCallId: 'call', toolName: 'read', result: {} }, occurredAt: '' }]);
-assert.equal(activity(finished), undefined);
+assert.deepEqual(activity(finished), { kind: 'starting' },
+  'A completed tool shows the waiting-for-model state until the next token arrives');
 const nextTool = appendAgentTimeline(finished, [{ id: 'next-tool', sessionId: 'session', runId: 'run', sequence: 3,
   type: 'TOOL_CALL_RUNNING', payload: { toolCallId: 'query', toolName: 'db_query', args: { description: '统计每月支付金额' } }, occurredAt: '' }]);
 assert.deepEqual(activity(nextTool), { kind: 'tool', tool: { name: 'db_query', description: '统计每月支付金额' } },

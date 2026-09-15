@@ -42,6 +42,9 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
     private final IPiModelConfiguration modelConfiguration;
     private String modelConfigurationError;
     private AgentRuntimeHealth health = AgentRuntimeHealth.READY;
+    private final CompletableFuture<Void> termination = new CompletableFuture<>();
+    private boolean runtimeTerminated;
+    private boolean closed;
     private String activeRunId;
     private String activeExternalRunId;
     private boolean cancelling;
@@ -130,15 +133,18 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
     }
 
     @Override
-    public synchronized CompletionStage<Void> cancel(AgentRuntimeCancelRequest request) {
-        if (!sessionId.equals(request.sessionId())
-                || !request.runId().equals(activeRunId)
-                || !request.externalRunId().equals(activeExternalRunId)) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException("Unknown active Pi run"));
+    public CompletionStage<Void> cancel(AgentRuntimeCancelRequest request) {
+        CompletableFuture<JsonNode> response;
+        synchronized (this) {
+            if (!sessionId.equals(request.sessionId())
+                    || !request.runId().equals(activeRunId)
+                    || !request.externalRunId().equals(activeExternalRunId)) {
+                return CompletableFuture.failedFuture(new IllegalArgumentException("Unknown active Pi run"));
+            }
+            cancelling = true;
+            ObjectNode payload = objectMapper.createObjectNode();
+            response = rpc.request("abort", payload);
         }
-        cancelling = true;
-        ObjectNode payload = objectMapper.createObjectNode();
-        CompletableFuture<JsonNode> response = rpc.request("abort", payload);
         response.whenComplete((ignored, error) -> {
             if (error != null) {
                 resetCancellation();
@@ -154,19 +160,24 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
 
     @Override
     public CompletionStage<Void> termination() {
-        return rpc.termination();
+        return termination;
     }
 
-    public synchronized void accept(JsonNode rawEvent) {
+    public void accept(JsonNode rawEvent) {
+        AgentRuntimeEvent event = convertEvent(rawEvent);
+        if (event != null) eventSink.emit(event);
+    }
+
+    private synchronized AgentRuntimeEvent convertEvent(JsonNode rawEvent) {
         if (activeRunId == null) {
             AgentTrace.record("pi.event.ignored", sessionId, null,
                     Map.of("type", rawEvent.path("type").asText()));
-            return;
+            return null;
         }
         if ("extension_error".equals(rawEvent.path("type").asText())
                 && "command:chat2db-refresh-model".equals(rawEvent.path("extensionPath").asText())) {
             modelConfigurationError = rawEvent.path("error").asText("Pi model configuration refresh failed");
-            return;
+            return null;
         }
         if ("message_end".equals(rawEvent.path("type").asText())
                 && "assistant".equals(rawEvent.path("message").path("role").asText())) {
@@ -198,26 +209,37 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
         }
         AgentRuntimeEvent event = eventConverter.toRuntimeEvent(sessionId, activeRunId, rawEvent);
         if (event == null) {
-            return;
+            return null;
         }
         if (cancelling && isTerminal(event.type())) {
-            return;
+            return null;
         }
-        eventSink.emit(event);
         if (isTerminal(event.type())) {
             finish(AgentRuntimeHealth.READY);
         }
+        return event;
     }
 
     @Override
-    public synchronized void close() {
-        health = AgentRuntimeHealth.STOPPED;
-        activeRunId = null;
-        activeExternalRunId = null;
-        rpc.close();
-        process.close();
-        modelConfiguration.close();
-        closeHook.run();
+    public void close() {
+        synchronized (this) {
+            if (closed) return;
+            closed = true;
+            health = AgentRuntimeHealth.STOPPED;
+        }
+        try {
+            runtimeTerminated(null);
+        } finally {
+            try {
+                process.close();
+            } finally {
+                try {
+                    rpc.close();
+                } finally {
+                    try { modelConfiguration.close(); } finally { closeHook.run(); }
+                }
+            }
+        }
     }
 
     private synchronized CompletableFuture<JsonNode> selectModel(String runId, AgentModelAccess access) {
@@ -253,31 +275,40 @@ public class AgentRuntimeSessionHandleImpl implements IAgentRuntimeSessionHandle
         return new AgentRuntimeRunRef(runId, externalRunId);
     }
 
-    private synchronized void completeCancellation(String runId) {
-        if (activeRunId == null) {
-            return;
+    private void completeCancellation(String runId) {
+        AgentRuntimeEvent event;
+        synchronized (this) {
+            if (!runId.equals(activeRunId)) return;
+            event = new AgentRuntimeEvent(
+                    "cancelled-" + runId, sessionId, runId, AgentEventType.RUN_CANCELLED,
+                    Map.of(), LocalDateTime.now());
+            finish(AgentRuntimeHealth.READY);
         }
-        eventSink.emit(new AgentRuntimeEvent(
-                "cancelled-" + runId, sessionId, runId, AgentEventType.RUN_CANCELLED,
-                Map.of(), LocalDateTime.now()));
-        finish(AgentRuntimeHealth.READY);
+        eventSink.emit(event);
     }
 
-    private synchronized void runtimeTerminated(Throwable error) {
-        if (health == AgentRuntimeHealth.STOPPED) {
-            return;
+    private void runtimeTerminated(Throwable error) {
+        AgentRuntimeEvent event = null;
+        synchronized (this) {
+            if (runtimeTerminated) return;
+            runtimeTerminated = true;
+            if (activeRunId != null) {
+                event = new AgentRuntimeEvent(
+                        "runtime-stopped-" + activeRunId, sessionId, activeRunId,
+                        AgentEventType.RUN_OUTCOME_UNKNOWN,
+                        Map.of("reason", error == null
+                                ? "runtime stopped"
+                                : Objects.toString(error.getMessage(), error.getClass().getSimpleName())),
+                        LocalDateTime.now());
+            }
+            finish(error == null ? AgentRuntimeHealth.STOPPED : AgentRuntimeHealth.FAILED);
         }
-        health = error == null ? AgentRuntimeHealth.STOPPED : AgentRuntimeHealth.FAILED;
-        if (activeRunId != null) {
-            eventSink.emit(new AgentRuntimeEvent(
-                    "runtime-stopped-" + activeRunId, sessionId, activeRunId,
-                    AgentEventType.RUN_OUTCOME_UNKNOWN,
-                    Map.of("reason", error == null
-                            ? "runtime stopped"
-                            : Objects.toString(error.getMessage(), error.getClass().getSimpleName())),
-                    LocalDateTime.now()));
-            activeRunId = null;
-            activeExternalRunId = null;
+        try {
+            if (event != null) eventSink.emit(event);
+        } finally {
+            // Registry cleanup must run only after the active run has reached its durable outcome.
+            if (error == null) termination.complete(null);
+            else termination.completeExceptionally(error);
         }
     }
 

@@ -110,43 +110,31 @@ public class AgentDatabaseServiceImpl implements AgentDatabaseService {
     }
 
     @Override
-    public DbAgentDatabaseResponse<List<TableSummary>> listTables(DbAgentDatabaseRequest.Tables request) {
+    public DbAgentDatabaseResponse<List<ObjectSummary>> searchObjects(DbAgentDatabaseRequest.ObjectSearch request) {
         int page = page(request.page()), size = size(request.pageSize());
+        List<String> types = request.types() == null ? List.of("TABLE") : request.types();
+        if (types.isEmpty() || types.size() > AgentDatabaseConstant.OBJECT_TYPES.size()
+                || types.stream().anyMatch(type -> type == null || !AgentDatabaseConstant.OBJECT_TYPES.contains(type))
+                || new HashSet<>(types).size() != types.size()) {
+            throw invalid("types", "Use distinct object types: " + String.join(", ", AgentDatabaseConstant.OBJECT_TYPES), null);
+        }
         return scoped(request.scope(), false, profile -> {
             requireDatabase(profile, request.database());
             String schemaPattern = metadataSchema(request.schema(), request.schemaPattern());
-            String tablePattern = AgentMetadataPattern.validate(request.tablePattern(), "tablePattern");
+            String objectPattern = AgentMetadataPattern.validate(request.objectPattern(), "objectPattern");
             String search = search(request.search());
-            if (tablePattern != null && search != null) throw invalid("search", "Use tablePattern or search, not both.", null);
-            if (search != null) tablePattern = "%" + AgentMetadataPattern.literal(search) + "%";
-            var items = metadata.tables(request.database(), schemaPattern, tablePattern, Boolean.TRUE.equals(request.refresh())).stream()
-                    .map(table -> new TableSummary(table.getName(), table.getType(), table.getComment(), table.getDatabaseName(), table.getSchemaName()))
-                    .sorted(Comparator.comparing(TableSummary::database, Comparator.nullsFirst(String::compareTo))
-                            .thenComparing(TableSummary::schema, Comparator.nullsFirst(String::compareTo)).thenComparing(TableSummary::name)).toList();
+            if (objectPattern != null && search != null) throw invalid("search", "Use objectPattern or search, not both.", null);
+            if (search != null) objectPattern = "%" + AgentMetadataPattern.literal(search) + "%";
+            var found = metadata.objects(profile.getDatabaseName(), schemaPattern, objectPattern, types,
+                    connections.supportSchema(), Boolean.TRUE.equals(request.refresh()));
+            var items = found.items().stream().sorted(Comparator.comparing(ObjectSummary::database, Comparator.nullsFirst(String::compareTo))
+                    .thenComparing(ObjectSummary::schema, Comparator.nullsFirst(String::compareTo))
+                    .thenComparing(ObjectSummary::name).thenComparing(ObjectSummary::type)).toList();
             Map<String, Object> args = metadataArguments(request.dataSourceId(), request.database(), request.schema(), request.schemaPattern());
-            put(args, "search", search); put(args, "tablePattern", request.tablePattern());
-            return metadataPage(metadataScope(profile, request.schema()), items, page, size, "db_search_tables", args);
-        });
-    }
-
-    @Override
-    public DbAgentDatabaseResponse<List<ColumnSummary>> listColumns(DbAgentDatabaseRequest.Columns request) {
-        int page = page(request.page()), size = size(request.pageSize());
-        return scoped(request.scope(), false, profile -> {
-            requireDatabase(profile, request.database());
-            String schemaPattern = metadataSchema(request.schema(), request.schemaPattern());
-            String tablePattern = AgentMetadataPattern.validate(request.tablePattern(), "tablePattern");
-            String columnPattern = AgentMetadataPattern.validate(request.columnPattern(), "columnPattern");
-            var items = metadata.columns(request.database(), schemaPattern, tablePattern, columnPattern, Boolean.TRUE.equals(request.refresh())).stream()
-                    .map(c -> new ColumnSummary(c.getDatabaseName(), c.getSchemaName(), c.getTableName(), c.getName(), c.getColumnType(),
-                            c.getDataType(), c.getNullable() == null || c.getNullable() == 2 ? null : c.getNullable() == 1,
-                            c.getDefaultValue(), c.getComment(), c.getOrdinalPosition()))
-                    .sorted(Comparator.comparing(ColumnSummary::database, Comparator.nullsFirst(String::compareTo))
-                            .thenComparing(ColumnSummary::schema, Comparator.nullsFirst(String::compareTo)).thenComparing(ColumnSummary::table)
-                            .thenComparing(ColumnSummary::ordinalPosition, Comparator.nullsFirst(Integer::compareTo)).thenComparing(ColumnSummary::name)).toList();
-            Map<String, Object> args = metadataArguments(request.dataSourceId(), request.database(), request.schema(), request.schemaPattern());
-            put(args, "tablePattern", tablePattern); put(args, "columnPattern", columnPattern);
-            return metadataPage(metadataScope(profile, request.schema()), items, page, size, "db_search_columns", args);
+            put(args, "search", search); put(args, "objectPattern", request.objectPattern());
+            if (request.types() != null) args.put("types", List.copyOf(types));
+            var result = metadataPage(metadataScope(profile, request.schema()), items, page, size, "db_search_objects", args);
+            return DbAgentDatabaseResponse.success(result.scope(), result.data(), result.page(), result.nextAction(), found.warnings());
         });
     }
 
@@ -174,24 +162,16 @@ public class AgentDatabaseServiceImpl implements AgentDatabaseService {
                     description = metadata.describe(profile.getDatabaseName(), profile.getSchemaName(), object.type(), object.name(), Boolean.TRUE.equals(request.refresh()));
                 } catch (AgentDatabaseException error) {
                     if (error.nextAction() == null && ("OBJECT_NOT_FOUND".equals(error.code()) || "OBJECT_TYPE_MISMATCH".equals(error.code()))) {
-                        var args = scopeArguments(profile); args.put("tablePattern", AgentMetadataPattern.literal(object.name()));
-                        throw new AgentDatabaseException(error.code(), error.field(), error.getMessage(), next("db_search_tables", args), error);
+                        var args = scopeArguments(profile); args.put("objectPattern", AgentMetadataPattern.literal(object.name()));
+                        args.put("types", List.of("TABLE", "VIEW"));
+                        throw new AgentDatabaseException(error.code(), error.field(), error.getMessage(), next("db_search_objects", args), error);
                     }
                     throw error;
                 }
                 Table table = description.table();
                 warnings.addAll(description.warnings());
-                var columns = table == null ? null : table.getColumnList().stream().map(c -> new Column(c.getName(), c.getColumnType(),
-                        c.getDataType(), c.getNullable() == null || c.getNullable() == 2 ? null : c.getNullable() == 1,
-                        c.getDefaultValue(), c.getComment(), c.getPrimaryKey(), c.getGeneratedColumn())).toList();
-                var indexes = table == null ? null : table.getIndexList().stream()
-                        .map(index -> new Index(index.getName(), index.getUnique(), index.getColumnList() == null ? List.of()
-                                : index.getColumnList().stream().map(column -> column.getColumnName()).toList())).toList();
-                var foreignKeys = table == null ? null : table.getForeignKeyList().stream()
-                        .map(fk -> new ForeignKey(fk.getFkName(), fk.getFkColumnName(), fk.getPkTableCat(), fk.getPkTableSchem(),
-                                fk.getPkTableName(), fk.getPkColumnName(), fk.getKeySeq())).toList();
                 details.add(new ObjectDetail(object.name(), object.type(), table == null ? null : table.getComment(),
-                        columns, indexes, foreignKeys, description.definition()));
+                        description.definition()));
             }
             return DbAgentDatabaseResponse.success(scope(profile), details, null, null, warnings);
         });
@@ -228,7 +208,7 @@ public class AgentDatabaseServiceImpl implements AgentDatabaseService {
             try { responses = executor.execute(execute); }
             catch (RuntimeException failure) {
                 audit.recordFailureAsync(request.sql(), SqlOperationLogSourceEnum.AI_TOOL.name(), failure.getMessage());
-                throw new AgentDatabaseException("SQL_ERROR", "sql", failure.getMessage(), next("db_search_tables", scopeArguments(profile)), failure);
+                throw new AgentDatabaseException("SQL_ERROR", "sql", failure.getMessage(), next("db_search_objects", scopeArguments(profile)), failure);
             }
             var failed = responses.stream().filter(item -> !Boolean.TRUE.equals(item.getSuccess())).findFirst();
             audit.recordListResultAsync(OpsSqlOperationLogListResultRequest.of(request.sql(), failed.isEmpty(),

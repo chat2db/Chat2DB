@@ -61,24 +61,46 @@ class AgentServiceImplTest {
     }
 
     @Test
-    void doesNotRecoverARecentlyAcceptedRunBeforeItsRuntimeHandleIsRegistered() {
+    void eventPollingRecoversARecentlyAcceptedRunFromThePreviousRuntime() {
         FakeAgentRuntimeAdapter adapter = new FakeAgentRuntimeAdapter(AgentRuntimeType.PI);
         MemoryAgentSessionStorage storage = new MemoryAgentSessionStorage();
         AgentRuntimeRegistry registry = new AgentRuntimeRegistry(List.of(adapter));
         MemoryAgentEventStorage events = new MemoryAgentEventStorage(List.of(
                 new AgentEvent("event-one", "session-one", "run-one", 1, AgentEventType.RUN_ACCEPTED,
                         Map.of(), LocalDateTime.of(2026, 9, 8, 14, 0))));
+        var run = new java.util.concurrent.atomic.AtomicReference<>(new AgentRun(
+                "run-one", "session-one", AgentRunStatus.ACCEPTED,
+                new ai.chat2db.community.tools.model.agent.runtime.AgentModelSnapshot("model", 1, "openai", "gpt", 1000, 100),
+                "message", "request", null, 1, 1, null, null));
+        AgentRunStorage runs = new AgentRunStorage() {
+            @Override public AgentRun create(AgentRun value, Long userId) { throw new UnsupportedOperationException(); }
+            @Override public AgentRun get(String sessionId, String runId, Long userId) { return run.get(); }
+            @Override public List<AgentRun> list(String sessionId, Long userId) { return List.of(run.get()); }
+            @Override public boolean compareAndSet(AgentRun value, AgentRunStatus status, Long userId) {
+                if (run.get().status() != status) return false;
+                run.set(value);
+                return true;
+            }
+        };
+        AgentRuntimeHandleRegistry handles = new AgentRuntimeHandleRegistry();
+        AgentRunCoordinator coordinator = new AgentRunCoordinator(registry, handles, storage, runs, events,
+                new AgentModelResolver(null), new AiAgentQuestionServiceImpl(), new AiAgentPromptServiceImpl(),
+                new AiAgentContextServiceImpl(null, CLOCK), new AiAgentSkillServiceImpl(null, null), () -> "recovered", CLOCK);
         AgentServiceImpl service = new AgentServiceImpl(
-                registry, storage, unusedCoordinator(registry, storage), events,
-                new AgentRuntimeHandleRegistry(), new AiAgentPromptServiceImpl(),
+                registry, storage, coordinator, events, handles, new AiAgentPromptServiceImpl(),
                 () -> "session-one", CLOCK);
         AgentSession created = service.createSession(command());
         storage.put(new AgentSession(created.schemaVersion(), created.id(), created.userId(), created.definition(),
                 created.runtimeBinding(), AgentSessionStatus.RUNNING, created.title(), 1,
                 created.gmtCreate(), created.gmtModified()));
 
-        assertEquals(AgentSessionStatus.RUNNING, service.getSession("session-one", 1L).status());
-        assertEquals(0, events.appendCount);
+        List<AgentEvent> polled = service.listEvents("session-one", 1L, 1, 200);
+
+        assertEquals(List.of(AgentEventType.RUN_OUTCOME_UNKNOWN), polled.stream().map(AgentEvent::type).toList());
+        assertEquals(AgentSessionStatus.UNKNOWN, service.getSession("session-one", 1L).status());
+        assertEquals(AgentRunStatus.UNKNOWN, run.get().status());
+        assertEquals(1, events.appendCount);
+        assertEquals(0, adapter.openSessionCount());
     }
 
     @Test
@@ -213,16 +235,17 @@ class AgentServiceImplTest {
         private int appendCount;
 
         private MemoryAgentEventStorage(List<AgentEvent> events) {
-            this.events = events;
+            this.events = new java.util.ArrayList<>(events);
         }
 
         @Override public AgentEvent append(AgentEvent event, Long userId) {
             appendCount++;
+            events.add(event);
             return event;
         }
 
         @Override public List<AgentEvent> list(String sessionId, Long userId, long afterSequence, int limit) {
-            return events;
+            return events.stream().filter(event -> event.sequence() > afterSequence).limit(limit).toList();
         }
     }
 

@@ -10,8 +10,7 @@ public interface AgentDatabaseService {
     DbAgentDatabaseResponse<List<Source>> listSources(Sources request);
     DbAgentDatabaseResponse<Names> listDatabases(Databases request);
     DbAgentDatabaseResponse<Names> listSchemas(Schemas request);
-    DbAgentDatabaseResponse<List<TableSummary>> listTables(Tables request);
-    DbAgentDatabaseResponse<List<ColumnSummary>> listColumns(Columns request);
+    DbAgentDatabaseResponse<List<ObjectSummary>> searchObjects(ObjectSearch request);
     DbAgentDatabaseResponse<List<ObjectDetail>> describeObjects(Describe request);
     DbAgentDatabaseResponse<SqlExecutionData> query(Query request, AgentToolExecutionContext context);
 }

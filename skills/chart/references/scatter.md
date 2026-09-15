@@ -10,6 +10,7 @@ Use to inspect the relationship between two numeric variables at a common observ
 
 - Both xField and yField must be numeric columns and must differ.
 - Omit series.
+- Use groupBy for category-based series and legend colors. Repeated x values within a group are valid separate observations; stack=true is not supported.
 
 Use the exact resultId and column names from a suitable successful db_query result in this conversation. Follow the [shared result and pagination rules](common.md).
 
@@ -31,6 +32,6 @@ Synthetic request shape, not live data: replace this example resultId and field 
 
 - Keep the observation grain consistent, for example one row per customer. Do not pair independently sorted columns.
 - A text category cannot serve as the numeric X variable. Correct the SQL expression or explain the limitation.
-- Do not add sizeField, bubble size, color groups, or a data array; they are not part of this tool contract.
+- Do not add sizeField, bubble size, custom colors, or a data array; use groupBy for supported categorical grouping.
 
 For other failures, consult [error recovery](errors.md). A successful render_chart call already displays and saves the chart; respond with the finding and any material scope limitation.

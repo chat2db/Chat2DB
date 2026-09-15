@@ -22,6 +22,7 @@ import ai.chat2db.community.domain.api.service.agent.IAiAgentQuestionService;
 import ai.chat2db.community.tools.agent.runtime.IAgentRuntimeAdapter;
 import ai.chat2db.community.tools.agent.runtime.IAgentRuntimeSessionHandle;
 import ai.chat2db.community.tools.enums.agent.AgentEventType;
+import ai.chat2db.community.tools.enums.agent.AgentRuntimeHealth;
 import ai.chat2db.community.tools.model.agent.runtime.AgentModelSnapshot;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeCancelRequest;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeEvent;
@@ -31,13 +32,19 @@ import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeRunRequest;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeSessionOpenRequest;
 import ai.chat2db.community.tools.util.AgentTrace;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -57,6 +64,9 @@ public class AgentRunCoordinator {
     private final IAiAgentSkillService skills;
     private final Supplier<String> idGenerator;
     private final Clock clock;
+    private final Duration snapshotTimeout;
+
+    private static final Duration DEFAULT_SNAPSHOT_TIMEOUT = Duration.ofSeconds(2);
 
     @Autowired
     public AgentRunCoordinator(
@@ -69,7 +79,7 @@ public class AgentRunCoordinator {
             IAiAgentQuestionService questions, IAiAgentPromptService prompts, IAiAgentContextService contexts,
             IAiAgentSkillService skills) {
         this(runtimeRegistry, handleRegistry, sessionStorage, runStorage, eventStorage, modelResolver, questions, prompts, contexts, skills,
-                () -> UUID.randomUUID().toString(), Clock.systemDefaultZone());
+                () -> UUID.randomUUID().toString(), Clock.systemDefaultZone(), DEFAULT_SNAPSHOT_TIMEOUT);
     }
 
     AgentRunCoordinator(
@@ -83,6 +93,22 @@ public class AgentRunCoordinator {
             IAiAgentPromptService prompts, IAiAgentContextService contexts, IAiAgentSkillService skills,
             Supplier<String> idGenerator,
             Clock clock) {
+        this(runtimeRegistry, handleRegistry, sessionStorage, runStorage, eventStorage, modelResolver, questions,
+                prompts, contexts, skills, idGenerator, clock, DEFAULT_SNAPSHOT_TIMEOUT);
+    }
+
+    AgentRunCoordinator(
+            AgentRuntimeRegistry runtimeRegistry,
+            AgentRuntimeHandleRegistry handleRegistry,
+            AgentSessionStorage sessionStorage,
+            AgentRunStorage runStorage,
+            AgentEventStorage eventStorage,
+            AgentModelResolver modelResolver,
+            IAiAgentQuestionService questions,
+            IAiAgentPromptService prompts, IAiAgentContextService contexts, IAiAgentSkillService skills,
+            Supplier<String> idGenerator,
+            Clock clock,
+            Duration snapshotTimeout) {
         this.runtimeRegistry = Objects.requireNonNull(runtimeRegistry, "runtimeRegistry");
         this.handleRegistry = Objects.requireNonNull(handleRegistry, "handleRegistry");
         this.sessionStorage = Objects.requireNonNull(sessionStorage, "sessionStorage");
@@ -95,10 +121,15 @@ public class AgentRunCoordinator {
         this.skills = Objects.requireNonNull(skills, "skills");
         this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator");
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.snapshotTimeout = Objects.requireNonNull(snapshotTimeout, "snapshotTimeout");
+        if (snapshotTimeout.isZero() || snapshotTimeout.isNegative()) {
+            throw new IllegalArgumentException("snapshotTimeout must be positive");
+        }
     }
 
     public synchronized CompletionStage<AgentRun> start(AgentRunStartCommand command) {
-        AgentSession session = requireSession(command.sessionId(), command.userId());
+        AgentSession session = recoverSession(command.sessionId(), command.userId());
+        if (session == null) throw new IllegalArgumentException("Agent session does not exist");
         AgentRun duplicate = runStorage.list(session.id(), command.userId()).stream()
                 .filter(run -> run.idempotencyKey().equals(command.idempotencyKey()))
                 .findFirst()
@@ -107,7 +138,8 @@ public class AgentRunCoordinator {
             AgentTrace.record("run.replayed", session.id(), duplicate.id(), Map.of("status", duplicate.status()));
             return CompletableFuture.completedFuture(duplicate);
         }
-        if (session.status() != AgentSessionStatus.READY && session.status() != AgentSessionStatus.FAILED) {
+        if (session.status() != AgentSessionStatus.READY && session.status() != AgentSessionStatus.FAILED
+                && session.status() != AgentSessionStatus.UNKNOWN) {
             throw new IllegalStateException("Agent session is not ready: " + session.id());
         }
         var skillInput = skills.resolve(new AiAgentSkillResolveRequest(command.input().text()));
@@ -155,10 +187,11 @@ public class AgentRunCoordinator {
     }
 
     public synchronized CompletionStage<AgentRun> cancel(AgentRunCancelCommand command) {
+        recoverSession(command.sessionId(), command.userId());
         AgentRun run = requireRun(command.sessionId(), command.runId(), command.userId());
         AgentTrace.record("run.cancel.requested", run.sessionId(), run.id(), Map.of("status", run.status()));
         if (run.status() != AgentRunStatus.RUNNING && run.status() != AgentRunStatus.ACCEPTED
-                && run.status() != AgentRunStatus.WAITING_APPROVAL) {
+                && run.status() != AgentRunStatus.WAITING_APPROVAL && run.status() != AgentRunStatus.SUSPENDED) {
             return CompletableFuture.completedFuture(run);
         }
         IAgentRuntimeSessionHandle handle = handleRegistry.get(command.sessionId());
@@ -176,6 +209,84 @@ public class AgentRunCoordinator {
                     return cancellation;
                 })
                 .thenApply(ignored -> requireRun(command.sessionId(), command.runId(), command.userId()));
+    }
+
+    public synchronized AgentSession recoverSession(String sessionId, Long userId) {
+        AgentSession session = sessionStorage.get(sessionId, userId);
+        if (session == null) return null;
+        IAgentRuntimeSessionHandle handle = handleRegistry.get(sessionId);
+        if (handle != null) {
+            AgentRuntimeHealth health = snapshotHealth(handle);
+            if (health != AgentRuntimeHealth.STOPPED && health != AgentRuntimeHealth.FAILED) return session;
+            handleRegistry.remove(sessionId, handle);
+            session = requireSession(sessionId, userId);
+        }
+        if (session.status() == AgentSessionStatus.CLOSED) return session;
+        List<AgentRun> runs = runStorage.list(sessionId, userId);
+        AgentRun latest = runs.stream().max(Comparator.comparingLong(AgentRun::firstEventSequence)
+                .thenComparing(AgentRun::id)).orElse(null);
+        if (latest == null) return session;
+        boolean orphaned = runs.stream().anyMatch(run -> !run.status().isTerminal());
+        if (!orphaned && session.status() == sessionStatus(latest.status())
+                && session.lastEventSequence() >= latest.lastEventSequence()) return session;
+        // Opening a runtime and recording its accepted run use this same monitor, so a
+        // missing handle here is an orphan, regardless of its age or stored session status.
+        // Event, run and session snapshots are separate writes. Keep every durable event
+        // sequence even when the process stopped before updating the other two snapshots.
+        long sequence = session.lastEventSequence();
+        while (true) {
+            List<AgentEvent> page = eventStorage.list(sessionId, userId, sequence, 1000);
+            if (page.isEmpty()) break;
+            sequence = page.stream().mapToLong(AgentEvent::sequence).max().orElseThrow();
+            if (page.size() < 1000) break;
+        }
+        if (sequence != session.lastEventSequence()) {
+            updateSession(session, session.status(), session.status(), sequence);
+        }
+        for (AgentRun run : runs) {
+            if (!run.status().isTerminal()) {
+                recordRuntimeEvent(userId, new AgentRuntimeEvent(
+                        nextId(), sessionId, run.id(), AgentEventType.RUN_OUTCOME_UNKNOWN,
+                        Map.of("reason", "The Agent runtime stopped before this run completed."),
+                        LocalDateTime.now(clock)));
+                questions.cancel(sessionId, run.id(), userId);
+            }
+        }
+        AgentSession recovered = requireSession(sessionId, userId);
+        AgentSessionStatus status = sessionStatus(requireRun(sessionId, latest.id(), userId).status());
+        if (recovered.status() != status) {
+            updateSession(recovered, recovered.status(), status, recovered.lastEventSequence());
+        }
+        return requireSession(sessionId, userId);
+    }
+
+    private AgentRuntimeHealth snapshotHealth(IAgentRuntimeSessionHandle handle) {
+        try {
+            return handle.snapshot().toCompletableFuture()
+                    .get(snapshotTimeout.toMillis(), TimeUnit.MILLISECONDS)
+                    .health();
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            AgentTrace.record("runtime.snapshot.interrupted",
+                    Objects.toString(handle.session().externalSessionId(), "unknown"), null, Map.of());
+            return AgentRuntimeHealth.FAILED;
+        } catch (ExecutionException | TimeoutException | java.util.concurrent.CancellationException error) {
+            AgentTrace.record("runtime.snapshot.failed",
+                    Objects.toString(handle.session().externalSessionId(), "unknown"), null,
+                    Map.of("reason", Objects.toString(error.getMessage(), error.getClass().getSimpleName())));
+            return AgentRuntimeHealth.FAILED;
+        }
+    }
+
+    private AgentSessionStatus sessionStatus(AgentRunStatus status) {
+        return switch (status) {
+            case ACCEPTED, RUNNING -> AgentSessionStatus.RUNNING;
+            case WAITING_APPROVAL -> AgentSessionStatus.WAITING_APPROVAL;
+            case SUSPENDED -> AgentSessionStatus.SUSPENDED;
+            case COMPLETED, CANCELLED -> AgentSessionStatus.READY;
+            case FAILED -> AgentSessionStatus.FAILED;
+            case UNKNOWN -> AgentSessionStatus.UNKNOWN;
+        };
     }
 
     private IAgentRuntimeSessionHandle handle(
@@ -202,8 +313,19 @@ public class AgentRunCoordinator {
     }
 
     private synchronized void recordRuntimeEvent(Long userId, AgentRuntimeEvent runtimeEvent) {
-        AgentSession session = requireSession(runtimeEvent.sessionId(), userId);
-        AgentRun run = requireRun(session.id(), runtimeEvent.runId(), userId);
+        AgentSession session = sessionStorage.get(runtimeEvent.sessionId(), userId);
+        if (session == null) {
+            AgentTrace.record("event.ignored", runtimeEvent.sessionId(), runtimeEvent.runId(),
+                    Map.of("reason", "session_missing", "type", runtimeEvent.type()));
+            return;
+        }
+        AgentRun run = runStorage.get(session.id(), runtimeEvent.runId(), userId);
+        if (run == null) {
+            AgentTrace.record("event.ignored", session.id(), runtimeEvent.runId(),
+                    Map.of("reason", "run_missing", "type", runtimeEvent.type()));
+            return;
+        }
+        if (run.status().isTerminal()) return;
         long sequence = session.lastEventSequence() + 1;
         eventStorage.append(productEvent(
                 session.id(), run.id(), sequence, runtimeEvent.type(), runtimeEvent.payload()), userId);

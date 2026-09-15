@@ -16,6 +16,8 @@ export interface AgentChart {
   title: string;
   xField?: string | null;
   yField?: string | null;
+  groupBy?: string[] | null;
+  stack?: boolean | null;
   series: { field: string; chartType: 'Column' | 'Line' | 'AreaLine' | 'Scatter'; axisPosition: 'left' | 'right' }[];
   data: Record<string, string | number | null>[];
   page?: { number: number; hasMore?: boolean | null } | null;
@@ -25,12 +27,44 @@ export interface AgentChart {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-const isAgentChart = (value: unknown): value is AgentChart => {
+export const usesGroupedAgentChart = (chart: AgentChart) => Boolean(chart.groupBy?.length || chart.stack);
+
+const hasValidGrouping = (chart: AgentChart): boolean => {
+  if (!usesGroupedAgentChart(chart)) return true;
+  const groupBy = chart.groupBy ?? [];
+  const metrics = chart.chartType === 'Combo' ? chart.series.map((series) => series.field) : [chart.yField];
+  if (!['Column', 'Bar', 'Line', 'AreaLine', 'Scatter', 'Combo'].includes(chart.chartType)
+    || !chart.xField || !metrics.length || metrics.length > 8 || metrics.some((field) => !field)
+    || new Set(metrics).size !== metrics.length || metrics.includes(chart.xField)
+    || groupBy.some((field) => field === chart.xField || metrics.includes(field))) return false;
+  if (chart.stack && !(['Column', 'Bar', 'AreaLine'].includes(chart.chartType)
+    || chart.chartType === 'Combo' && chart.series.some((series) => ['Column', 'AreaLine'].includes(series.chartType)))) {
+    return false;
+  }
+  const groups = new Set<string>();
+  const grains = new Set<string>();
+  for (const row of chart.data) {
+    if (groupBy.some((field) => !Object.hasOwn(row, field)) || !Object.hasOwn(row, chart.xField)) return false;
+    const tuple = groupBy.map((field) => row[field]);
+    const grain = JSON.stringify([row[chart.xField], ...tuple]);
+    if (chart.chartType !== 'Scatter' && grains.has(grain)) return false;
+    grains.add(grain);
+    groups.add(JSON.stringify(tuple));
+  }
+  return groups.size * metrics.length <= 32;
+};
+
+const hasAgentChartShape = (value: unknown): value is AgentChart => {
   if (!isRecord(value) || typeof value.id !== 'string' || typeof value.runId !== 'string'
       || typeof value.resultId !== 'string' || typeof value.title !== 'string'
       || typeof value.chartType !== 'string' || !Object.hasOwn(chartTypes, value.chartType)
       || !(value.xField == null || typeof value.xField === 'string')
-      || !(value.yField == null || typeof value.yField === 'string')) return false;
+      || !(value.yField == null || typeof value.yField === 'string')
+      || !(value.groupBy == null || Array.isArray(value.groupBy)
+        && value.groupBy.length <= 3
+        && value.groupBy.every((field) => typeof field === 'string' && field.trim().length > 0)
+        && new Set(value.groupBy).size === value.groupBy.length)
+      || !(value.stack == null || typeof value.stack === 'boolean')) return false;
   return Array.isArray(value.data) && value.data.every((row) => isRecord(row)
     && Object.values(row).every((cell) => cell === null || typeof cell === 'string'
       || typeof cell === 'number' && Number.isFinite(cell)))
@@ -41,6 +75,8 @@ const isAgentChart = (value: unknown): value is AgentChart => {
       && (value.page.hasMore == null || typeof value.page.hasMore === 'boolean'))
     && Array.isArray(value.warnings) && value.warnings.every((warning) => typeof warning === 'string');
 };
+
+const isAgentChart = (value: unknown): value is AgentChart => hasAgentChartShape(value) && hasValidGrouping(value);
 
 export const updateAgentCharts = (current: AgentChart[], events: AgentEvent[]): AgentChart[] => {
   const additions = events.filter((event) => event.type === 'CHART_CREATED')

@@ -12,6 +12,8 @@ Use when the task requires multiple numeric metrics over one shared category or 
 - Each series requires field, chartType, and axisPosition.
 - Series chartType must be Column, Line, AreaLine, or Scatter. axisPosition must be left or right.
 - Every series field must be numeric and differ from xField and all other series fields.
+- groupBy optionally splits each metric into separate series by category tuple. The final group/metric combinations must not exceed 32 series.
+- stack=true stacks Column/AreaLine series only. With groupBy, each metric has its own stack per axis/type; without grouping, compatible metrics on the same axis share a stack. Line and Scatter remain separate. Do not stack unrelated units or non-additive rates.
 
 Use the exact resultId and column names from a suitable successful db_query result in this conversation. Follow the [shared result and pagination rules](common.md).
 

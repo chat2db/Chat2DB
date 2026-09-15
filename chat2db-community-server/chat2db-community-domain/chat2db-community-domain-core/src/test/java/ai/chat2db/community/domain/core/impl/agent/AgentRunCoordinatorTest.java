@@ -14,6 +14,7 @@ import ai.chat2db.community.tools.model.agent.runtime.AgentModelSnapshot;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeBinding;
 import ai.chat2db.community.tools.model.agent.runtime.AgentRuntimeInput;
 import java.time.Clock;
+import java.time.Duration;
 import java.nio.file.Path;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.core.io.ClassPathResource;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AgentRunCoordinatorTest {
 
@@ -173,6 +175,43 @@ class AgentRunCoordinatorTest {
     }
 
     @Test
+    void ignoresLateRuntimeEventsAfterTheRunIsTerminal() {
+        adapter.emitTerminalEventOnStart(AgentEventType.RUN_COMPLETED);
+        AgentRun completed = coordinator.start(startCommand("request-late-event"))
+                .toCompletableFuture().join();
+        int eventCount = storage.events.size();
+
+        adapter.emitLate(completed.id(), AgentEventType.ASSISTANT_TEXT_DELTA);
+
+        assertEquals(AgentRunStatus.COMPLETED,
+                storage.get(SESSION_ID, completed.id(), USER_ID).status());
+        assertEquals(eventCount, storage.events.size());
+        assertEquals(AgentSessionStatus.READY, storage.get(SESSION_ID, USER_ID).status());
+    }
+
+    @Test
+    void treatsAStuckRuntimeSnapshotAsFailedAndRecoversWithoutBlocking() {
+        adapter.hangSnapshots();
+        AgentRun started = coordinator.start(startCommand("request-stuck-snapshot"))
+                .toCompletableFuture().join();
+        AgentRunCoordinator bounded = new AgentRunCoordinator(
+                new AgentRuntimeRegistry(List.of(adapter)), handles, storage, storage, storage,
+                new AgentModelResolver(null), new AiAgentQuestionServiceImpl(), new AiAgentPromptServiceImpl(),
+                new AiAgentContextServiceImpl(null),
+                new AiAgentSkillServiceImpl(new ClassPathResource("skills/catalog.json"), temporaryDirectory),
+                () -> "bounded", Clock.fixed(Instant.parse("2026-09-08T16:00:00Z"), ZoneOffset.UTC),
+                Duration.ofMillis(5));
+
+        long begin = System.nanoTime();
+        AgentSession recovered = bounded.recoverSession(SESSION_ID, USER_ID);
+        long elapsedMillis = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - begin);
+
+        assertEquals(AgentSessionStatus.UNKNOWN, recovered.status());
+        assertEquals(AgentRunStatus.UNKNOWN, storage.get(SESSION_ID, started.id(), USER_ID).status());
+        assertTrue(elapsedMillis < 1000, "stuck runtime snapshot must not block lifecycle operations");
+    }
+
+    @Test
     void rejectsUnknownAndForeignSessionsWithoutWriting() {
         assertThrows(IllegalArgumentException.class,
                 () -> coordinator.start(new AgentRunStartCommand(
@@ -234,6 +273,180 @@ class AgentRunCoordinatorTest {
         assertEquals(1, adapter.openSessionCount());
     }
 
+    @Test
+    void recoveryWaitsForAnInProgressRuntimeOpenInsteadOfGuessingFromElapsedTime() throws Exception {
+        var opening = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        adapter.beforeOpen(() -> {
+            opening.countDown();
+            try {
+                if (!release.await(5, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("open was not released");
+            } catch (InterruptedException error) {
+                throw new AssertionError(error);
+            }
+        });
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var started = executor.submit(() -> coordinator.start(startCommand("opening")).toCompletableFuture().join());
+            org.junit.jupiter.api.Assertions.assertTrue(opening.await(1, java.util.concurrent.TimeUnit.SECONDS));
+            var recovered = executor.submit(() -> coordinator.recoverSession(SESSION_ID, USER_ID));
+            assertThrows(java.util.concurrent.TimeoutException.class,
+                    () -> recovered.get(100, java.util.concurrent.TimeUnit.MILLISECONDS));
+            release.countDown();
+            assertEquals(AgentRunStatus.RUNNING, started.get(1, java.util.concurrent.TimeUnit.SECONDS).status());
+            assertEquals(AgentSessionStatus.RUNNING, recovered.get(1, java.util.concurrent.TimeUnit.SECONDS).status());
+            assertEquals(List.of(AgentEventType.RUN_ACCEPTED, AgentEventType.RUN_STARTED), eventTypes());
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void recoversTheCurrentRunBeyondTheFirstThousandEventsAndAllowsExplicitContinuation() {
+        AgentRun previous = coordinator.start(startCommand("previous")).toCompletableFuture().join();
+        coordinator.cancel(new AgentRunCancelCommand(USER_ID, SESSION_ID, previous.id())).toCompletableFuture().join();
+        for (int i = 0; i < 1200; i++) {
+            storage.events.add(new AgentEvent("history-" + i, SESSION_ID, previous.id(), i + 4,
+                    AgentEventType.ASSISTANT_TEXT_DELTA, Map.of(), LocalDateTime.now()));
+        }
+        AgentSession session = storage.get(SESSION_ID, USER_ID);
+        storage.create(new AgentSession(session.schemaVersion(), session.id(), session.userId(), session.definition(),
+                session.runtimeBinding(), session.status(), session.title(), 1203, session.gmtCreate(), session.gmtModified()));
+        AgentRun interrupted = coordinator.start(startCommand("interrupted")).toCompletableFuture().join();
+        handles.close(SESSION_ID);
+
+        AgentSession recovered = coordinator.recoverSession(SESSION_ID, USER_ID);
+
+        assertEquals(AgentSessionStatus.UNKNOWN, recovered.status());
+        assertEquals(AgentRunStatus.UNKNOWN, storage.get(SESSION_ID, interrupted.id(), USER_ID).status());
+        assertEquals(AgentRunStatus.CANCELLED, storage.get(SESSION_ID, previous.id(), USER_ID).status());
+        assertEquals(AgentEventType.RUN_OUTCOME_UNKNOWN, storage.events.get(storage.events.size() - 1).type());
+        int eventCount = storage.events.size();
+        coordinator.recoverSession(SESSION_ID, USER_ID);
+        assertEquals(eventCount, storage.events.size());
+        assertEquals(AgentRunStatus.UNKNOWN,
+                coordinator.start(startCommand("interrupted")).toCompletableFuture().join().status());
+        assertEquals(eventCount, storage.events.size());
+        assertEquals(AgentRunStatus.RUNNING,
+                coordinator.start(startCommand("continue")).toCompletableFuture().join().status());
+        assertEquals(2, adapter.openSessionCount());
+    }
+
+    @Test
+    void directCancellationRecoversAnOrphanWithoutReplayingIt() {
+        AgentRun interrupted = coordinator.start(startCommand("interrupted")).toCompletableFuture().join();
+        handles.close(SESSION_ID);
+
+        AgentRun cancelled = coordinator.cancel(new AgentRunCancelCommand(USER_ID, SESSION_ID, interrupted.id()))
+                .toCompletableFuture().join();
+
+        assertEquals(AgentRunStatus.UNKNOWN, cancelled.status());
+        assertEquals(AgentSessionStatus.UNKNOWN, storage.get(SESSION_ID, USER_ID).status());
+        assertEquals(1, adapter.openSessionCount());
+    }
+
+    @Test
+    void suspendedRunCanBeCancelledWhileAttachedAndRecoveredAfterRuntimeLoss() {
+        AgentRun active = coordinator.start(startCommand("active")).toCompletableFuture().join();
+        suspend(active);
+        assertThrows(IllegalStateException.class, () -> coordinator.start(startCommand("too-early")));
+        assertEquals(AgentRunStatus.CANCELLED,
+                coordinator.cancel(new AgentRunCancelCommand(USER_ID, SESSION_ID, active.id()))
+                        .toCompletableFuture().join().status());
+        AgentRun interrupted = coordinator.start(startCommand("interrupted")).toCompletableFuture().join();
+        suspend(interrupted);
+        handles.close(SESSION_ID);
+
+        assertEquals(AgentSessionStatus.UNKNOWN, coordinator.recoverSession(SESSION_ID, USER_ID).status());
+        assertEquals(AgentRunStatus.UNKNOWN, storage.get(SESSION_ID, interrupted.id(), USER_ID).status());
+    }
+
+    @Test
+    void recoversAnAcceptedRunEvenWhenTheSessionWriteNeverHappened() {
+        storage.create(new AgentRun("orphan", SESSION_ID, AgentRunStatus.ACCEPTED, model(),
+                "orphan-message", "orphan-request", null, 1, 1, null, null), USER_ID);
+
+        AgentSession recovered = coordinator.recoverSession(SESSION_ID, USER_ID);
+
+        assertEquals(AgentSessionStatus.UNKNOWN, recovered.status());
+        assertEquals(1, recovered.lastEventSequence());
+        assertEquals(AgentRunStatus.UNKNOWN, storage.get(SESSION_ID, "orphan", USER_ID).status());
+        assertEquals(List.of(AgentEventType.RUN_OUTCOME_UNKNOWN), eventTypes());
+        assertEquals(0, adapter.openSessionCount());
+        coordinator.start(startCommand("explicit-next-run")).toCompletableFuture().join();
+        assertEquals(List.of(1L, 2L, 3L), storage.events.stream().map(AgentEvent::sequence).toList());
+    }
+
+    @Test
+    void alignsPartialTerminalWritesAndKeepsTheLatestRunAfterRecoveringOlderOrphans() {
+        // Insert the newer run first: recovery must choose by its first sequence, not list order,
+        // ID ordering or the higher last sequence that an older run receives during recovery.
+        storage.create(new AgentRun("a-newer", SESSION_ID, AgentRunStatus.COMPLETED, model(),
+                "newer-message", "newer-request", "external-newer", 2, 3, null, null), USER_ID);
+        storage.create(new AgentRun("z-older", SESSION_ID, AgentRunStatus.RUNNING, model(),
+                "older-message", "older-request", "external-older", 1, 1, null, null), USER_ID);
+        storage.events.add(new AgentEvent("older-accepted", SESSION_ID, "z-older", 1,
+                AgentEventType.RUN_ACCEPTED, Map.of(), LocalDateTime.now()));
+        storage.events.add(new AgentEvent("newer-accepted", SESSION_ID, "a-newer", 2,
+                AgentEventType.RUN_ACCEPTED, Map.of(), LocalDateTime.now()));
+        storage.events.add(new AgentEvent("newer-completed", SESSION_ID, "a-newer", 3,
+                AgentEventType.RUN_COMPLETED, Map.of(), LocalDateTime.now()));
+        AgentSession before = storage.get(SESSION_ID, USER_ID);
+        storage.create(new AgentSession(before.schemaVersion(), before.id(), before.userId(), before.definition(),
+                before.runtimeBinding(), AgentSessionStatus.RUNNING, before.title(), 2,
+                before.gmtCreate(), before.gmtModified()));
+
+        AgentSession recovered = coordinator.recoverSession(SESSION_ID, USER_ID);
+
+        assertEquals(AgentSessionStatus.READY, recovered.status());
+        assertEquals(4, recovered.lastEventSequence());
+        assertEquals(AgentRunStatus.UNKNOWN, storage.get(SESSION_ID, "z-older", USER_ID).status());
+        assertEquals(AgentRunStatus.COMPLETED, storage.get(SESSION_ID, "a-newer", USER_ID).status());
+        assertEquals(List.of(1L, 2L, 3L, 4L), storage.events.stream().map(AgentEvent::sequence).toList());
+        assertEquals("z-older", storage.events.get(3).runId());
+        coordinator.recoverSession(SESSION_ID, USER_ID);
+        assertEquals(4, storage.events.size());
+    }
+
+    @Test
+    void preservesDurableEventSequencesWhenTheRunSnapshotWriteNeverHappened() {
+        AgentRun interrupted = coordinator.start(startCommand("interrupted")).toCompletableFuture().join();
+        handles.close(SESSION_ID);
+        storage.events.add(new AgentEvent("uncommitted-completion", SESSION_ID, interrupted.id(), 3,
+                AgentEventType.RUN_COMPLETED, Map.of(), LocalDateTime.now()));
+
+        AgentSession recovered = coordinator.recoverSession(SESSION_ID, USER_ID);
+
+        assertEquals(AgentSessionStatus.UNKNOWN, recovered.status());
+        assertEquals(AgentRunStatus.UNKNOWN, storage.get(SESSION_ID, interrupted.id(), USER_ID).status());
+        assertEquals(4, recovered.lastEventSequence());
+        assertEquals(List.of(1L, 2L, 3L, 4L), storage.events.stream().map(AgentEvent::sequence).toList());
+        assertEquals(AgentEventType.RUN_OUTCOME_UNKNOWN, storage.events.get(3).type());
+        assertEquals(1, adapter.openSessionCount());
+    }
+
+    @Test
+    void ignoresLateRuntimeEventsAfterSessionWasRemoved() {
+        AgentRun run = coordinator.start(startCommand("late-event")).toCompletableFuture().join();
+        int eventCount = storage.events.size();
+        storage.removeSession(SESSION_ID);
+
+        adapter.emitLate(SESSION_ID, run.id(), AgentEventType.ASSISTANT_TEXT_DELTA);
+
+        assertEquals(eventCount, storage.events.size());
+    }
+
+    private void suspend(AgentRun run) {
+        storage.compareAndSet(new AgentRun(run.id(), run.sessionId(), AgentRunStatus.SUSPENDED, run.model(),
+                run.requestMessageId(), run.idempotencyKey(), run.externalRunId(), run.firstEventSequence(),
+                run.lastEventSequence(), run.usage(), run.failure()), run.status(), USER_ID);
+        AgentSession session = storage.get(SESSION_ID, USER_ID);
+        storage.compareAndSet(new AgentSession(session.schemaVersion(), session.id(), session.userId(),
+                session.definition(), session.runtimeBinding(), AgentSessionStatus.SUSPENDED, session.title(),
+                session.lastEventSequence(), session.gmtCreate(), session.gmtModified()), session.status());
+    }
+
     private AgentRunStartCommand startCommand(String idempotencyKey) {
         return new AgentRunStartCommand(
                 USER_ID, SESSION_ID, "model", new AgentRuntimeInput("hello", List.of()), idempotencyKey);
@@ -282,6 +495,8 @@ class AgentRunCoordinatorTest {
             throw new UnsupportedOperationException();
         }
         @Override public void delete(String sessionId, Long userId) { throw new UnsupportedOperationException(); }
+
+        void removeSession(String sessionId) { sessions.remove(sessionId); }
         @Override public AgentRun create(AgentRun run, Long userId) { runs.put(run.id(), run); return run; }
         @Override public AgentRun get(String sessionId, String runId, Long userId) {
             AgentRun run = runs.get(runId);
@@ -302,7 +517,13 @@ class AgentRunCoordinatorTest {
             runs.put(run.id(), run);
             return true;
         }
-        @Override public AgentEvent append(AgentEvent event, Long userId) { events.add(event); return event; }
+        @Override public AgentEvent append(AgentEvent event, Long userId) {
+            long expected = events.stream().filter(stored -> stored.sessionId().equals(event.sessionId()))
+                    .mapToLong(AgentEvent::sequence).max().orElse(0) + 1;
+            assertEquals(expected, event.sequence(), "Stored events must retain a continuous unique sequence");
+            events.add(event);
+            return event;
+        }
         @Override public List<AgentEvent> list(String sessionId, Long userId, long afterSequence, int limit) {
             return events.stream().filter(event -> event.sequence() > afterSequence).limit(limit).toList();
         }

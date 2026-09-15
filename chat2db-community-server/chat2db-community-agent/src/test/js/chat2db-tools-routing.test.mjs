@@ -5,13 +5,15 @@ import vm from "node:vm";
 import { executeShell, presentNative, checkedMutationPath, cleanupOutputSpools } from "../../main/resources/agent/chat2db-output.mjs";
 
 const registered = new Map();
+const registeredCommands = new Map();
 const listeners = new Map();
+let ticket = "fixture";
 const calls = [];
 const uploaded = [];
 const sourceBytes = Buffer.from("first-record\n" + "详细结果\n".repeat(20000) + "exit-diagnostic\n");
 let commands = 0;
 const imports = {
-  "node:fs": { readFileSync: () => JSON.stringify({ baseUrl: "http://127.0.0.1", ticket: "fixture", tools: [] }), realpathSync: value => value },
+  "node:fs": { readFileSync: () => JSON.stringify({ baseUrl: "http://127.0.0.1", ticket, tools: [] }), realpathSync: value => value },
   "node:path": { join: (...parts) => parts.join("/") },
   "node:http": { request(url, options, respond) {
     const request = new EventEmitter();
@@ -49,7 +51,15 @@ const imports = {
     createLocalPowerShellOperations: () => { throw new Error("Wrong shell"); },
   },
 };
-const context = vm.createContext({ process: { env: { PI_CODING_AGENT_DIR: "/fixture" }, cwd: () => "/fixture", platform: "linux" }, AbortController, AbortSignal });
+const catalogCalls = [];
+let catalogFailure = false;
+const context = vm.createContext({ process: { env: { PI_CODING_AGENT_DIR: "/fixture" }, cwd: () => "/fixture", platform: "linux" }, AbortController, AbortSignal,
+  fetch: async (url, options) => {
+    catalogCalls.push({ url, options });
+    if (catalogFailure) throw new Error("catalog unavailable");
+    return { ok: true, status: 200, json: async () => ["read", "grep"] };
+  },
+});
 const module = new vm.SourceTextModule(readFileSync(new URL("../../main/resources/agent/chat2db-tools.mjs", import.meta.url), "utf8"), { context });
 await module.link(specifier => {
   const values = imports[specifier]; assert.ok(values, specifier);
@@ -58,8 +68,12 @@ await module.link(specifier => {
   }, { context });
 });
 await module.evaluate();
-module.namespace.default({ registerCommand() {}, registerTool: tool => registered.set(tool.name, tool),
+let activeTools;
+module.namespace.default({ registerCommand: (name, command) => registeredCommands.set(name, command),
+  setActiveTools: tools => { activeTools = tools; }, registerTool: tool => registered.set(tool.name, tool),
   on: (name, handler) => listeners.set(name, handler) });
+assert.equal(listeners.has("session_start"), false);
+assert.equal(catalogCalls.length, 0);
 
 const read = await registered.get("read").execute("read-call", { path: "/managed/output.txt", cursor: "cursor", description: "Read more rows" });
 assert.equal(read.details.data.content, "page");
@@ -84,4 +98,22 @@ assert.equal(listeners.get("tool_result")({ toolName: "bash", details: shell.det
 const replay = await registered.get("bash").execute("shell-call", { command: "fixture", description: "Replay" });
 assert.equal(replay, shell);
 assert.equal(commands, 1);
-console.log("Managed read routing, description stripping, chunk upload, failed exit and execution replay passed");
+ticket = "renewed-ticket";
+const refresh = registeredCommands.get("chat2db-refresh-model").handler;
+let modelRefreshes = 0;
+const runtime = { modelRegistry: { refresh: async () => { modelRefreshes++; } } };
+await refresh("", runtime);
+assert.equal(modelRefreshes, 1);
+assert.equal(catalogCalls.length, 1);
+assert.equal(catalogCalls[0].options.headers.Authorization, "Bearer renewed-ticket");
+assert.ok(catalogCalls[0].options.signal instanceof AbortSignal);
+assert.deepEqual(activeTools, ["read", "grep"]);
+catalogFailure = true;
+await assert.rejects(refresh("", runtime), /catalog unavailable/);
+assert.equal(catalogCalls.length, 2);
+ticket = "fixture";
+listeners.get("before_agent_start")();
+await registered.get("bash").execute("shell-call", { command: "fixture", description: "Next run" });
+assert.equal(commands, 2);
+assert.equal(catalogCalls.length, 2);
+console.log("Managed output routing, per-run replay isolation and ticket refresh handshake passed");

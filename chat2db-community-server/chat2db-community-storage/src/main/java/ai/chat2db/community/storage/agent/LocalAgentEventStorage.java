@@ -104,7 +104,12 @@ public class LocalAgentEventStorage implements AgentEventStorage {
     private long lastSequence(String sessionId, Path directory) {
         Long cached = lastSequences.get(sessionId);
         if (cached != null) {
-            return cached;
+            // A session directory may have been deleted and recreated with the same id.
+            // Do not carry the old in-memory watermark into the new lifecycle.
+            if (cached == 0 || Files.exists(paths.eventFile(sessionId, cached), LinkOption.NOFOLLOW_LINKS)) {
+                return cached;
+            }
+            lastSequences.remove(sessionId, cached);
         }
         try (Stream<Path> entries = Files.list(directory)) {
             List<Long> sequences = entries

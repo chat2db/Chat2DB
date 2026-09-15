@@ -55,12 +55,12 @@ class AgentDatabaseServiceImplTest {
     @Test
     void explicitScopeIsRequiredAndThePreviousConnectionIsRestored() {
         Fixture f = new Fixture();
-        var missing = failure(() -> f.service.listTables(new Tables(null, null, null, null, null, null, null, null, null)));
+        var missing = failure(() -> f.service.searchObjects(new ObjectSearch(null, null, null, null, null, null, null, null, null, null)));
         assertNotNull(missing);
         assertEquals("MISSING_DATASOURCE", missing.code());
         assertEquals("db_search_datasources", missing.nextAction().tool());
         assertEquals(0, f.binds);
-        var database = failure(() -> f.service.listTables(new Tables("7", null, null, null, null, null, null, null, null)));
+        var database = failure(() -> f.service.searchObjects(new ObjectSearch("7", null, null, null, null, null, null, null, null, null)));
         assertEquals("database", database.field());
         assertEquals(Map.of("dataSourceId", "7"), database.nextAction().arguments());
         assertSame(f.previous, f.current);
@@ -139,16 +139,41 @@ class AgentDatabaseServiceImplTest {
     }
 
     @Test
-    void schemaKeepsStructuredColumnsWhenDdlIsUnavailable() {
+    void descriptionKeepsWarningsWhenDdlIsUnavailableWithoutDuplicatingMetadata() throws Exception {
         Fixture f = new Fixture();
         var result = f.service.describeObjects(new Describe("7", "app", null, List.of(new ObjectRef("TABLE", "samples")), null));
         assertTrue(result.ok());
         var detail = (DbAgentDatabaseResponse.ObjectDetail) ((List<?>) result.data()).get(0);
-        assertEquals("id", detail.columns().get(0).name());
-        assertEquals(false, detail.columns().get(0).nullable());
-        assertEquals(true, detail.columns().get(0).primaryKey());
+        assertEquals("samples", detail.name());
+        assertEquals("TABLE", detail.type());
+        assertNull(detail.definition());
+        assertCompactDescription(detail);
         assertEquals(1, result.warnings().size());
         assertThrows(AgentDatabaseException.class, () -> f.service.describeObjects(new Describe("7", "app", null, List.of(new ObjectRef("TABLE", "samples"), new ObjectRef("TABLE", "samples")), null)));
+    }
+
+    @Test
+    void descriptionReturnsDatabaseDdlVerbatimAsItsOnlyStructure() throws Exception {
+        Fixture f = new Fixture();
+        f.definition = "CREATE TABLE samples (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parents(id));";
+        var response = f.service.describeObjects(new Describe("7", "app", null,
+                List.of(new ObjectRef("TABLE", "samples")), null));
+        assertEquals(f.definition, response.data().get(0).definition());
+        assertCompactDescription(response.data().get(0));
+        assertTrue(response.warnings().isEmpty());
+    }
+
+    private void assertCompactDescription(DbAgentDatabaseResponse.ObjectDetail detail) throws Exception {
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        for (String encoded : List.of(json.writeValueAsString(detail), com.alibaba.fastjson2.JSON.toJSONString(detail))) {
+            var object = json.readTree(encoded);
+            Set<String> fields = new HashSet<>();
+            object.fieldNames().forEachRemaining(fields::add);
+            assertTrue(Set.of("name", "type", "comment", "definition").containsAll(fields));
+            assertFalse(object.has("columns"));
+            assertFalse(object.has("indexes"));
+            assertFalse(object.has("foreignKeys"));
+        }
     }
 
     @Test
@@ -166,19 +191,81 @@ class AgentDatabaseServiceImplTest {
         Fixture f = new Fixture();
         f.metadataTables = List.of(Table.builder().name("orders_b").databaseName("app").schemaName("tenant_one").build(),
                 Table.builder().name("orders_a").databaseName("app").schemaName("tenant_two").build());
-        var result = f.service.listTables(new Tables("7", "app", null, null, "tenant%", "order%", 1, 1, true));
+        var result = f.service.searchObjects(new ObjectSearch("7", "app", null, null, "tenant%", "order%", List.of("TABLE", "FUNCTION"), 1, 1, true));
         assertEquals("tenant%", f.metadataArgs[1]);
         assertEquals("order%", f.metadataArgs[2]);
-        assertEquals(true, f.metadataArgs[3]);
-        assertEquals("order%", result.nextAction().arguments().get("tablePattern"));
+        assertEquals(List.of("TABLE", "FUNCTION"), f.metadataArgs[3]);
+        assertEquals(true, f.metadataArgs[5]);
+        assertEquals("order%", result.nextAction().arguments().get("objectPattern"));
         assertEquals("tenant%", result.nextAction().arguments().get("schemaPattern"));
         assertEquals(2, result.nextAction().arguments().get("page"));
         assertEquals("tenant_one", result.data().get(0).schema());
+        assertEquals("db_search_objects", result.nextAction().tool());
+        assertEquals(List.of("TABLE", "FUNCTION"), result.nextAction().arguments().get("types"));
         assertNull(result.scope().schema());
-        f.service.listTables(new Tables("7", "app", "tenant_one", "order_", null, null, 1, 50, null));
+        f.service.searchObjects(new ObjectSearch("7", "app", "tenant_one", "order_", null, null, null, 1, 50, null));
         assertEquals("tenant\\_one", f.metadataArgs[1]);
         assertEquals("%order\\_%", f.metadataArgs[2]);
-        assertThrows(AgentDatabaseException.class, () -> f.service.listTables(new Tables("7", "app", "tenant_one", null, "%", "order%", 1, 50, null)));
+        assertThrows(AgentDatabaseException.class, () -> f.service.searchObjects(new ObjectSearch("7", "app", "tenant_one", null, "%", "order%", null, 1, 50, null)));
+    }
+
+    @Test
+    void objectSearchKeepsTypeIdentityWarningsAndStablePagination() {
+        Fixture f = new Fixture();
+        f.metadataObjects = List.of(
+                new DbAgentDatabaseResponse.ObjectSummary("shared", "TABLE", "table", "app", "public"),
+                new DbAgentDatabaseResponse.ObjectSummary("shared", "FUNCTION", "function", "app", "public"),
+                new DbAgentDatabaseResponse.ObjectSummary("shared", "VIEW", "view", "app", "public"));
+        f.metadataWarnings = List.of("TRIGGER lookup is unavailable");
+        var types = ai.chat2db.community.domain.api.constant.agent.AgentDatabaseConstant.OBJECT_TYPES;
+        var first = f.service.searchObjects(new ObjectSearch("7", "app", "public", null, null,
+                "shared", types, 1, 2, null));
+        assertEquals(List.of("FUNCTION", "TABLE"), first.data().stream().map(DbAgentDatabaseResponse.ObjectSummary::type).toList());
+        assertEquals(3L, first.page().total());
+        assertEquals(f.metadataWarnings, first.warnings());
+        assertEquals("shared", first.nextAction().arguments().get("objectPattern"));
+        assertEquals("public", first.nextAction().arguments().get("schema"));
+        assertEquals(types, first.nextAction().arguments().get("types"));
+        assertEquals(ai.chat2db.community.domain.api.constant.agent.AgentDatabaseConstant.OBJECT_TYPES, f.metadataArgs[3]);
+        var last = f.service.searchObjects(new ObjectSearch("7", "app", "public", null, null,
+                "shared", types, 2, 2, null));
+        assertEquals(List.of("VIEW"), last.data().stream().map(DbAgentDatabaseResponse.ObjectSummary::type).toList());
+        assertFalse(last.page().hasMore());
+        assertNull(last.nextAction());
+        for (List<String> invalidTypes : List.of(List.<String>of(), List.of("INDEX"), List.of("TABLE", "TABLE"),
+                Arrays.asList("TABLE", null))) {
+            assertEquals("types", failure(() -> f.service.searchObjects(new ObjectSearch("7", "app", "public",
+                    null, null, null, invalidTypes, 1, 50, null))).field());
+        }
+    }
+
+    @Test
+    void objectSearchDefaultsToTablesOnEveryPage() {
+        Fixture f = new Fixture();
+        f.metadataTables = List.of(Table.builder().name("a").databaseName("app").build(),
+                Table.builder().name("b").databaseName("app").build());
+        var first = f.service.searchObjects(new ObjectSearch("7", "app", null, null, null,
+                null, null, 1, 1, null));
+        assertEquals(List.of("TABLE"), f.metadataArgs[3]);
+        assertEquals("a", first.data().get(0).name());
+        assertFalse(first.nextAction().arguments().containsKey("types"));
+        assertEquals(2, first.nextAction().arguments().get("page"));
+        var next = new com.fasterxml.jackson.databind.ObjectMapper().convertValue(first.nextAction().arguments(), ObjectSearch.class);
+        var second = f.service.searchObjects(next);
+        assertEquals(List.of("TABLE"), f.metadataArgs[3]);
+        assertEquals("b", second.data().get(0).name());
+        assertNull(second.nextAction());
+    }
+
+    @Test
+    void mismatchedTableDescriptionExplicitlySearchesViewsDespiteTableDefault() {
+        Fixture f = new Fixture();
+        f.metadataFailure = new AgentDatabaseException("OBJECT_TYPE_MISMATCH", "objects", "sales_% is a VIEW", null);
+        var error = failure(() -> f.service.describeObjects(new Describe("7", "app", null,
+                List.of(new ObjectRef("TABLE", "sales_%")), null)));
+        assertEquals("db_search_objects", error.nextAction().tool());
+        assertEquals(List.of("TABLE", "VIEW"), error.nextAction().arguments().get("types"));
+        assertEquals("sales\\_\\%", error.nextAction().arguments().get("objectPattern"));
     }
 
     @Test
@@ -193,7 +280,6 @@ class AgentDatabaseServiceImplTest {
         assertEquals(new DbAgentDatabaseResponse.Scope("8", "SQLITE", "other_db", "tenant_two"), result.scope());
         assertEquals(List.of("TABLE", "FUNCTION"), result.data().stream().map(DbAgentDatabaseResponse.ObjectDetail::type).toList());
         assertEquals("definition of FUNCTION", result.data().get(1).definition());
-        assertNull(result.data().get(1).columns());
         assertEquals(List.of("other_db", "tenant_two", "FUNCTION", "samples", true), Arrays.asList(f.metadataArgs));
         assertSame(f.previous, f.current);
         for (var invalid : Arrays.asList(new ObjectRef(null, "x"), new ObjectRef("SEQUENCE", "x"), new ObjectRef("VIEW", " "), null)) {
@@ -289,7 +375,11 @@ class AgentDatabaseServiceImplTest {
         List<SimpleSqlStatement> statements;
         List<ExecuteResponse> resultBatch;
         Object[] metadataArgs;
+        AgentDatabaseException metadataFailure;
+        String definition;
         List<Table> metadataTables = List.of();
+        List<DbAgentDatabaseResponse.ObjectSummary> metadataObjects;
+        List<String> metadataWarnings = List.of();
         List<WorkspaceDataSource> sources = new ArrayList<>();
         int sourceCalls;
         ExecuteResponse response = new ExecuteResponse();
@@ -316,13 +406,20 @@ class AgentDatabaseServiceImplTest {
                 default -> throw new AssertionError(method);
             });
             AgentMetadataService metadata = proxy(AgentMetadataService.class, (method, args) -> switch (method) {
-                case "tables" -> { metadataArgs = args; yield metadataTables; }
+                case "objects" -> {
+                    metadataArgs = args;
+                    yield new AgentMetadataService.ObjectSearchResult(metadataObjects == null ? metadataTables.stream()
+                            .map(t -> new DbAgentDatabaseResponse.ObjectSummary(t.getName(), "TABLE", t.getComment(),
+                                    t.getDatabaseName(), t.getSchemaName())).toList() : metadataObjects, metadataWarnings);
+                }
                 case "describe" -> {
                     metadataArgs = args;
+                    if (metadataFailure != null) throw metadataFailure;
                     yield args[2].equals("TABLE") || args[2].equals("VIEW")
                             ? new AgentMetadataService.Description(Table.builder().name("samples")
                                 .columnList(List.of(TableColumn.builder().name("id").columnType("INTEGER").nullable(0).primaryKey(true).build()))
-                                .indexList(List.of()).foreignKeyList(List.of()).build(), null, List.of("DDL unsupported"))
+                                .indexList(List.of()).foreignKeyList(List.of()).build(), definition,
+                                definition == null ? List.of("DDL unsupported by the database driver") : List.of())
                             : new AgentMetadataService.Description(null, "definition of " + args[2], List.of());
                 }
                 default -> List.of();

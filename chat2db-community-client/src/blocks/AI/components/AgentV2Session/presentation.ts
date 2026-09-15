@@ -67,6 +67,15 @@ export const getAgentActivity = (
   if (current?.kind === 'trace') return { kind: 'tool', tool: {
     name: current.trace.name || '', ...(current.trace.description ? { description: current.trace.description } : {}),
   } };
+  // Once a tool has completed, the runtime may spend a short period waiting
+  // for the next model token. Keep that state explicit so the UI can show a
+  // delayed thinking indicator without replacing the tool summary.
+  const last = entries.at(-1);
+  if (last?.kind === 'trace' && last.trace.type === 'tool_result'
+      && last.trace.id && entries.some((entry) => entry.kind === 'trace'
+        && entry.trace.type === 'tool_call' && entry.trace.id === last.trace.id)) {
+    return { kind: 'starting' };
+  }
   const receivedContent = entries.some((entry) => entry.kind === 'text' ? !!entry.text
     : entry.kind === 'trace' && entry.trace.type === 'reasoning' ? !!entry.trace.content : true);
   return receivedContent ? undefined : { kind: 'starting' };

@@ -21,16 +21,8 @@ public record DbAgentDatabaseResponse<T>(boolean ok, Scope scope, T data, Page p
     public record Source(String id, String name, String type, String environment) { }
     public record Name(String name, String comment, boolean system) { }
     public record Names(List<Name> items, boolean supportsDatabases, boolean supportsSchemas) { }
-    public record TableSummary(String name, String type, String comment, String database, String schema) { }
-    public record ColumnSummary(String database, String schema, String table, String name, String type,
-                                Integer jdbcType, Boolean nullable, String defaultValue, String comment, Integer ordinalPosition) { }
-    public record Column(String name, String type, Integer jdbcType, Boolean nullable, String defaultValue,
-                         String comment, Boolean primaryKey, Boolean generated) { }
-    public record Index(String name, Boolean unique, List<String> columns) { }
-    public record ForeignKey(String name, String column, String referencedDatabase, String referencedSchema,
-                             String referencedTable, String referencedColumn, int sequence) { }
-    public record ObjectDetail(String name, String type, String comment, List<Column> columns, List<Index> indexes,
-                               List<ForeignKey> foreignKeys, String definition) { }
+    public record ObjectSummary(String name, String type, String comment, String database, String schema) { }
+    public record ObjectDetail(String name, String type, String comment, String definition) { }
     public record QueryColumn(String name, String type) { }
     public record CellWarning(int row, int column, String reason, Long originalCharacters, Long returnedCharacters) { }
     // Values retain their database text representation to preserve decimal precision, timestamps and SQL NULL.

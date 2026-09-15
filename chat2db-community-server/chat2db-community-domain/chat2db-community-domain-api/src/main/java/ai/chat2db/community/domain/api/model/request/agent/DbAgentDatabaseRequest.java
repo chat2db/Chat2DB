@@ -8,11 +8,7 @@ public final class DbAgentDatabaseRequest {
     public record Scope(String dataSourceId, String database, String schema) { }
     public record Databases(String dataSourceId, String databasePattern, Integer page, Integer pageSize, Boolean refresh) { }
     public record Schemas(String dataSourceId, String database, String schemaPattern, Integer page, Integer pageSize, Boolean refresh) { }
-    public record Tables(String dataSourceId, String database, String schema, String search, String schemaPattern, String tablePattern, Integer page, Integer pageSize, Boolean refresh) {
-        public Scope scope() { return new Scope(dataSourceId, database, schema); }
-    }
-    public record Columns(String dataSourceId, String database, String schema, String schemaPattern,
-                          String tablePattern, String columnPattern, Integer page, Integer pageSize, Boolean refresh) {
+    public record ObjectSearch(String dataSourceId, String database, String schema, String search, String schemaPattern, String objectPattern, List<String> types, Integer page, Integer pageSize, Boolean refresh) {
         public Scope scope() { return new Scope(dataSourceId, database, schema); }
     }
     public record ObjectRef(String type, String name) { }

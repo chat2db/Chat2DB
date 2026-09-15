@@ -10,6 +10,7 @@ Use for one metric across categories, especially rankings or long category label
 
 - xField is the category column and yField is the numeric metric even though the bars are horizontal.
 - Omit series. These two field names must differ.
+- Use groupBy for additional category dimensions. The default is grouped horizontal bars; stack=true combines the groups into stacked bars. The category remains xField even though it is drawn vertically.
 
 Use the exact resultId and column names from a suitable successful db_query result in this conversation. Follow the [shared result and pagination rules](common.md).
 

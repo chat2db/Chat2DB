@@ -3,12 +3,13 @@ package ai.chat2db.community.domain.core.impl.agent;
 import ai.chat2db.community.domain.api.constant.agent.AgentDatabaseConstant;
 import ai.chat2db.community.domain.api.model.metadata.*;
 import ai.chat2db.community.domain.api.model.metadata.extension.MetadataAccessContext;
-import ai.chat2db.community.domain.api.model.request.agent.DbAgentDatabaseRequest;
+import ai.chat2db.community.domain.api.model.response.agent.DbAgentDatabaseResponse.ObjectSummary;
 import ai.chat2db.community.domain.api.service.agent.AgentMetadataService;
 import ai.chat2db.community.domain.core.impl.db.extension.MetadataAccessPolicyManager;
 import ai.chat2db.community.tools.exception.agent.AgentDatabaseException;
 import ai.chat2db.community.tools.util.AgentTrace;
 import ai.chat2db.spi.IDbMetaData;
+import ai.chat2db.spi.DefaultMetaService;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
 import ai.chat2db.spi.model.request.*;
 import ai.chat2db.spi.sql.Chat2DBContext;
@@ -33,8 +34,8 @@ public class AgentMetadataServiceImpl implements AgentMetadataService {
     private final Cache<Key, List<Database>> databaseCache = cache();
     private final Cache<Key, List<Schema>> schemaCache = cache();
     private final Cache<Key, List<Table>> tableCache = cache();
-    private final Cache<Key, List<TableColumn>> columnCache = cache();
     private final Cache<Key, Description> descriptionCache = cache();
+    private final Cache<Key, ObjectSearchResult> objectCache = cache();
 
     @Autowired
     public AgentMetadataServiceImpl(MetadataAccessPolicyManager policies) {
@@ -78,15 +79,213 @@ public class AgentMetadataServiceImpl implements AgentMetadataService {
     }
 
     @Override
-    public List<TableColumn> columns(String database, String schemaPattern, String tablePattern, String columnPattern, boolean refresh) {
-        List<TableColumn> raw = cached(columnCache, key("columns", database, schemaPattern, tablePattern, columnPattern), refresh,
-                () -> readColumns(database, schemaPattern, tablePattern, columnPattern));
-        var tableScopes = raw.stream().map(item -> resource(item.getDatabaseName(), item.getSchemaName(), item.getTableName(), null)).distinct().toList();
-        var allowedTables = new HashSet<>(policies.filter(tableScopes, item -> item));
-        List<TableColumn> tableVisible = raw.stream().filter(item -> allowedTables.contains(
-                resource(item.getDatabaseName(), item.getSchemaName(), item.getTableName(), null))).toList();
-        return policies.filter(tableVisible, item -> resource(item.getDatabaseName(), item.getSchemaName(), item.getTableName(), item.getName()));
+    public ObjectSearchResult objects(String database, String schemaPattern, String objectPattern, List<String> types,
+                                      boolean supportsSchemas, boolean refresh) {
+        String kinds = String.join(",", new TreeSet<>(types));
+        List<ObjectSummary> items = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        List<String> relations = types.stream().filter(type -> type.equals("TABLE") || type.equals("VIEW")).toList();
+        if (!relations.isEmpty()) {
+            addSearch(items, warnings, search("relations:" + kinds, database, schemaPattern, objectPattern, supportsSchemas,
+                    refresh, () -> readRelations(database, schemaPattern, objectPattern, relations, supportsSchemas)));
+        }
+        if (types.contains("FUNCTION") || types.contains("PROCEDURE")) {
+            addSearch(items, warnings, search("routines:" + kinds, database, schemaPattern, objectPattern, supportsSchemas,
+                    refresh, () -> readRoutines(database, schemaPattern, objectPattern, types, supportsSchemas)));
+        }
+        if (types.contains("TRIGGER")) {
+            try {
+                List<String> scopes = supportsSchemas ? schemas(database, schemaPattern, refresh).stream()
+                        .filter(schema -> database == null || Objects.equals(database, schema.getDatabaseName()))
+                        .map(Schema::getName).filter(Objects::nonNull).distinct().toList() : Collections.singletonList(null);
+                for (String schema : scopes) {
+                    if (!policies.isAllowed(resource(database, schema, null, null))) continue;
+                    String exactPattern = schema == null ? null : AgentMetadataPattern.literal(schema);
+                    addSearch(items, warnings, search("triggers:" + kinds, database, exactPattern, objectPattern,
+                            supportsSchemas, refresh,
+                            () -> readTriggers(database, schema, objectPattern, supportsSchemas)));
+                }
+            } catch (RuntimeException error) { // impl-contract: best-effort - other object kinds remain usable.
+                warnings.add("TRIGGER lookup unavailable: " + error.getMessage());
+            }
+        }
+        List<ObjectSummary> visible = policies.filter(items, item -> resource(item.database(), item.schema(),
+                item.type().equals("TABLE") || item.type().equals("VIEW") ? item.name() : null, null));
+        return new ObjectSearchResult(visible, warnings.stream().distinct().toList());
     }
+
+    private ObjectSearchResult search(String kind, String database, String schemaPattern, String objectPattern,
+                                      boolean supportsSchemas, boolean refresh, Loader<ObjectSearchResult> loader) {
+        return cached(objectCache, key("objects:" + kind + ":" + supportsSchemas, database, schemaPattern, objectPattern, null),
+                refresh, () -> {
+                    try { return loader.load(); }
+                    catch (SQLException | UnsupportedOperationException error) { // impl-contract: best-effort - advertise incomplete metadata, never cache a failed lookup.
+                        return new ObjectSearchResult(List.of(), List.of(kind.split(":")[0].toUpperCase(Locale.ROOT)
+                                + " lookup unavailable: " + error.getMessage()));
+                    }
+                });
+    }
+
+    private static void addSearch(List<ObjectSummary> items, List<String> warnings, ObjectSearchResult result) {
+        items.addAll(result.items()); warnings.addAll(result.warnings());
+    }
+
+    private ObjectSearchResult readRelations(String database, String schemaPattern, String objectPattern,
+                                            List<String> types, boolean supportsSchemas) throws SQLException {
+        DatabaseMetaData metadata = connection.get().getMetaData();
+        String[] nativeTypes = Arrays.stream(TABLE_TYPES).filter(type -> types.contains(relationType(type))).toArray(String[]::new);
+        List<ObjectSummary> items = new ArrayList<>(); List<String> warnings = new ArrayList<>();
+        try (ResultSet rows = metadata.getTables(database, pattern(metadata, schemaPattern), pattern(metadata, objectPattern), nativeTypes)) {
+            while (rows.next()) {
+                String type = relationType(rows.getString("TABLE_TYPE"));
+                if (type == null) { warnings.add("Some relation types returned by the driver are unsupported and were omitted."); continue; }
+                if (!types.contains(type)) continue;
+                ObjectSummary item = scoped(rows.getString("TABLE_NAME"), type, rows.getString("REMARKS"),
+                        rows.getString("TABLE_CAT"), rows.getString("TABLE_SCHEM"), database, schemaPattern,
+                        objectPattern, supportsSchemas, exactJdbcSchema(metadata, schemaPattern), warnings);
+                if (item != null) items.add(item);
+            }
+        }
+        return new ObjectSearchResult(List.copyOf(items), List.copyOf(warnings));
+    }
+
+    private ObjectSearchResult readRoutines(String database, String schemaPattern, String objectPattern,
+                                           List<String> types, boolean supportsSchemas) {
+        List<String> warnings = new ArrayList<>(); List<Routine> functions = List.of();
+        try { functions = readRoutineRows(database, schemaPattern, objectPattern, "FUNCTION", supportsSchemas, warnings); }
+        catch (SQLException | UnsupportedOperationException error) { // impl-contract: best-effort - procedure lookup may still be available.
+            warnings.add("FUNCTION lookup unavailable: " + error.getMessage());
+        }
+        List<ObjectSummary> items = new ArrayList<>();
+        if (types.contains("FUNCTION")) functions.forEach(item -> items.add(item.object()));
+        if (types.contains("PROCEDURE")) {
+            try {
+                List<Routine> procedures = readRoutineRows(database, schemaPattern, objectPattern, "PROCEDURE", supportsSchemas, warnings);
+                for (Routine procedure : procedures) {
+                    if (procedure.procedureConfirmed()) { items.add(procedure.object()); continue; }
+                    List<Routine> sameName = functions.stream().filter(function -> sameObject(function.object(), procedure.object())).toList();
+                    if (sameName.stream().anyMatch(function -> function.specificName() != null
+                            && function.specificName().equals(procedure.specificName()))) continue;
+                    if (!sameName.isEmpty() && (procedure.specificName() == null || sameName.stream().anyMatch(function -> function.specificName() == null))) {
+                        warnings.add("Some same-name PROCEDURE candidates were omitted because the driver returned no specific identity to distinguish them from functions.");
+                        continue;
+                    }
+                    items.add(procedure.object());
+                }
+            } catch (SQLException | UnsupportedOperationException error) { // impl-contract: best-effort - retain any discovered functions.
+                warnings.add("PROCEDURE lookup unavailable: " + error.getMessage());
+            }
+        }
+        Map<List<String>, ObjectSummary> unique = new LinkedHashMap<>();
+        for (ObjectSummary item : items) {
+            if (unique.putIfAbsent(Arrays.asList(item.database(), item.schema(), item.type(), item.name()), item) != null) {
+                warnings.add("Overloaded routines are listed once per name and type; db_describe_objects cannot select a specific signature.");
+            }
+        }
+        return new ObjectSearchResult(List.copyOf(unique.values()), List.copyOf(warnings));
+    }
+
+    private List<Routine> readRoutineRows(String database, String schemaPattern, String objectPattern, String type,
+                                          boolean supportsSchemas, List<String> warnings) throws SQLException {
+        DatabaseMetaData metadata = connection.get().getMetaData();
+        String schema = pattern(metadata, schemaPattern); String name = pattern(metadata, objectPattern);
+        List<Routine> items = new ArrayList<>();
+        // Connector/J encodes ROUTINE_TYPE as procedureNoResult/procedureReturnsResult; same-named
+        // functions and procedures share SPECIFIC_NAME, so that field cannot classify MySQL routines.
+        boolean mysqlProcedures = type.equals("PROCEDURE") && metadata.getDriverName().startsWith("MySQL Connector");
+        try (ResultSet rows = type.equals("FUNCTION") ? metadata.getFunctions(database, schema, name)
+                : metadata.getProcedures(database, schema, name)) {
+            while (rows.next()) {
+                if (mysqlProcedures) {
+                    int routineType = rows.getInt("PROCEDURE_TYPE");
+                    if (routineType == DatabaseMetaData.procedureReturnsResult) continue;
+                    if (routineType != DatabaseMetaData.procedureNoResult) {
+                        warnings.add("PROCEDURE candidates with unknown MySQL routine type were omitted.");
+                        continue;
+                    }
+                }
+                ObjectSummary item = scoped(rows.getString(type + "_NAME"), type, rows.getString("REMARKS"),
+                        rows.getString(type + "_CAT"), rows.getString(type + "_SCHEM"), database, schemaPattern,
+                        objectPattern, supportsSchemas, exactJdbcSchema(metadata, schemaPattern), warnings);
+                if (item != null) items.add(new Routine(item, rows.getString("SPECIFIC_NAME"), mysqlProcedures));
+            }
+        }
+        return items;
+    }
+
+    private ObjectSearchResult readTriggers(String database, String schema, String objectPattern, boolean supportsSchemas) {
+        IDbMetaData provider = dialect.get();
+        try {
+            if (provider.getClass().getMethod("triggers", Connection.class, String.class, String.class)
+                    .getDeclaringClass().equals(DefaultMetaService.class)) {
+                throw new UnsupportedOperationException("This database driver does not implement trigger metadata.");
+            }
+        } catch (NoSuchMethodException error) {
+            throw new IllegalStateException("Trigger metadata provider is invalid", error);
+        }
+        List<ObjectSummary> items = new ArrayList<>(); List<String> warnings = new ArrayList<>();
+        for (Trigger trigger : provider.triggers(connection.get(), database, schema)) {
+            ObjectSummary item = scoped(trigger.getTriggerName(), "TRIGGER", null, trigger.getDatabaseName(),
+                    trigger.getSchemaName(), database, schema == null ? null : AgentMetadataPattern.literal(schema),
+                    objectPattern, supportsSchemas, schema, warnings);
+            if (item != null) items.add(item);
+        }
+        return new ObjectSearchResult(List.copyOf(items), List.copyOf(warnings));
+    }
+
+    private ObjectSummary scoped(String name, String type, String comment, String foundDatabase, String foundSchema,
+                                 String database, String schemaPattern, String objectPattern, boolean supportsSchemas,
+                                 String exactSchema, List<String> warnings) {
+        if (name == null || !AgentMetadataPattern.matches(name, objectPattern)) return null;
+        if (foundDatabase != null && database != null && !database.equals(foundDatabase)) return null;
+        if (foundDatabase == null) foundDatabase = database; // JDBC catalog and dialect database are exact filters.
+        if (supportsSchemas && foundSchema == null) {
+            foundSchema = exactSchema;
+            if (foundSchema == null) {
+                warnings.add(type + " candidates with unknown schema were omitted; specify an exact schema or verify driver metadata support.");
+                return null;
+            }
+        }
+        if (!AgentMetadataPattern.matches(foundSchema, schemaPattern)) return null;
+        return new ObjectSummary(name, type, comment, foundDatabase, foundSchema);
+    }
+
+    private String exactJdbcSchema(DatabaseMetaData metadata, String schemaPattern) throws SQLException {
+        String schema = exactPattern(schemaPattern);
+        if (schema != null && (schema.contains("%") || schema.contains("_"))) {
+            String escape = metadata.getSearchStringEscape();
+            if (escape == null || escape.isEmpty()) return null;
+        }
+        return schema;
+    }
+
+    private static String exactPattern(String pattern) {
+        if (pattern == null) return null;
+        StringBuilder literal = new StringBuilder();
+        for (int i = 0; i < pattern.length(); i++) {
+            char value = pattern.charAt(i);
+            if (value == '\\') { literal.append(pattern.charAt(++i)); }
+            else if (value == '%' || value == '_') return null;
+            else literal.append(value);
+        }
+        return literal.toString();
+    }
+
+    private static String relationType(String type) {
+        if (type == null) return null;
+        return switch (type.toUpperCase(Locale.ROOT)) {
+            case "TABLE", "BASE TABLE", "SYSTEM TABLE", "PARTITIONED TABLE" -> "TABLE";
+            case "VIEW", "MATERIALIZED VIEW" -> "VIEW";
+            default -> null;
+        };
+    }
+
+    private static boolean sameObject(ObjectSummary left, ObjectSummary right) {
+        return left.name().equals(right.name()) && Objects.equals(left.database(), right.database())
+                && Objects.equals(left.schema(), right.schema());
+    }
+
+    private record Routine(ObjectSummary object, String specificName, boolean procedureConfirmed) { }
 
     @Override
     public Description describe(String database, String schema, String type, String name, boolean refresh) {
@@ -111,7 +310,7 @@ public class AgentMetadataServiceImpl implements AgentMetadataService {
                         && policies.isAllowed(resource(fk.getPkTableCat(), fk.getPkTableSchem(), fk.getPkTableName(), fk.getPkColumnName()))).toList()).build();
         boolean complete = visible.size() == raw.table().getColumnList().size();
         List<String> warnings = new ArrayList<>(raw.warnings());
-        if (!complete) warnings.add("Some columns are not accessible; the full object definition is omitted.");
+        if (!complete) warnings.add("Some columns are not accessible; the full object definition is omitted. Verify metadata permissions before querying these columns.");
         return new Description(filtered, complete ? raw.definition() : null, List.copyOf(warnings));
     }
 
@@ -138,8 +337,8 @@ public class AgentMetadataServiceImpl implements AgentMetadataService {
         if (!view) readTableKeys(metadata, database, schema, name, warnings);
         String definition = null;
         try { definition = readDefinition(database, schema, type, name); }
-        catch (RuntimeException error) { // impl-contract: fallback - structured metadata remains available without a definition.
-            warnings.add("Definition unavailable for " + type + " " + name + "; use structured columns and indexes.");
+        catch (RuntimeException error) { // impl-contract: fallback - report unavailable definitions without fabricating DDL.
+            warnings.add("Definition unavailable for " + type + " " + name + "; verify the object name, metadata permissions and driver support.");
         }
         if (view && definition != null) warnings.add("View definition may be CREATE VIEW DDL or only its query body, as provided by the database.");
         return new Description(metadata, definition, List.copyOf(warnings));
@@ -240,7 +439,7 @@ public class AgentMetadataServiceImpl implements AgentMetadataService {
                 throw new AgentDatabaseException(error instanceof SQLFeatureNotSupportedException ? "UNSUPPORTED_METADATA_FILTER" : "METADATA_ERROR",
                         null, "JDBC " + key.kind + " lookup failed: " + error.getMessage(), null, error);
             }
-            cache.put(key, result);
+            if (!(result instanceof ObjectSearchResult search) || search.warnings().isEmpty()) cache.put(key, result);
         }
         var fields = new LinkedHashMap<String, Object>();
         fields.put("kind", key.kind); fields.put("cacheHit", hit); fields.put("refresh", refresh); fields.put("dataSourceId", key.dataSourceId);

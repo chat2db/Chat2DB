@@ -1,4 +1,5 @@
 import { createStyles } from 'antd-style';
+import { useEffect, useState } from 'react';
 import i18n from '@/i18n';
 import type { AgentTraceEntry } from '../../agentEvents';
 import { Check, ChevronRight, CircleX, Clock3, Wrench } from 'lucide-react';
@@ -6,6 +7,8 @@ import AgentActivityIndicator from './AgentActivityIndicator';
 import AgentToolOutput from './AgentToolOutput';
 import { formatOutputPreview } from '../../agentOutput';
 import { toolExecutions, toolSummary, type AgentActivity } from './presentation';
+
+const THINKING_DELAY_MS = 600;
 
 const useStyles = createStyles(({ css, token }) => ({
   group: css`
@@ -83,6 +86,19 @@ export default function AgentTraceGroup({ entries, activity, status, runActive =
   onInspect?: () => void;
 }) {
   const { styles } = useStyles();
+  const [showActivity, setShowActivity] = useState(activity?.kind !== 'starting');
+  const activityKind = activity?.kind;
+  const activityName = activity?.kind === 'tool' ? activity.tool.name : undefined;
+  const activityDescription = activity?.kind === 'tool' ? activity.tool.description : undefined;
+  useEffect(() => {
+    if (!activityKind || activityKind !== 'starting' || !runActive) {
+      setShowActivity(!!activityKind);
+      return undefined;
+    }
+    setShowActivity(false);
+    const timer = window.setTimeout(() => setShowActivity(true), THINKING_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [activityKind, activityName, activityDescription, runActive]);
   const tools = toolExecutions(entries);
   const failed = tools.some((tool) => tool.failed) || status === 'failed' || status === 'unknown';
   const summary = toolSummary(entries);
@@ -99,11 +115,10 @@ export default function AgentTraceGroup({ entries, activity, status, runActive =
     }}
     >
       <summary className={failed ? styles.failed : undefined}>
-        {activity ? <AgentActivityIndicator activity={activity} /> : <>
-          <Wrench size={14} aria-hidden="true" />{title}
-          {outcome && ` · ${outcome}`}
-          {!outcome && failed && ` · ${i18n('stream.trace.error')}`}
-        </>}
+        <Wrench size={14} aria-hidden="true" />{title}
+        {showActivity && activity && <> · <AgentActivityIndicator activity={activity} /></>}
+        {outcome && ` · ${outcome}`}
+        {!outcome && failed && ` · ${i18n('stream.trace.error')}`}
         <ChevronRight size={13} className="agent-trace-chevron" aria-hidden="true" />
       </summary>
       {tools.map((tool) => {

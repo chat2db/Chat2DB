@@ -19,10 +19,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -105,6 +107,7 @@ public class AiAgentChartServiceImpl implements IAiAgentChartService {
                 throw invalid("NO_NUMERIC_VALUES", field.getKey(), "The numeric field contains only SQL NULL values.");
             }
         }
+        validateGroups(request, type, data);
         AiAgentChart chart = AgentChartConverter.request2chart(UUID.randomUUID().toString(), request, source, context, data);
         try {
             if (json.writeValueAsBytes(chart).length > 512 * 1024) {
@@ -135,7 +138,16 @@ public class AiAgentChartServiceImpl implements IAiAgentChartService {
             if (request.series() == null || request.series().isEmpty()) {
                 throw invalid("MISSING_SERIES", "series", "Combo requires at least one series with field, chartType and axisPosition.");
             }
+            if (request.series().size() > 8) {
+                throw invalid("INVALID_ARGUMENT", "series", "Combo supports at most 8 numeric metrics.");
+            }
             for (var series : request.series()) {
+                if (series == null || series.chartType() == null || series.axisPosition() == null
+                        || !List.of("Column", "Line", "AreaLine", "Scatter").contains(series.chartType())
+                        || !List.of("left", "right").contains(series.axisPosition())) {
+                    throw invalid("INVALID_ARGUMENT", "series", "Each Combo series needs chartType Column, Line, AreaLine or Scatter and axisPosition left or right.");
+                }
+                requireField(series.field(), "series.field");
                 if (fields.putIfAbsent(series.field(), true) != null) {
                     throw invalid("DUPLICATE_FIELD", "series", "Each series must use a distinct field from xField and other series.");
                 }
@@ -149,7 +161,54 @@ public class AiAgentChartServiceImpl implements IAiAgentChartService {
                 throw invalid("UNEXPECTED_SERIES", "series", "series is only supported for Combo charts.");
             }
         }
+        if (!request.groupBy().isEmpty() && !Set.of(AiAgentChartType.COLUMN, AiAgentChartType.BAR,
+                AiAgentChartType.LINE, AiAgentChartType.AREA_LINE, AiAgentChartType.SCATTER,
+                AiAgentChartType.COMBO).contains(type)) {
+            throw invalid("UNSUPPORTED_GROUPING", "groupBy", "groupBy supports Column, Bar, Line, AreaLine, Scatter and Combo. Choose one of these types or omit groupBy.");
+        }
+        if (request.groupBy().size() > 3) {
+            throw invalid("INVALID_ARGUMENT", "groupBy", "Use at most 3 distinct groupBy columns.");
+        }
+        for (String group : request.groupBy()) {
+            if (group == null || group.isBlank() || group.length() > 256) {
+                throw invalid("INVALID_ARGUMENT", "groupBy", "Each groupBy item must be a nonblank column name of at most 256 characters.");
+            }
+            if (group.equals(request.yField()) || fields.putIfAbsent(group, false) != null) {
+                throw invalid("DUPLICATE_FIELD", "groupBy", "groupBy columns must be distinct from xField, yField, all metrics and each other.");
+            }
+        }
+        if (request.stack()) {
+            boolean stackable = type == AiAgentChartType.COLUMN || type == AiAgentChartType.BAR
+                    || type == AiAgentChartType.AREA_LINE || (type == AiAgentChartType.COMBO
+                    && request.series().stream().anyMatch(item -> "Column".equals(item.chartType()) || "AreaLine".equals(item.chartType())));
+            if (!stackable) {
+                throw invalid("UNSUPPORTED_STACK", "stack", "stack supports Column, Bar and AreaLine, or Combo containing a Column or AreaLine metric. Choose a supported type or omit stack.");
+            }
+        }
         return fields;
+    }
+
+    private void validateGroups(AiAgentChartRenderRequest request, AiAgentChartType type,
+            List<Map<String, Object>> data) {
+        if (request.groupBy().isEmpty() && !request.stack()) return;
+        Set<List<Object>> groups = new HashSet<>();
+        Set<List<Object>> categories = new HashSet<>();
+        int metricCount = type == AiAgentChartType.COMBO ? request.series().size() : 1;
+        for (Map<String, Object> row : data) {
+            // Tuple values retain SQL NULL, empty strings and delimiter-containing labels without collisions.
+            List<Object> group = request.groupBy().stream().map(row::get).toList();
+            groups.add(group);
+            if (groups.size() * metricCount > 32) {
+                throw invalid("TOO_MANY_SERIES", "groupBy", "The chart would exceed 32 derived series (distinct groups multiplied by metrics). Filter groups or reduce metrics in SQL; series are never silently dropped.");
+            }
+            if (type != AiAgentChartType.SCATTER) {
+                List<Object> category = new ArrayList<>(group);
+                category.add(row.get(request.xField()));
+                if (!categories.add(category)) {
+                    throw invalid("DUPLICATE_CATEGORY", "resultId", "More than one row has the same xField + groupBy values. Aggregate metrics with SQL GROUP BY xField and every groupBy column before rendering.");
+                }
+            }
+        }
     }
 
     private void requireField(String value, String name) {

@@ -9,6 +9,16 @@ import java.util.Map;
 public record AiAgentChart(String id, String runId, String resultId, String chartType, String title,
         String xField, String yField, List<Series> series,
         @JSONField(serializeFeatures = JSONWriter.Feature.WriteMapNullValue) List<Map<String, Object>> data,
-        Page page, List<String> warnings) {
+        Page page, List<String> warnings, List<String> groupBy, boolean stack) {
+    public AiAgentChart {
+        groupBy = groupBy == null ? List.of() : List.copyOf(groupBy);
+    }
+
+    public AiAgentChart(String id, String runId, String resultId, String chartType, String title,
+            String xField, String yField, List<Series> series, List<Map<String, Object>> data,
+            Page page, List<String> warnings) {
+        this(id, runId, resultId, chartType, title, xField, yField, series, data, page, warnings, List.of(), false);
+    }
+
     public record Series(String field, String chartType, String axisPosition) { }
 }

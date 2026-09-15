@@ -15,7 +15,8 @@ Use the user's request, the current Chat2DB context, inspected schemas, and actu
 2. Inspect unknown columns and choose the database's SQL dialect. Compute aggregation, ratios, ordering, and any agreed rounding in SQL. For rates, establish the denominator; do not average percentages with different denominators.
 3. Obtain data with db_query, or reuse a suitable result already returned in this conversation. Re-query when the user requests fresh data or changes its scope. Use the exact resultId of the intended successful statement; inspect its columns, rows, page, and warnings.
 4. Read the [shared result rules](references/common.md) once, then read only the selected chart type's file below before calling render_chart. If the selected type changes, read its file. Read [error recovery](references/errors.md) only when needed.
-5. Call render_chart with the selected resultId and only the fields needed for that chart type. A successful response means the chart is already displayed and saved.
+5. For multiple dimensions, keep one xField and pass the other category columns in groupBy. Aggregate to one row per xField/groupBy combination in SQL (Scatter preserves individual observations). Use stack only for additive metrics with compatible units; see the shared rules below.
+6. Call render_chart with the selected resultId and only the fields needed for that chart type. A successful response means the chart is already displayed and saved.
 
 ## Choose a chart reference
 

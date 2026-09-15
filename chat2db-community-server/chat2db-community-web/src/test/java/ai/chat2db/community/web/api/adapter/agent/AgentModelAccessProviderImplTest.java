@@ -12,6 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Duration;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.Map;
@@ -136,7 +138,41 @@ class AgentModelAccessProviderImplTest {
         assertThrows(SecurityException.class, () -> service.forward(access.ticket(), "127.0.0.1", "/v1/responses", Map.of(), body));
     }
 
+    @Test
+    void freshRunAccessWorksAfterThePreviousTicketHasExpired() throws Exception {
+        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2026-09-14T00:00:00Z"));
+        Clock clock = new Clock() {
+            @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+            @Override public Clock withZone(ZoneId zone) { return this; }
+            @Override public Instant instant() { return now.get(); }
+        };
+        upstream = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        upstream.createContext("/v1/responses", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        upstream.start();
+        var service = service(runtimeModel(), clock);
+        var previous = service.issue("session", model());
+        byte[] body = "{\"model\":\"gpt-test\"}".getBytes(StandardCharsets.UTF_8);
+        now.set(now.get().plus(Duration.ofHours(3)));
+        assertThrows(SecurityException.class, () -> service.forward(
+                previous.ticket(), "127.0.0.1", "/v1/responses", Map.of(), body));
+        var renewed = service.issue("session", model());
+        try (var response = service.forward(renewed.ticket(), "127.0.0.1", "/v1/responses", Map.of(), body)) {
+            assertEquals(200, response.statusCode());
+        }
+        service.revoke(renewed.ticket());
+        assertThrows(SecurityException.class, () -> service.forward(
+                renewed.ticket(), "127.0.0.1", "/v1/responses", Map.of(), body));
+    }
+
     private AgentModelAccessProviderImpl service(AiRuntimeModel runtimeModel) {
+        return service(runtimeModel, Clock.fixed(Instant.parse("2026-09-09T00:00:00Z"), ZoneOffset.UTC));
+    }
+
+    private AgentModelAccessProviderImpl service(AiRuntimeModel runtimeModel, Clock clock) {
         IAiModelConfigService modelService = (IAiModelConfigService) Proxy.newProxyInstance(
                 IAiModelConfigService.class.getClassLoader(),
                 new Class<?>[] {IAiModelConfigService.class},
@@ -153,7 +189,7 @@ class AgentModelAccessProviderImplTest {
                 address,
                 HttpClient.newHttpClient(),
                 new ObjectMapper(),
-                Clock.fixed(Instant.parse("2026-09-09T00:00:00Z"), ZoneOffset.UTC),
+                clock,
                 new SecureRandom());
     }
 

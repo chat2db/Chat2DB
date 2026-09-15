@@ -179,9 +179,9 @@ public class PiRpcTransportImpl implements IPiRpcTransport {
 
     private void fail(Throwable error) {
         if (closed.compareAndSet(false, true)) {
+            termination.completeExceptionally(error);
             pending.values().forEach(future -> future.completeExceptionally(error));
             pending.clear();
-            termination.completeExceptionally(error);
             readerExecutor.shutdownNow();
         }
     }
@@ -190,10 +190,10 @@ public class PiRpcTransportImpl implements IPiRpcTransport {
     public void close() {
         if (closed.compareAndSet(false, true)) {
             PiRpcException error = new PiRpcException("Pi RPC client was closed");
+            termination.complete(null);
             pending.values().forEach(future -> future.completeExceptionally(error));
             pending.clear();
             readerExecutor.shutdownNow();
-            termination.complete(null);
             try {
                 stdout.close();
                 stdin.close();

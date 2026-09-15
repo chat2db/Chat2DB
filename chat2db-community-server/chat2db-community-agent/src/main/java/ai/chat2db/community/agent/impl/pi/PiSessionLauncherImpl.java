@@ -75,7 +75,7 @@ public class PiSessionLauncherImpl implements IPiSessionLauncher {
             Path configuration = supervisor.prepareConfigurationDirectory(sessionId);
             modelConfiguration = new PiModelConfigurationImpl(sessionId, configuration, modelAccessService, objectMapper);
             AgentModelAccess modelAccess = modelConfiguration.prepare(model);
-            objectMapper.writeValue(configuration.resolve("tools.json").toFile(), toolAccess);
+            writeToolAccess(configuration, objectMapper, toolAccess);
             Path extension = configuration.resolve("chat2db-tools.mjs");
             try (var resource = new ClassPathResource("agent/chat2db-tools.mjs").getInputStream()) {
                 Files.copy(resource, extension, StandardCopyOption.REPLACE_EXISTING);
@@ -148,13 +148,24 @@ public class PiSessionLauncherImpl implements IPiSessionLauncher {
         AgentToolAccess previous = current.get();
         AgentToolAccess next = provider.issue(sessionId, eventSink);
         try {
-            mapper.writeValue(configuration.resolve("tools.json").toFile(), next);
+            writeToolAccess(configuration, mapper, next);
             current.set(next);
             provider.revoke(previous.ticket());
         } catch (IOException | RuntimeException error) {
             provider.revoke(next.ticket());
             throw error instanceof RuntimeException runtime
                     ? runtime : new PiRpcException("Cannot refresh Pi tool access", error);
+        }
+    }
+
+    static void writeToolAccess(Path configuration, ObjectMapper mapper, AgentToolAccess access) throws IOException {
+        Path temporary = Files.createTempFile(configuration, "tools-", ".json.tmp");
+        try {
+            mapper.writeValue(temporary.toFile(), access);
+            Files.move(temporary, configuration.resolve("tools.json"),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 

@@ -10,6 +10,7 @@ Use for comparing one numeric metric across discrete categories. Respect a user-
 
 - Use one category column as xField and one numeric metric column as yField.
 - Omit series. These two field names must differ.
+- Use groupBy for additional category dimensions. stack=false (the default) gives grouped columns; stack=true gives stacked columns. See the shared grouping rules.
 
 Use the exact resultId and column names from a suitable successful db_query result in this conversation. Follow the [shared result and pagination rules](common.md).
 
@@ -30,6 +31,6 @@ Synthetic request shape, not live data: replace this example resultId and field 
 ## Data preparation and mistakes to avoid
 
 - Aggregate to the requested category grain in SQL and use ORDER BY for a stable order.
-- Do not treat Column as a stacked or grouped multi-series API. Use Combo when multiple metrics and the user's intent call for it.
+- Use groupBy to compare groups of one metric. Use Combo when the task requires multiple numeric metric columns or mixed chart types.
 
 For other failures, consult [error recovery](errors.md). A successful render_chart call already displays and saves the chart; respond with the finding and any material scope limitation.

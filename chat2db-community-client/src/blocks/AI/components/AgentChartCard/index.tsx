@@ -4,7 +4,8 @@ import { createStyles } from 'antd-style';
 import ChartCard from '@/blocks/BI/ChartCard';
 import ScrollableTable from '@/components/ScrollableTable';
 import i18n from '@/i18n';
-import { AgentChart, agentChartDetail, isPartialChart } from '../../agentCharts';
+import { AgentChart, agentChartDetail, isPartialChart, usesGroupedAgentChart } from '../../agentCharts';
+import AgentGroupedChart from './AgentGroupedChart';
 
 const useStyles = createStyles(({ css, token }) => ({
   figure: css`margin: 10px 0; width: 100%; max-width: 720px;`,
@@ -38,9 +39,11 @@ export default memo(({ chart }: { chart: AgentChart }) => {
           {i18n('stream.chart.tableView')}
         </Button>
       </div>
-      {view === 'chart' ? <ChartCard chartDetail={detail} className={styles.card}
-        style={{ height: 340 }} isEditPermission={false}
-                          /> : (
+      {view === 'chart' ? (usesGroupedAgentChart(chart)
+        ? <AgentGroupedChart chart={chart} className={styles.card} />
+        : <ChartCard chartDetail={detail} className={styles.card}
+            style={{ height: 340 }} isEditPermission={false}
+          />) : (
         <ScrollableTable aria-label={i18n('stream.chart.queryData')}>
             <thead><tr>{fields.map((field) => <th key={field}>{field}</th>)}</tr></thead>
             <tbody>{chart.data.map((row, index) => (

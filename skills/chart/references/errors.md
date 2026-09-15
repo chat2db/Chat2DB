@@ -6,6 +6,10 @@ Read this file when a query result or render_chart call fails. Use the selected 
 | --- | --- |
 | UNEXPECTED_SERIES | Keep the intended non-Combo type; remove series and use xField/yField. |
 | MISSING_SERIES | For an intended Combo, supply valid series entries. |
+| UNSUPPORTED_GROUPING | Use groupBy only with Column, Bar, Line, AreaLine, Scatter or Combo. Keep the user's chart intent when choosing a supported shape. |
+| UNSUPPORTED_STACK | stack=true requires Column, Bar, AreaLine, or a Combo containing Column/AreaLine. Do not stack unrelated units or non-additive metrics. |
+| DUPLICATE_CATEGORY | Aggregate in SQL to one row per xField and groupBy tuple. The renderer will not choose an aggregation for you. |
+| TOO_MANY_SERIES | The group/metric combinations exceed 32. Agree on scope or split the visualization; do not silently discard groups. |
 | MISSING_FIELD / FIELD_NOT_FOUND | Inspect the selected result's columns and the chart's required fields. |
 | AMBIGUOUS_FIELD / DUPLICATE_FIELD | Use distinct SQL aliases or distinct selected fields; re-query only when the data shape must change. |
 | EXPECTED_SINGLE_ROW | Aggregate the requested metric to one row for Statistics. |
