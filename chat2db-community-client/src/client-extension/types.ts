@@ -22,6 +22,9 @@ export interface ClientNavigationResolutionContext {
 export type ClientMainPageCoreAction = 'settings';
 
 export interface ClientMainPageSlots {
+  actionBarBeforeTerminal?: ReactNode;
+  actionBarAfterTerminal?: ReactNode;
+  /** @deprecated Use actionBarBeforeTerminal. */
   actionBarFooter?: ReactNode;
   titleBarActions?: ReactNode;
 }
@@ -54,31 +57,6 @@ export interface ResourceOperationRequest {
 }
 
 export type ResourceOperationCapabilities = Readonly<Record<ResourceOperation, boolean>>;
-
-export interface KnowledgeMentionCandidate {
-  id: number;
-  type: 'KNOWLEDGE_TERM' | 'BUSINESS_LOGIC' | 'SQL_TEMPLATE';
-  key: string;
-  value: string;
-}
-
-export interface KnowledgeMentionRequest {
-  searchKey?: string;
-  inputText?: string;
-  dataSourceId?: number;
-  databaseName?: string;
-  schemaName?: string;
-  pageNo?: number;
-  pageSize?: number;
-}
-
-export interface KnowledgeMentionPage {
-  data: readonly KnowledgeMentionCandidate[];
-  pageNo: number;
-  pageSize: number;
-  total: number;
-  hasNextPage: boolean;
-}
 
 export interface TableMetadataSearchRequest {
   dataSourceId: number;
@@ -127,7 +105,6 @@ export interface ClientExtension {
   resourceOperations?: (
     request: ResourceOperationRequest,
   ) => Promise<ResourceOperationCapabilities>;
-  knowledgeMentions?: (request: KnowledgeMentionRequest) => Promise<KnowledgeMentionPage>;
   tableMetadataSearch?: (request: TableMetadataSearchRequest) => Promise<readonly TableMetadataSearchResult[]>;
   dashboardActions?: (context: DashboardActionContext) => ReactNode;
   openPermissionApplication?: (request: PermissionApplicationRequest) => void;

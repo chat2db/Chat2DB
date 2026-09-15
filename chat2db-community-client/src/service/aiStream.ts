@@ -23,15 +23,6 @@ export interface IChatSession {
   gmtModified: string;
 }
 
-export type KnowledgeSelectionType = 'KNOWLEDGE_TERM' | 'BUSINESS_LOGIC' | 'SQL_TEMPLATE';
-
-export interface ISelectedKnowledge {
-  id: number;
-  type: KnowledgeSelectionType;
-  key: string;
-  value?: string;
-}
-
 export interface IChatMessage {
   id: string;
   sessionId: string;
@@ -39,7 +30,6 @@ export interface IChatMessage {
   content: string;
   reasoningContent?: string;
   attachments?: IChatAttachment[];
-  selectedKnowledge?: ISelectedKnowledge[];
   gmtCreate: string;
 }
 
@@ -50,6 +40,9 @@ const getChatMessages = createRequest<{ sessionId: string }, IChatMessage[]>('/a
 const deleteChatSession = createRequest<{ id: string }, void>('/api/v3/ai/chat/history/session/delete', {
   method: 'post',
 });
+const renameChatSession = createRequest<{ id: string; title: string }, void>('/api/v3/ai/chat/history/session/rename', {
+  method: 'post',
+});
 
 export default {
   getModelCatalog,
@@ -57,4 +50,5 @@ export default {
   getChatSessions,
   getChatMessages,
   deleteChatSession,
+  renameChatSession,
 };

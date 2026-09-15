@@ -37,6 +37,10 @@ import {
 } from './treeDataUpdate';
 import { neatenDataSourceTreeNode, neatenDataSourcesList, neatenTreeData } from './utils';
 import {
+  mergeWorkspaceTreeSearchExpandedKeys,
+} from '@/pages/main/workspace/components/WorkspaceTreeSearch/lifecycle';
+import { refreshWorkspaceTreeData } from '@/pages/main/workspace/components/WorkspaceTreeSearch/refresh';
+import {
   transitionDataSourceRuntimeAvailability,
   type DataSourceRuntimeAvailability,
   type DataSourceRuntimeAvailabilityById,
@@ -120,7 +124,7 @@ export interface TreeAction {
   setTreeData: (treeData: TreeState['treeData'] | any) => void;
   getTreeData: (props?: { refresh?: boolean; force?: boolean; throwOnError?: boolean }) => Promise<boolean>;
   refreshTreeData: () => Promise<boolean>;
-  refreshDataSourceAfterMutation: (dataSourceId: number) => Promise<void>;
+  refreshDataSourceAfterMutation: (dataSourceId: number, options?: { expandParent?: boolean }) => Promise<void>;
   // Database structure synchronization
   schemaSync: () => void;
   setSelectedKeys: (selectedKeys: TreeState['selectedKeys']) => void;
@@ -158,7 +162,7 @@ export interface TreeAction {
   updateOriginalTitleByNodeId: (nodeKey: string, originalTitle: string) => void;
   // Get the child nodes under a certain node. If the child node is undefined, request the child node.
   getChildrenByNodeId: (nodeId: string) => TreeNodeData[];
-  initHiddenTreeNodeIds: () => void;
+  initHiddenTreeNodeIds: (force?: boolean) => Promise<boolean>;
   addOrDeleteShowTreeNodeIds: (
     dataSourceId: number,
     changedKeys?: {
@@ -208,11 +212,26 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
     invalidateTreeRequests();
     set(initTreeState);
   },
-  refreshTreeData: () => get().getTreeData({ refresh: true }),
-  refreshDataSourceAfterMutation: async (dataSourceId) => {
+  refreshTreeData: () =>
+    refreshWorkspaceTreeData({
+      findNode: (key, treeData) => findNode(key, treeData),
+      getState: () => get(),
+      refreshNode: (node) => get().handleLoadData(node, { refresh: true, preserveInteraction: true }),
+      refreshRoot: () => get().getTreeData({ refresh: true }),
+    }),
+  refreshDataSourceAfterMutation: async (dataSourceId, options) => {
     await hydrateDataSourceAfterMutation(dataSourceId, {
       refreshTreeData: () => get().getTreeData({ refresh: true, throwOnError: true }),
       getDataSourceList: () => get().dataSourceList,
+      expandParent: options?.expandParent
+        ? (dataSource) => {
+            const treeData = get().treeData;
+            const parentNode = treeData ? getParentNode(dataSource.key, treeData) : null;
+            if (parentNode) {
+              get().setExpandedKeys(appendExpandedTreeKey(get().expandedKeys, parentNode.key));
+            }
+          }
+        : undefined,
       setSelectedKeys: get().setSelectedKeys,
       setScrollTargetKey: get().setScrollTargetKey,
       loadData: (node) => get().handleLoadData(node),
@@ -244,7 +263,8 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
         priority: refresh ? 1 : 0,
       },
       async (isCurrent): Promise<RootTreeLoadResult> => {
-        get().initHiddenTreeNodeIds();
+        void get().initHiddenTreeNodeIds(refresh)
+          .catch(() => undefined);
         const result = await loadNamespaceTree(() => connectionService.getNamespaceList({ refresh }));
         if (!isCurrent()) {
           return { committed: false };
@@ -262,7 +282,11 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
           set({ currentLoadingTreeNode: null });
         }
         const freshTreeData = neatenTreeData(result.items);
-        const treeData = resolveLoadedTreeData(freshTreeData, get().treeData, refresh);
+        const treeData = resolveLoadedTreeData(
+          freshTreeData,
+          get().treeData,
+          refresh && !get().searchBarValue,
+        );
         get().setTreeData(treeData);
         get().generateDataSourceList(treeData);
         if (refresh || force) {
@@ -361,7 +385,11 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
         if (requestDataSourceId !== undefined) {
           get().setDataSourceRuntimeAvailability(requestDataSourceId, 'available');
         }
-        const children = resolveLoadedTreeData(loadResult.children, latestNode.children ?? null, refresh);
+        const children = resolveLoadedTreeData(
+          loadResult.children,
+          latestNode.children ?? null,
+          refresh && !get().searchBarValue,
+        );
         const currentTreeData = get().treeData;
         if (!currentTreeData) {
           return { children, committed: false };
@@ -476,7 +504,7 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
         );
         get().setSearchResult(matchedNodes);
         get().setSearchResultKeys(matchedKeys);
-        get().setExpandedKeys([...get().expandedKeys, ...parentIdsWithMatches]);
+        get().setExpandedKeys(mergeWorkspaceTreeSearchExpandedKeys(get().expandedKeys, parentIdsWithMatches));
       }
     } else {
       set({ treeData });
@@ -490,7 +518,7 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
         );
         get().setSearchResult(matchedNodes);
         get().setSearchResultKeys(matchedKeys);
-        get().setExpandedKeys(parentIdsWithMatches);
+        get().setExpandedKeys(mergeWorkspaceTreeSearchExpandedKeys(get().expandedKeys, parentIdsWithMatches));
       }
     }
   },
@@ -785,21 +813,11 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
     const curNode = findNode(nodeId, newTreeData);
     return curNode?.children || [];
   },
-  initHiddenTreeNodeIds: () => {
-    if (get().hiddenTreeNodeIds !== null) {
-      return;
-    }
-    void hiddenTreeNodeStateCoordinator
-      .initialize(
-        () => dataSourceTreeService.getTreeHiddenTreeNodeIds(),
-        (hiddenTreeNodeIds) => {
-          if (get().hiddenTreeNodeIds === null) {
-            set({ hiddenTreeNodeIds });
-          }
-        },
-      )
-      .catch(() => undefined);
-  },
+  initHiddenTreeNodeIds: (force = false) => hiddenTreeNodeStateCoordinator.initialize(
+    () => dataSourceTreeService.getTreeHiddenTreeNodeIds(),
+    (hiddenTreeNodeIds) => set({ hiddenTreeNodeIds }),
+    force,
+  ),
   addOrDeleteShowTreeNodeIds: (
     dataSourceId: number,
     changedKeys?: {
@@ -809,29 +827,21 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
   ) => {
     const lifecycleVersion = treeStoreLifecycleVersion;
     const applyChanges = async () => {
-      await hiddenTreeNodeStateCoordinator.initialize(
-        () => dataSourceTreeService.getTreeHiddenTreeNodeIds(),
-        (hiddenTreeNodeIds) => {
-          if (get().hiddenTreeNodeIds === null) {
-            set({ hiddenTreeNodeIds });
-          }
-        },
-      );
-      if (lifecycleVersion !== treeStoreLifecycleVersion) {
-        return;
-      }
-
-      const hiddenTreeNodeIds = get().hiddenTreeNodeIds || {};
-      const nextIds = applyHiddenTreeNodeChanges(hiddenTreeNodeIds[dataSourceId] || [], changedKeys);
-      set({
-        hiddenTreeNodeIds: {
-          ...hiddenTreeNodeIds,
-          [dataSourceId]: nextIds,
-        },
+      await get().initHiddenTreeNodeIds();
+      await hiddenTreeNodeStateCoordinator.write(async () => {
+        if (lifecycleVersion !== treeStoreLifecycleVersion) {
+          return;
+        }
+        const hiddenTreeNodeIds = get().hiddenTreeNodeIds || {};
+        const nextIds = applyHiddenTreeNodeChanges(hiddenTreeNodeIds[dataSourceId] || [], changedKeys);
+        set({
+          hiddenTreeNodeIds: {
+            ...hiddenTreeNodeIds,
+            [dataSourceId]: nextIds,
+          },
+        });
+        await dataSourceTreeService.updateHiddenTreeNodeIds(dataSourceId, nextIds);
       });
-      await hiddenTreeNodeStateCoordinator.write(() =>
-        dataSourceTreeService.updateHiddenTreeNodeIds(dataSourceId, nextIds),
-      );
     };
 
     void applyChanges()

@@ -7,6 +7,8 @@ import { confirmAndKillTerminalTabs } from '@/utils/terminalSession';
 import {
   confirmDirtyEditorTabs,
   isEditorCloseConfirmationEnabled,
+  prepareEditorsForApplicationExit,
+  waitForPendingEditorTabs,
   type EditorCloseDecision,
   type EditorCloseGuardMap,
   type EditorCloseGuardRef,
@@ -72,15 +74,39 @@ function requestEditorCloseDecision(tab: IWorkspaceTab, editor: EditorCloseGuard
   });
 }
 
+export async function confirmDirtyWorkspaceEditors(tabs: IWorkspaceTab[], editorList: EditorCloseGuardMap) {
+  if (!isEditorCloseConfirmationEnabled(useGlobalStore.getState().editorSettings)) {
+    return waitForPendingEditorTabs(tabs, editorList);
+  }
+  if (!(await confirmDirtyEditorTabs(tabs, editorList, requestEditorCloseDecision))) {
+    return false;
+  }
+
+  return true;
+}
+
+export function waitForPendingWorkspaceEditors(tabs: IWorkspaceTab[], editorList: EditorCloseGuardMap) {
+  return waitForPendingEditorTabs(tabs, editorList);
+}
+
+export async function prepareWorkspaceEditorsForApplicationExit(
+  tabs: IWorkspaceTab[],
+  editorList: EditorCloseGuardMap,
+) {
+  return prepareEditorsForApplicationExit(
+    tabs,
+    editorList,
+    requestEditorCloseDecision,
+    isEditorCloseConfirmationEnabled(useGlobalStore.getState().editorSettings),
+  );
+}
+
 export async function confirmWorkspaceTabsClose(
   tabs: IWorkspaceTab[],
   allTabs: IWorkspaceTab[],
   editorList: EditorCloseGuardMap,
 ) {
-  if (
-    isEditorCloseConfirmationEnabled(useGlobalStore.getState().editorSettings) &&
-    !(await confirmDirtyEditorTabs(tabs, editorList, requestEditorCloseDecision))
-  ) {
+  if (!(await confirmDirtyWorkspaceEditors(tabs, editorList))) {
     return false;
   }
 

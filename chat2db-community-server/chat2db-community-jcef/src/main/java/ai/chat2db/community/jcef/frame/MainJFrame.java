@@ -107,6 +107,7 @@ public class MainJFrame extends JFrame {
     private Component browserUI_;
     private JCefAppConfig jcefAppConfig_;
     private volatile boolean windowFullScreen = false;
+    private volatile boolean showWindowOnStartup = true;
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<Pair<String, String>, IJcefActionHandler> actionHandlers = new HashMap<>();
     private static final String appName;
@@ -165,23 +166,24 @@ public class MainJFrame extends JFrame {
             }
         }
     }
-    private static void handleNewUri(String uriString) {
-        SwingUtilities.invokeLater(() -> {
-            if (JcefContext.getInstance().getFrame_() != null) {
-                if (uriString != null) {
-                    JcefContext.getInstance().getFrame_().processUri(UriUtil.processInput(uriString));
-                    JcefContext.getInstance().getFrame_().toFront();
-                    JcefContext.getInstance().getFrame_().requestFocus();
-                }
-            } else {
-                log.error("Error: application is not initialized; cannot process URI: {}", uriString);
+    public void handleLaunchRequest(String argument) {
+        if (StringUtils.isNotEmpty(argument)) {
+            try {
+                processUri(UriUtil.processInput(argument));
+            } catch (RuntimeException exception) {
+                log.error("Cannot handle desktop launch argument", exception);
             }
-        });
+        }
+        setVisible(true);
+        setExtendedState(getExtendedState() & ~Frame.ICONIFIED);
+        toFront();
+        requestFocus();
     }
     public void start(String[] args) {
-        if (!OS.isMacintosh() && !SingleInstanceUtil.registerInstance(args, MainJFrame::handleNewUri)) {
-            System.exit(0);
-        }
+        start(args, true);
+    }
+    public void start(String[] args, boolean showWindowOnStartup) {
+        this.showWindowOnStartup = showWindowOnStartup;
         UrlProtocolRegistrarUtil.register();
         initPreProcessor();
         initializeCefApp(args);
@@ -297,24 +299,9 @@ public class MainJFrame extends JFrame {
         Desktop desktop = Desktop.getDesktop();
         if (desktop.isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
             desktop.setQuitHandler((e, response) -> {
-                if (ConfigUtils.isCommunity()) {
-                    log.info("Quit handler triggered. Waiting for active task confirmation.");
-                    response.cancelQuit();
-                    ApplicationExitCoordinator.request(ApplicationExitCoordinator.ExitAction.CLOSE.name());
-                    return;
-                }
-                log.info("Quit handler triggered. Preparing for graceful shutdown.");
-                SystemSettingsUtil.saveWindowsInfo();
-                JcefContext.getInstance().getFrame_().dispose();
-                CefApp.getInstance().dispose();
-                Timer timer = new Timer();
-                timer.schedule(new TimerTask() {
-                    @Override
-                    public void run() {
-                        log.info("CefApp is shutting down... {}", Thread.currentThread().getName());
-                        response.performQuit();
-                    }
-                }, 3000);
+                log.info("Quit handler triggered. Waiting for application exit confirmation.");
+                response.cancelQuit();
+                ApplicationExitCoordinator.request(ApplicationExitCoordinator.ExitAction.CLOSE.name());
             });
         }
         if (desktop.isSupported(Desktop.Action.APP_OPEN_URI)) {
@@ -387,8 +374,8 @@ public class MainJFrame extends JFrame {
     private void setupGenericPlatformSpecifics(Image appIcon) {
         this.setTitle(appName);
         this.setIconImage(appIcon);
-        if (WindowsCommunityWindowChrome.isEnabled(OS.isWindows(), ConfigUtils.isCommunity())) {
-            WindowsCommunityWindowChrome.configureRootPane(getRootPane());
+        if (WindowsDesktopWindowChrome.isEnabled(OS.isWindows())) {
+            WindowsDesktopWindowChrome.configureRootPane(getRootPane());
         }
         applyTheme(ThemeEnum.DARK);
     }
@@ -512,6 +499,7 @@ public class MainJFrame extends JFrame {
             @Override
             public void onLoadStart(CefBrowser browser, CefFrame frame, CefRequest.TransitionType transitionType) {
                 if (frame.isMain()) {
+                    ApplicationExitCoordinator.markFrontendUnavailable();
                     String languagePreference = OSOperateUtil.getLanguagePreference();
                     OSTypeEnum osType = JcefContext.getInstance().getOsType();
                     browser.executeJavaScript(String.format("window.navigator.app_language = '%s';", languagePreference), browser.getURL(), 0);
@@ -778,9 +766,9 @@ public class MainJFrame extends JFrame {
         }
         this.browser_ = this.client_.createBrowser(indexHtmlFile, CefRendering.DEFAULT, false);
         this.browserUI_ = browser_.getUIComponent();
-        if (WindowsCommunityWindowChrome.isEnabled(OS.isWindows(), ConfigUtils.isCommunity())) {
-            WindowsCommunityWindowChrome.configureBrowserComponent(browserUI_);
-            WindowsCommunityWindowChrome.installWindowDragging(this, browserUI_);
+        if (WindowsDesktopWindowChrome.isEnabled(OS.isWindows())) {
+            WindowsDesktopWindowChrome.configureBrowserComponent(browserUI_);
+            WindowsDesktopWindowChrome.installWindowDragging(this, browserUI_);
         }
         this.browserUI_.addMouseListener(new MouseAdapter() {
             @Override
@@ -821,7 +809,15 @@ public class MainJFrame extends JFrame {
                 }
             }
         });
+        createBrowserImmediatelyForHiddenStartup(browser_, showWindowOnStartup);
         log.info("4. CefBrowser and UI component creation completed.");
+    }
+
+    static void createBrowserImmediatelyForHiddenStartup(CefBrowser browser, boolean showWindowOnStartup) {
+        if (!showWindowOnStartup) {
+            // Windowed JCEF normally creates the browser when Swing makes its component displayable.
+            browser.createImmediately();
+        }
     }
 
     private static String resolveWebFrontendUrl() {
@@ -861,7 +857,9 @@ public class MainJFrame extends JFrame {
             public void windowLostFocus(WindowEvent e) {
             }
         });
-        this.setVisible(true);
+        if (showWindowOnStartup) {
+            this.setVisible(true);
+        }
         writeDesktopReadyMarker();
         log.info("5. JFrame initialization completed.");
     }

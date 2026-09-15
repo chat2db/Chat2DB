@@ -7,7 +7,7 @@ import { setFocusedContent, getFocusedContent } from '@/store/common/copyFocused
 import { switchIcon, treeConfig } from '../../treeConfig';
 import LoadingGracile from '@/components/Loading/LoadingGracile';
 import { type ThemeAppearance } from 'antd-style';
-import { ChevronRight, User, Users } from 'lucide-react';
+import { Activity, ChevronRight, SquareActivity, User, Users } from 'lucide-react';
 import { ContextMenuRef } from '@/components/ContextMenu';
 import Filtration from '../Filtration';
 import { splitSearchHighlight } from './highlightSearchText';
@@ -43,8 +43,6 @@ const TitleRender = (props: IProps) => {
     toggleExpandedKeys,
     currentLoadingTreeNode,
     treeData,
-    setSearchBarValue,
-    setScrollTargetKey,
     userConfigTree,
   } = useTreeStore((state) => ({
     editingTreeNode: state.editingTreeNode,
@@ -61,8 +59,6 @@ const TitleRender = (props: IProps) => {
     toggleExpandedKeys: state.toggleExpandedKeys,
     currentLoadingTreeNode: state.currentLoadingTreeNode,
     treeData: state.treeData,
-    setSearchBarValue: state.setSearchBarValue,
-    setScrollTargetKey: state.setScrollTargetKey,
     userConfigTree: state.userConfigTree,
   }));
 
@@ -76,12 +72,10 @@ const TitleRender = (props: IProps) => {
       setFocusedContent(selectedNode.originalTitle || '');
     }
 
-    if (selection.clearSearch) {
-      // Search renders a filtered copy. Restore the source node before selecting
-      // it so a click becomes a real locate action after filtering ends.
-      setSearchBarValue('');
+    if (searchBarValue && selection.ancestors.length) {
+      // Search renders a filtered copy. Keep the search session active while
+      // rebinding selection to the source node and its stable ancestor path.
       setExpandedKeys(Array.from(new Set([...expandedKeys, ...selection.ancestors])));
-      setScrollTargetKey(selectedNode.key);
     }
 
     setCurrentTreeNode(selectedNode);
@@ -164,6 +158,14 @@ const TitleRender = (props: IProps) => {
 
     if (nodeData.treeNodeType === TreeNodeType.DATABASE_ACCOUNT) {
       return <User className={cx(styles.customizeIconIsLeaf, styles.customizeIcon)} size={19} />;
+    }
+
+    if (nodeData.treeNodeType === TreeNodeType.MONITOR) {
+      return <SquareActivity className={styles.customizeIcon} size={19} />;
+    }
+
+    if (nodeData.treeNodeType === TreeNodeType.ACTIVE_TRANSACTIONS) {
+      return <Activity className={cx(styles.customizeIconIsLeaf, styles.customizeIcon)} size={19} />;
     }
 
     if (isExpanded && switchIcon[nodeData.treeNodeType]!.unfoldIcon) {

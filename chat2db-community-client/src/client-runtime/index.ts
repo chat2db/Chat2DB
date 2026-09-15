@@ -9,6 +9,7 @@ export interface ClientRuntime {
   usesFixedIdentity: boolean;
   usesLocalPersistence: boolean;
   requiresAuthentication: boolean;
+  requiresLicenseActivation: boolean;
   loadAppConfigFromServer: boolean;
   loadSubscriptionFromServer: boolean;
   loadModelOptionsFromServer: boolean;
@@ -20,7 +21,7 @@ export interface ClientRuntime {
   showUpgradeEntry: boolean;
   showDownloadEntry: boolean;
   enableAutoUpdate: boolean;
-  enableTaskCenterAutoPolling: boolean;
+  supportsBetaUpdates?: boolean;
   showMcpSetting: boolean;
   showNetworkProxySetting: boolean;
   showLicenseSetting: boolean;
@@ -66,6 +67,7 @@ export const clientRuntime: ClientRuntime = {
   usesFixedIdentity: true,
   usesLocalPersistence: true,
   requiresAuthentication: false,
+  requiresLicenseActivation: false,
   loadAppConfigFromServer: false,
   loadSubscriptionFromServer: false,
   loadModelOptionsFromServer: false,
@@ -76,8 +78,8 @@ export const clientRuntime: ClientRuntime = {
   showAccountCenter: false,
   showUpgradeEntry: false,
   showDownloadEntry: false,
-  enableAutoUpdate: false,
-  enableTaskCenterAutoPolling: true,
+  enableAutoUpdate: isDesktop,
+  supportsBetaUpdates: false,
   showMcpSetting: isDesktop,
   showNetworkProxySetting: isDesktop,
   showLicenseSetting: false,

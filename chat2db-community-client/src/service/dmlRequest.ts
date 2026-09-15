@@ -29,4 +29,5 @@ export interface ITableEditExecuteRequest extends IDataSourceExecutionContext {
 export interface IDdlExecuteRequest extends IDataSourceExecutionContext {
   sql: string;
   tableName?: string;
+  errorContinue?: boolean;
 }

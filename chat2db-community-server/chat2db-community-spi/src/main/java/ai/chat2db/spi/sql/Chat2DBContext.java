@@ -1,6 +1,7 @@
 package ai.chat2db.spi.sql;
 
 import ai.chat2db.spi.IAccountManager;
+import ai.chat2db.spi.IActiveTransactionManager;
 import ai.chat2db.spi.IDbManager;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.IPlugin;
@@ -124,6 +125,15 @@ public class Chat2DBContext {
         return plugin == null ? null : plugin.getRoutineManager();
     }
 
+    public static IActiveTransactionManager getActiveTransactionManager() {
+        ConnectInfo connectInfo = getConnectInfo();
+        if (connectInfo == null || StringUtils.isBlank(connectInfo.getDbType())) {
+            return null;
+        }
+        IPlugin plugin = PLUGIN_MAP.get(connectInfo.getDbType());
+        return plugin == null ? null : plugin.getActiveTransactionManager();
+    }
+
     public static Connection getConnection() {
         Connection connection = ConnectionPool.getConnection(getConnectInfo());
         return StatementGuardConnection.wrap(connection, STATEMENT_GUARD_THREAD_LOCAL.get());
@@ -137,6 +147,13 @@ public class Chat2DBContext {
             STATEMENT_GUARD_THREAD_LOCAL.set(statementGuard);
         }
         return new StatementGuardScope(previous);
+    }
+
+    public static void guardStatement(String sql) {
+        Consumer<String> statementGuard = STATEMENT_GUARD_THREAD_LOCAL.get();
+        if (statementGuard != null) {
+            statementGuard.accept(sql);
+        }
     }
 
 

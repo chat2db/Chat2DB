@@ -8,6 +8,7 @@ export interface CommonState {
   currentDashboard?: IDashboardItem | null;
   /** Dashboard list */
   dashboardList: IDashboardItem[];
+  dashboardListStatus: 'idle' | 'loading' | 'success' | 'error';
   /** Query parameters for Dashboard list */
   dashboardListParams: IPageParams;
 }
@@ -15,5 +16,6 @@ export interface CommonState {
 export const initCommonState: CommonState = {
   currentDashboard: null,
   dashboardList: [],
+  dashboardListStatus: 'idle',
   dashboardListParams: defaultPageParam,
 };

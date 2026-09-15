@@ -66,8 +66,10 @@ const WorkspaceRight = memo(() => {
           maxSize={maxPanelSize}
           primary="second"
           allowResize={panelRight}
-          onChange={(newSize) => {
-            setPanelRightWidth(newSize);
+          onDragFinished={(newSize) => {
+            if (Number.isFinite(newSize) && newSize !== panelRightWidth) {
+              setPanelRightWidth(newSize);
+            }
           }}
         >
           <div className={styles.masterScope}>
