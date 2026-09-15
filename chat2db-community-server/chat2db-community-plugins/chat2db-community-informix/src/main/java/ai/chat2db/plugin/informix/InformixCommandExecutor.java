@@ -10,6 +10,7 @@ import ai.chat2db.community.domain.api.service.db.ISqlExecutionCancellation;
 import ai.chat2db.community.domain.api.service.db.ISqlExecutionResultConsumer;
 import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
 import ai.chat2db.spi.DefaultSQLExecutor;
+import ai.chat2db.plugin.informix.parser.InformixSqlParser;
 import ai.chat2db.spi.model.ExecutionTiming;
 import ai.chat2db.spi.sql.Chat2DBContext;
 
@@ -33,7 +34,7 @@ public final class InformixCommandExecutor extends DefaultSQLExecutor {
                                                  boolean limitRowSize, Integer offset, Integer count,
                                                  Integer resultSetId, ExecutionContext executionContext)
             throws SQLException {
-        String sql = InformixExplainClient.explainSql(statement.getSql());
+        String sql = InformixSqlParser.extractExplainSql(statement.getSql());
         if (sql == null) {
             return super.executeMulti(statement, connection, limitRowSize, offset, count, resultSetId, executionContext);
         }
@@ -57,7 +58,7 @@ public final class InformixCommandExecutor extends DefaultSQLExecutor {
                                                           AtomicInteger streamResultSequence, int statementSequence,
                                                           ExecutionContext executionContext)
             throws SQLException {
-        String sql = InformixExplainClient.explainSql(statement.getSql());
+        String sql = InformixSqlParser.extractExplainSql(statement.getSql());
         if (sql == null) {
             return super.executeMultiStreaming(statement, connection, limitRowSize, offset, count, resultSetId,
                     consumer, statementListener, cancellation, sqlType, originalSql, pageNo, pageSize,

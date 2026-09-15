@@ -7,6 +7,7 @@ import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.IPlugin;
 import ai.chat2db.spi.IRoutineManager;
 import ai.chat2db.spi.ISqlBuilder;
+import ai.chat2db.spi.ITableModificationValidator;
 import ai.chat2db.spi.DefaultSQLExecutor;
 import ai.chat2db.community.domain.api.config.DBConfig;
 import ai.chat2db.community.domain.api.config.DriverConfig;
@@ -105,6 +106,10 @@ public class Chat2DBContext {
 
     public static IDbManager getDbManager(String dbType) {
         return getPlugin(dbType).getDbManager();
+    }
+
+    public static ITableModificationValidator getTableModificationValidator() {
+        return getPlugin(getConnectInfo().getDbType()).getTableModificationValidator();
     }
 
     public static IAccountManager getAccountManager() {

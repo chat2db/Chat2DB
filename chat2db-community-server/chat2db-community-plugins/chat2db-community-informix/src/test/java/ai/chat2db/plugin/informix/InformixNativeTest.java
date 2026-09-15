@@ -265,12 +265,30 @@ class InformixNativeTest {
         column.setOldName("qty"); column.setDefaultValue("1"); column.setNullable(0);
         Table before = Table.builder().schemaName("informix").name(table).columnList(List.of()).indexList(List.of()).build();
         Table after = Table.builder().name(table + "_new").columnList(List.of(column)).indexList(List.of()).build();
+        new InformixPlugin().getTableModificationValidator().validate(connection, before, after);
         String script = new InformixSqlBuilder().buildAlterTable(before, after);
         String[] statements = script.split(";");
         execute(statements[0]);
         tables.set(tables.size() - 1, table + "_new");
         for (int i = 1; i < statements.length; i++) if (!statements[i].isBlank()) execute(statements[i]);
         assertEquals(7, scalar("SELECT quantity FROM " + table + "_new"));
+    }
+
+    @Test
+    void metadataReadsConstraintsUsingOnlyTheSuppliedConnection() throws Exception {
+        String table = create("value INTEGER NOT NULL CHECK(value > 0)");
+        ConnectInfo previous = Chat2DBContext.getConnectInfo();
+        previous.setConnection(null);
+        Chat2DBContext.removeContext();
+        try {
+            var constraints = new InformixMetaData().columnConstraints(connection, null, table, "value");
+            assertTrue(constraints.stream().anyMatch(c -> c.type().equals("N")));
+            assertTrue(constraints.stream().anyMatch(c -> c.type().equals("C")));
+            assertFalse(connection.isClosed());
+        } finally {
+            previous.setConnection(connection);
+            Chat2DBContext.putContext(previous);
+        }
     }
 
     private String create(String columns) throws Exception {
@@ -299,6 +317,7 @@ class InformixNativeTest {
     private void alter(String table, TableColumn column) throws SQLException {
         Table before = Table.builder().name(table).schemaName("informix").columnList(List.of()).indexList(List.of()).build();
         Table after = Table.builder().name(table).columnList(List.of(column)).indexList(List.of()).build();
+        new InformixPlugin().getTableModificationValidator().validate(connection, before, after);
         String sql = new InformixSqlBuilder().buildAlterTable(before, after);
         assertTrue(sql.startsWith("ALTER TABLE 'informix'." + table));
         execute(sql);

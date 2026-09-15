@@ -1,35 +1,26 @@
 package ai.chat2db.plugin.informix;
 
+import ai.chat2db.community.domain.api.service.db.ISqlExecutionCancellation;
+import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
 import ai.chat2db.plugin.informix.parser.InformixSqlParser;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
-import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
-import ai.chat2db.community.domain.api.service.db.ISqlExecutionCancellation;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.JdbcDriverManager;
 import ai.chat2db.spi.util.JdbcUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.antlr.v4.runtime.Token;
+import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+
+import static ai.chat2db.plugin.informix.constant.InformixExplainConstants.*;
 
 /** Retrieves optimizer information without executing the user's statement. */
 public class InformixExplainClient {
-
-    public static String explainSql(String sql) {
-        List<Token> tokens = new InformixSqlParser().getAllTokensOnDefault(sql).stream()
-                .filter(token -> token.getType() != Token.EOF).toList();
-        if (tokens.isEmpty() || !"EXPLAIN".equalsIgnoreCase(tokens.get(0).getText())) {
-            return null;
-        }
-        return sql.substring(tokens.get(0).getStopIndex() + 1).trim();
-    }
 
     String getExplainInfo(Connection connection, String sql) throws SQLException {
         return getExplainInfo(connection, sql, null, null);
@@ -40,7 +31,7 @@ public class InformixExplainClient {
         checkCanceled(cancellation);
         List<Token> tokens = new InformixSqlParser().getAllTokensOnDefault(sql).stream()
                 .filter(token -> token.getType() != Token.EOF).toList();
-        if (tokens.isEmpty() || !Set.of("SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE")
+        if (tokens.isEmpty() || !EXPLAINABLE_KEYWORDS
                 .contains(tokens.get(0).getText().toUpperCase(Locale.ROOT))) {
             throw new SQLException("Informix EXPLAIN requires a SELECT, INSERT, UPDATE, DELETE or MERGE statement");
         }
@@ -54,8 +45,7 @@ public class InformixExplainClient {
         // tables and transaction. Querying SMI on it would replace the current plan.
         try (Connection observer = openObserver(connection)) {
             int sessionId = withStatement(connection.createStatement(), listener, cancellation, statement -> {
-                try (ResultSet result = statement.executeQuery(
-                        "SELECT FIRST 1 DBINFO('sessionid') FROM systables")) {
+                try (ResultSet result = statement.executeQuery(SESSION_ID_SQL)) {
                     if (!result.next()) {
                         throw new SQLException("Informix session ID is unavailable");
                     }
@@ -99,9 +89,7 @@ public class InformixExplainClient {
 
     private String readPlan(Connection observer, int sessionId, ISqlExecutionStatementListener listener,
                             ISqlExecutionCancellation cancellation) throws SQLException {
-        return withStatement(observer.prepareStatement(
-                "SELECT * FROM sysmaster:syssqexplain WHERE sqx_sessionid = ? "
-                        + "AND sqx_iscurrent = 'Y' AND sqx_ismain = 'Y'"), listener, cancellation, statement -> {
+        return withStatement(observer.prepareStatement(CURRENT_PLAN_SQL), listener, cancellation, statement -> {
             statement.setInt(1, sessionId);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
@@ -109,15 +97,15 @@ public class InformixExplainClient {
                 }
                 // Older servers expose estimates but do not have sqx_sqlstatementplan.
                 for (int i = 1; i <= result.getMetaData().getColumnCount(); i++) {
-                    if ("sqx_sqlstatementplan".equalsIgnoreCase(result.getMetaData().getColumnLabel(i))) {
+                    if (PLAN_TEXT_FIELD.equalsIgnoreCase(result.getMetaData().getColumnLabel(i))) {
                         String plan = result.getString(i);
-                        if (plan != null && !plan.isBlank() && !"PLAN UNAVAILABLE".equals(plan.trim())) {
+                        if (plan != null && !plan.isBlank() && !PLAN_UNAVAILABLE.equals(plan.trim())) {
                             return plan.trim();
                         }
                     }
                 }
-                return "Estimated Cost: " + result.getString("sqx_estcost")
-                        + "\nEstimated Rows: " + result.getString("sqx_estrows")
+                return "Estimated Cost: " + result.getString(ESTIMATED_COST_FIELD)
+                        + "\nEstimated Rows: " + result.getString(ESTIMATED_ROWS_FIELD)
                         + "\nDetailed plan: unavailable from the server for this statement";
             }
         });

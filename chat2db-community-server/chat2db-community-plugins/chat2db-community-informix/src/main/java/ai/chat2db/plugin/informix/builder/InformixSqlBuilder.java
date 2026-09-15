@@ -6,13 +6,16 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
+import ai.chat2db.plugin.informix.parser.InformixSqlParser;
 import ai.chat2db.spi.DefaultSqlBuilder;
-import ai.chat2db.plugin.informix.InformixExplainClient;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.DatabaseMetaData;
 import java.util.Locale;
 import java.util.Set;
+
+import static ai.chat2db.plugin.informix.constant.InformixExplainConstants.EXPLAIN_PREFIX;
+import static ai.chat2db.plugin.informix.constant.InformixSqlBuilderConstants.*;
 
 /** Informix table alterations and the EXPLAIN command handled by its executor. */
 public class InformixSqlBuilder extends DefaultSqlBuilder {
@@ -24,7 +27,7 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildExplain(String sql) {
         // Consumed by InformixCommandExecutor; never sent to JDBC as executable SQL.
-        return InformixExplainClient.explainSql(sql) == null ? "EXPLAIN " + sql : sql;
+        return InformixSqlParser.extractExplainSql(sql) == null ? EXPLAIN_PREFIX + sql : sql;
     }
 
     @Override
@@ -33,8 +36,8 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
         String tableName = qualifiedTable(oldTable.getSchemaName(), newTable.getName());
         if (!StringUtils.equals(oldTable.getName(), newTable.getName())) {
             // Informix: RENAME TABLE old TO new (not ALTER TABLE old RENAME TO new)
-            script.append("RENAME TABLE ").append(qualifiedTable(oldTable.getSchemaName(), oldTable.getName()))
-                    .append(" TO ").append(identifier(newTable.getName())).append(";\n");
+            script.append(RENAME_TABLE_SQL.formatted(qualifiedTable(oldTable.getSchemaName(), oldTable.getName()),
+                    identifier(newTable.getName()))).append("\n");
         }
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
             script.append(generateTableCommentSQL(tableName, newTable.getComment())).append("\n");
@@ -43,9 +46,6 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus())
                     && StringUtils.isNotBlank(tableColumn.getColumnType())
                     && StringUtils.isNotBlank(tableColumn.getName())) {
-                if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
-                    InformixColumnConstraints.check(oldTable, tableColumn);
-                }
                 script.append(generateColumnAlterSQL(tableColumn, oldTable, newTable.getName())).append("\n");
             }
         }
@@ -63,11 +63,10 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
         String target = qualifiedTable(owner, tableName);
         String columnName = identifier(tableColumn.getName());
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return "ALTER TABLE " + target + " DROP COLUMN " + columnName + ";";
+            return DROP_COLUMN_SQL.formatted(target, columnName);
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
-            return "ALTER TABLE " + target + " ADD COLUMN " + columnName + " "
-                    + tableColumn.getColumnType() + ";";
+            return ADD_COLUMN_SQL.formatted(target, columnName, tableColumn.getColumnType());
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
             // Match the owner used by constraint inspection; setSchema() does not
@@ -76,13 +75,11 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
                     ? StringUtils.defaultIfBlank(tableColumn.getOldName(), tableColumn.getName())
                     : tableColumn.getOldColumn().getName();
             String rename = StringUtils.equals(oldName, tableColumn.getName()) ? ""
-                    : "RENAME COLUMN " + target + "." + identifier(oldName) + " TO " + columnName + ";\n";
-            return rename + "ALTER TABLE " + target + " MODIFY (" + columnName + " "
-                    + columnDefinition(tableColumn) + ");";
+                    : RENAME_COLUMN_SQL.formatted(target, identifier(oldName), columnName) + "\n";
+            return rename + MODIFY_COLUMN_SQL.formatted(target, columnName, columnDefinition(tableColumn));
         }
         if (tableColumn.getComment() != null) {
-            return "COMMENT ON COLUMN " + target + "." + columnName
-                    + " IS '" + tableColumn.getComment().replace("'", "''") + "';";
+            return COMMENT_COLUMN_SQL.formatted(target, columnName, tableColumn.getComment().replace("'", "''"));
         }
         return "";
     }
@@ -105,21 +102,21 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
         }
         StringBuilder definition = new StringBuilder(type);
         if (StringUtils.isNotBlank(column.getDefaultValue())) {
-            definition.append(" DEFAULT ").append(column.getDefaultValue());
+            definition.append(COLUMN_DEFAULT_SQL.formatted(column.getDefaultValue()));
         }
         Integer nullable = column.getNullable();
         if (nullable == null && column.getOldColumn() != null) {
             nullable = column.getOldColumn().getNullable();
         }
         if (Integer.valueOf(DatabaseMetaData.columnNoNulls).equals(nullable)) {
-            definition.append(" NOT NULL");
+            definition.append(COLUMN_NOT_NULL_SQL);
         }
         return definition.toString();
     }
 
     private String generateIndexAlterSQL(TableIndex tableIndex, String owner, String tableName) {
         if (EditStatusEnum.DELETE.name().equals(tableIndex.getEditStatus())) {
-            return "DROP INDEX " + qualifiedTable(owner, tableIndex.getName()) + ";";
+            return DROP_INDEX_SQL.formatted(qualifiedTable(owner, tableIndex.getName()));
         }
         if (EditStatusEnum.ADD.name().equals(tableIndex.getEditStatus())) {
             StringBuilder columnNames = new StringBuilder();
@@ -130,8 +127,8 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
                 columnNames.append(identifier(column.getColumnName()));
             }
             boolean unique = IndexTypeEnum.UNIQUE.getName().equals(tableIndex.getType());
-            return "CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + qualifiedTable(owner, tableIndex.getName()) + " ON "
-                    + tableName + " (" + columnNames + ");";
+            String template = unique ? CREATE_UNIQUE_INDEX_SQL : CREATE_INDEX_SQL;
+            return template.formatted(qualifiedTable(owner, tableIndex.getName()), tableName, columnNames);
         }
         return "";
     }
@@ -151,8 +148,8 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
 
     private String generateTableCommentSQL(String tableName, String comment) {
         if (comment == null) {
-            return "COMMENT ON TABLE " + tableName + " IS NULL;";
+            return CLEAR_TABLE_COMMENT_SQL.formatted(tableName);
         }
-        return "COMMENT ON TABLE " + tableName + " IS '" + comment.replace("'", "''") + "';";
+        return COMMENT_TABLE_SQL.formatted(tableName, comment.replace("'", "''"));
     }
 }

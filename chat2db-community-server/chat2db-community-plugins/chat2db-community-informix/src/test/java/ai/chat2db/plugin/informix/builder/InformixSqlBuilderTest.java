@@ -87,6 +87,19 @@ class InformixSqlBuilderTest {
         }
     }
 
+    @Test
+    void buildingModifySqlNeedsNoConnectionOrThreadContext() {
+        TableColumn original = new TableColumn();
+        original.setName("qty"); original.setColumnType("SMALLINT"); original.setNullable(0);
+        TableColumn changed = new TableColumn();
+        changed.setName("qty"); changed.setColumnType("INTEGER"); changed.setNullable(0);
+        changed.setDefaultValue("1"); changed.setEditStatus("MODIFY"); changed.setOldColumn(original);
+        Table before = table("orders", List.of(original));
+        before.setSchemaName("other_owner");
+        assertEquals("ALTER TABLE 'other_owner'.orders MODIFY (qty INTEGER DEFAULT 1 NOT NULL);\n",
+                new InformixSqlBuilder().buildAlterTable(before, table("orders", List.of(changed))));
+    }
+
     private static Table table(String name, List<TableColumn> columns) {
         return Table.builder()
                 .name(name)

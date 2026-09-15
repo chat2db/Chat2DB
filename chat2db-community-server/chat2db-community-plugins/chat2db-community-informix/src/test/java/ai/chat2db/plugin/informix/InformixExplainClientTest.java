@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.informix;
 
 import org.junit.jupiter.api.Test;
+import ai.chat2db.plugin.informix.parser.InformixSqlParser;
 import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -64,8 +65,8 @@ class InformixExplainClientTest {
             assertThrows(SQLException.class, () -> fixture.client.getExplainInfo(fixture.source, sql));
         }
         assertTrue(fixture.closed.isEmpty());
-        assertEquals("SELECT ';'", InformixExplainClient.explainSql("/* plan */ EXPLAIN SELECT ';'"));
-        assertNull(InformixExplainClient.explainSql("SELECT 'EXPLAIN'"));
+        assertEquals("SELECT ';'", InformixSqlParser.extractExplainSql("/* plan */ EXPLAIN SELECT ';'"));
+        assertNull(InformixSqlParser.extractExplainSql("SELECT 'EXPLAIN'"));
     }
 
     @Test
