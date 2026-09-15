@@ -1,4 +1,6 @@
 export default {
+  'dashboard.list.loadFailed': 'Failed to load dashboards',
+  'dashboard.list.retry': 'Retry',
   'dashboard.title': 'Dashboard',
   'dashboard.edit': 'Edit',
   'dashboard.modal.editTitle': 'Edit Dashboard',

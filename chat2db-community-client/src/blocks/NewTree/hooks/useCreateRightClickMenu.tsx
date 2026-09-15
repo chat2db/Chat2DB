@@ -1,6 +1,6 @@
 import i18n from '@/i18n';
 import { Form } from 'antd';
-import { SquarePen } from 'lucide-react';
+import { Copy, SquarePen } from 'lucide-react';
 import { type ReactNode, useRef } from 'react';
 import { v4 as uuid } from 'uuid';
 
@@ -32,6 +32,7 @@ import sqlService from '@/service/sql';
 import { copyToClipboard, getParentNode } from '@/utils';
 import { staticMessage, staticModal } from '@chat2db/ui';
 import { deleteTable } from '../functions/deleteTable';
+import { openCopyTableModal } from '../functions/copyTable';
 import { generateJavaClass } from '../functions/generateJavaClass';
 import { neatenMoveToGroup } from '../functions/moveToGroup';
 import { editView, openFunction, openProcedure, openTrigger, openView } from '../functions/openAsyncSql';
@@ -271,6 +272,16 @@ export const useCreateRightClickMenu = () => {
       });
     };
 
+    const handleCopyTable = (copyData: boolean) => {
+      void openCopyTableModal(
+        { dataSourceId: dataSourceId!, databaseName: databaseName!, schemaName, tableName: tableName!, copyData },
+        () => {
+          const parentNode = getParentNode(treeNodeData.key, treeData);
+          if (parentNode) handleLoadData(parentNode, { refresh: true });
+        },
+      ).catch(() => {});
+    };
+
     const renderDeleteInputConfirmLabel = (labelKey: string, confirmName: string) => {
       return (
         <>
@@ -355,7 +366,11 @@ export const useCreateRightClickMenu = () => {
       // copyName
       [OperationColumn.CopyName]: {
         text: i18n('common.button.copyName'),
-        icon: <span aria-hidden="true" style={{ display: 'inline-block', width: 20, height: 20 }} />,
+        icon: (
+          <span style={{ alignItems: 'center', display: 'inline-flex', height: 20, justifyContent: 'center', width: 20 }}>
+            <Copy size={18} strokeWidth={1.75} />
+          </span>
+        ),
         handle: () => {
           copyToClipboard(treeNodeData.originalTitle);
         },
@@ -1207,46 +1222,12 @@ export const useCreateRightClickMenu = () => {
           {
             text: i18n('workspace.menu.copyStructure'),
             requiredOperations: ['CREATE'],
-            handle: () => {
-              sqlService
-                .copyTable({
-                  dataSourceId: dataSourceId!,
-                  databaseName: databaseName!,
-                  schemaName,
-                  tableName: tableName!,
-                  copyData: false,
-                })
-                .then(() => {
-                  const parentNode = getParentNode(treeNodeData.key, treeData);
-                  if (parentNode) {
-                    handleLoadData(parentNode, {
-                      refresh: true,
-                    });
-                  }
-                });
-            },
+            handle: () => handleCopyTable(false),
           },
           {
             text: i18n('workspace.menu.copyStructureData'),
             requiredOperations: ['CREATE', 'SELECT', 'INSERT'],
-            handle: () => {
-              sqlService
-                .copyTable({
-                  dataSourceId: dataSourceId!,
-                  databaseName: databaseName!,
-                  schemaName,
-                  tableName: tableName!,
-                  copyData: true,
-                })
-                .then(() => {
-                  const parentNode = getParentNode(treeNodeData.key, treeData);
-                  if (parentNode) {
-                    handleLoadData(parentNode, {
-                      refresh: true,
-                    });
-                  }
-                });
-            },
+            handle: () => handleCopyTable(true),
           },
         ],
         requiredOperations: ['CREATE'],
