@@ -1,44 +1,34 @@
 package ai.chat2db.community.domain.core.impl.task;
 
-import ai.chat2db.community.domain.api.model.PageResponse;
-import ai.chat2db.community.domain.api.model.task.Task;
-import ai.chat2db.community.domain.api.model.task.TaskConstants;
-import ai.chat2db.community.domain.api.model.task.TaskEvent;
-import ai.chat2db.community.domain.api.model.task.TaskProgress;
-import ai.chat2db.community.domain.api.model.task.TaskQuery;
-import ai.chat2db.community.domain.api.model.task.TaskStatus;
-import ai.chat2db.community.domain.api.model.task.TaskStatusPatch;
-import ai.chat2db.community.domain.api.service.task.TaskStorage;
-import ai.chat2db.community.tools.exception.BusinessException;
-import ai.chat2db.community.tools.exception.DataNotFoundException;
+import ai.chat2db.community.domain.api.service.task.ArtifactService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ArtifactServiceTest {
-
     @TempDir
     Path tempDirectory;
 
     @Test
     void concurrentDraftsReserveDifferentTargetsAndPublishIndependently() throws IOException {
-        ArtifactService service = new ArtifactService();
+        ArtifactService service = new ArtifactServiceImpl();
         var first = service.createDraft(1L, tempDirectory.toString(), "export.csv", "text/csv");
         var second = service.createDraft(2L, tempDirectory.toString(), "export.csv", "text/csv");
         assertNotEquals(first.getTargetFile(), second.getTargetFile());
@@ -57,7 +47,7 @@ class ArtifactServiceTest {
 
     @Test
     void failedPublicationReleasesReservedTarget() {
-        ArtifactService service = new ArtifactService();
+        ArtifactService service = new ArtifactServiceImpl();
         var failed = service.createDraft(1L, tempDirectory.toString(), "export.csv", "text/csv");
 
         assertThrows(IllegalStateException.class, () -> service.publish(failed));
@@ -68,221 +58,115 @@ class ArtifactServiceTest {
     }
 
     @Test
-    void taskDeletionRemovesPublishedArtifactBeforeTaskRecord() throws IOException {
-        Path artifact = Files.writeString(tempDirectory.resolve("export.csv"), "value");
-        RecordingTaskStorage storage = new RecordingTaskStorage(Task.builder()
-                .id(1L)
-                .status(TaskStatus.SUCCESS.name())
-                .artifactId(artifact.toString())
-                .build());
+    void publicationPreservesFileCreatedAfterReservation() throws IOException {
+        ArtifactService service = new ArtifactServiceImpl();
+        var draft = service.createDraft(1L, tempDirectory.toString(), "export.csv", "text/csv");
+        Files.writeString(draft.getTemporaryFile().toPath(), "exported");
+        Files.writeString(draft.getTargetFile().toPath(), "user file");
+        Files.createDirectory(tempDirectory.resolve("export_1.csv"));
 
-        new TaskServiceImpl(storage, null, new ArtifactService()).delete(1L);
+        Path published = Path.of(service.publish(draft, artifactId -> {
+            assertTrue(Path.of(artifactId).toFile().isFile());
+            assertEquals(0, Path.of(artifactId).toFile().length());
+        }));
 
-        assertFalse(Files.exists(artifact));
-        assertTrue(storage.deleted);
-        assertTrue(storage.get(1L).isEmpty());
+        assertEquals("export_2.csv", published.getFileName().toString());
+        assertEquals(published, draft.getTargetFile().toPath());
+        assertEquals("exported", Files.readString(published));
+        assertEquals("user file", Files.readString(tempDirectory.resolve("export.csv")));
+        assertTrue(Files.isDirectory(tempDirectory.resolve("export_1.csv")));
+        assertFalse(Files.exists(draft.getTemporaryFile().toPath()));
     }
 
     @Test
-    void artifactDeletionFailurePreservesTaskRecord() throws IOException {
-        Path nonEmptyDirectory = Files.createDirectory(tempDirectory.resolve("artifact-directory"));
-        Files.writeString(nonEmptyDirectory.resolve("child"), "value");
-        RecordingTaskStorage storage = new RecordingTaskStorage(Task.builder()
-                .id(1L)
-                .status(TaskStatus.SUCCESS.name())
-                .artifactId(nonEmptyDirectory.toString())
-                .build());
+    @EnabledOnOs({OS.MAC, OS.LINUX})
+    void danglingSymlinkIsAnOccupiedName() throws IOException {
+        ArtifactService service = new ArtifactServiceImpl();
+        var draft = service.createDraft(1L, tempDirectory.toString(), "export.csv", "text/csv");
+        Files.writeString(draft.getTemporaryFile().toPath(), "exported");
+        Path missing = tempDirectory.resolve("missing.csv");
+        Files.createSymbolicLink(draft.getTargetFile().toPath(), missing);
 
-        BusinessException exception = assertThrows(BusinessException.class,
-                () -> new TaskServiceImpl(storage, null, new ArtifactService()).delete(1L));
+        Path published = Path.of(service.publish(draft));
 
-        assertEquals(TaskConstants.DELETE_ARTIFACT_FAILED_MESSAGE_CODE, exception.getCode());
-        assertFalse(storage.deleted);
-        assertTrue(storage.get(1L).isPresent());
+        assertEquals("export_1.csv", published.getFileName().toString());
+        assertEquals("exported", Files.readString(published));
+        assertTrue(Files.isSymbolicLink(tempDirectory.resolve("export.csv")));
+        assertFalse(Files.exists(missing));
     }
 
     @Test
-    void taskStorageDeletionFailureRestoresPublishedArtifact() throws IOException {
-        Path artifact = Files.writeString(tempDirectory.resolve("recover.csv"), "value");
-        RecordingTaskStorage storage = new RecordingTaskStorage(Task.builder()
-                .id(1L)
-                .status(TaskStatus.SUCCESS.name())
-                .artifactId(artifact.toString())
-                .build());
-        storage.failDeletion = true;
-
-        assertThrows(IllegalStateException.class,
-                () -> new TaskServiceImpl(storage, null, new ArtifactService()).delete(1L));
-
-        assertEquals("value", Files.readString(artifact));
-        assertTrue(storage.get(1L).isPresent());
-    }
-
-    @Test
-    void artifactCommitFailureRestoresTaskAndPublishedArtifact() throws IOException {
-        Path artifact = Files.writeString(tempDirectory.resolve("commit-failure.csv"), "value");
-        RecordingTaskStorage storage = new RecordingTaskStorage(Task.builder()
-                .id(1L)
-                .status(TaskStatus.SUCCESS.name())
-                .artifactId(artifact.toString())
-                .build());
-        ArtifactService artifactService = new ArtifactService() {
-            @Override
-            void commitPublishedDeletion(PublishedArtifactDeletion deletion) {
-                throw new IllegalStateException("Could not commit artifact deletion");
-            }
-        };
-
-        assertThrows(IllegalStateException.class,
-                () -> new TaskServiceImpl(storage, null, artifactService).delete(1L));
-
-        assertEquals("value", Files.readString(artifact));
-        assertTrue(storage.get(1L).isPresent());
-    }
-
-    @Test
-    void concurrentDeletionCannotRestoreAnOrphanArtifact() throws Exception {
-        Path artifact = Files.writeString(tempDirectory.resolve("concurrent.csv"), "value");
-        RecordingTaskStorage storage = new RecordingTaskStorage(Task.builder()
-                .id(1L)
-                .status(TaskStatus.SUCCESS.name())
-                .artifactId(artifact.toString())
-                .build());
-        TaskServiceImpl service = new TaskServiceImpl(storage, null, new ArtifactService());
-        ExecutorService executor = Executors.newFixedThreadPool(2);
+    void independentServicesCanPublishTheSameNameConcurrently() throws Exception {
+        ArtifactService first = new ArtifactServiceImpl();
+        ArtifactService second = new ArtifactServiceImpl();
+        var firstDraft = first.createDraft(1L, tempDirectory.toString(), "export.csv", "text/csv");
+        var secondDraft = second.createDraft(2L, tempDirectory.toString(), "export.csv", "text/csv");
+        assertEquals(firstDraft.getTargetFile(), secondDraft.getTargetFile());
+        Files.writeString(firstDraft.getTemporaryFile().toPath(), "first");
+        Files.writeString(secondDraft.getTemporaryFile().toPath(), "second");
+        var executor = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
-        AtomicInteger deleted = new AtomicInteger();
-        AtomicInteger alreadyDeleted = new AtomicInteger();
         try {
-            Future<?> first = executor.submit(() -> {
-                start.await();
-                try {
-                    service.delete(1L);
-                    deleted.incrementAndGet();
-                } catch (DataNotFoundException ignored) {
-                    alreadyDeleted.incrementAndGet();
-                }
-                return null;
+            var firstResult = executor.submit(() -> {
+                assertTrue(start.await(5, TimeUnit.SECONDS));
+                return first.publish(firstDraft);
             });
-            Future<?> second = executor.submit(() -> {
-                start.await();
-                try {
-                    service.delete(1L);
-                    deleted.incrementAndGet();
-                } catch (DataNotFoundException ignored) {
-                    alreadyDeleted.incrementAndGet();
-                }
-                return null;
+            var secondResult = executor.submit(() -> {
+                assertTrue(start.await(5, TimeUnit.SECONDS));
+                return second.publish(secondDraft);
             });
             start.countDown();
-            first.get();
-            second.get();
+            Path firstPath = Path.of(firstResult.get(5, TimeUnit.SECONDS));
+            Path secondPath = Path.of(secondResult.get(5, TimeUnit.SECONDS));
+            assertNotEquals(firstPath, secondPath);
+            assertEquals("first", Files.readString(firstPath));
+            assertEquals("second", Files.readString(secondPath));
+            assertFalse(Files.exists(firstDraft.getTemporaryFile().toPath()));
+            assertFalse(Files.exists(secondDraft.getTemporaryFile().toPath()));
         } finally {
             executor.shutdownNow();
-        }
-
-        assertEquals(1, deleted.get());
-        assertEquals(1, alreadyDeleted.get());
-        assertTrue(storage.get(1L).isEmpty());
-        assertFalse(Files.exists(artifact));
-        try (var files = Files.list(tempDirectory)) {
-            assertTrue(files.noneMatch(path -> path.getFileName().toString().contains(".task-delete-")));
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
         }
     }
 
     @Test
-    void activeTaskDeletionIsRejectedBeforeArtifactDeletion() throws IOException {
-        Path artifact = Files.writeString(tempDirectory.resolve("running.csv"), "value");
-        RecordingTaskStorage storage = new RecordingTaskStorage(Task.builder()
-                .id(1L)
-                .status(TaskStatus.RUNNING.name())
-                .artifactId(artifact.toString())
-                .build());
+    void copyFailureRemovesOnlyTheCreatedTargetAndDoesNotRetry() throws IOException {
+        IOException failure = new FileAlreadyExistsException("copy failure, not a name collision");
+        ArtifactService service = new ArtifactServiceImpl() {
+            @Override
+            void copyArtifact(Path source, OutputStream output) throws IOException {
+                output.write('x');
+                throw failure;
+            }
+        };
+        var draft = service.createDraft(1L, tempDirectory.toString(), "export.csv", "text/csv");
+        Files.writeString(draft.getTemporaryFile().toPath(), "complete draft");
+        Files.writeString(draft.getTargetFile().toPath(), "user file");
 
-        BusinessException exception = assertThrows(BusinessException.class,
-                () -> new TaskServiceImpl(storage, null, new ArtifactService()).delete(1L));
+        var thrown = assertThrows(IllegalStateException.class, () -> service.publish(draft));
 
-        assertEquals(TaskConstants.DELETE_ACTIVE_FORBIDDEN_MESSAGE_CODE, exception.getCode());
-        assertTrue(Files.exists(artifact));
-        assertFalse(storage.deleted);
+        assertSame(failure, thrown.getCause());
+        assertEquals("user file", Files.readString(tempDirectory.resolve("export.csv")));
+        assertEquals("complete draft", Files.readString(draft.getTemporaryFile().toPath()));
+        assertFalse(Files.exists(draft.getTargetFile().toPath()));
+        assertEquals("export_1.csv", draft.getTargetFile().getName());
+        var replacement = service.createDraft(2L, tempDirectory.toString(), "export.csv", "text/csv");
+        assertEquals(draft.getTargetFile(), replacement.getTargetFile());
+        service.deleteDraft(replacement);
     }
 
-    private static final class RecordingTaskStorage implements TaskStorage {
+    @Test
+    void recoveryRecordFailureStopsPublicationAndKeepsDraft() throws IOException {
+        ArtifactService service = new ArtifactServiceImpl();
+        var draft = service.createDraft(1L, tempDirectory.toString(), "export.csv", "text/csv");
+        Files.writeString(draft.getTemporaryFile().toPath(), "complete draft");
+        RuntimeException failure = new IllegalStateException("could not persist recovery record");
 
-        private Task task;
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> service.publish(draft, artifactId -> { throw failure; })));
 
-        private boolean deleted;
-
-        private boolean failDeletion;
-
-        private RecordingTaskStorage(Task task) {
-            this.task = task;
-        }
-
-        @Override
-        public synchronized Optional<Task> get(Long taskId) {
-            return Optional.ofNullable(task);
-        }
-
-        @Override
-        public synchronized boolean deleteTerminalTask(Long taskId, Runnable commitAction) {
-            if (failDeletion) {
-                throw new IllegalStateException("Could not delete task record");
-            }
-            deleted = task != null && TaskStatus.isTerminal(task.getStatus());
-            if (deleted) {
-                Task deletedTask = task;
-                task = null;
-                try {
-                    commitAction.run();
-                } catch (RuntimeException e) {
-                    task = deletedTask;
-                    deleted = false;
-                    throw e;
-                }
-            }
-            return deleted;
-        }
-
-        @Override
-        public Task create(Task task, TaskEvent createdEvent) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public PageResponse<Task> list(TaskQuery query) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public boolean compareAndSetStatus(Long taskId, String expectedStatus, String targetStatus,
-                TaskStatusPatch patch, TaskEvent lifecycleEvent) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public boolean updateProgressIfRunning(Long taskId, TaskProgress progress) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public TaskEvent appendEvent(TaskEvent event) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<TaskEvent> listEvents(Long taskId, long afterSequence, int limit) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<TaskEvent> listEventsBefore(Long taskId, Long beforeSequence, int limit) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<Task> listNonTerminalTasks() {
-            throw new UnsupportedOperationException();
-        }
+        assertFalse(Files.exists(draft.getTargetFile().toPath()));
+        assertEquals("complete draft", Files.readString(draft.getTemporaryFile().toPath()));
     }
+
 }

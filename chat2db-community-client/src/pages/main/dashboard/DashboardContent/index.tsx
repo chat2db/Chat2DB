@@ -12,6 +12,7 @@ import { ChevronDown, LayoutDashboard, Plus } from 'lucide-react';
 import { memo, useMemo, useRef, useState } from 'react';
 import ChartCardList, { ChartCardListRef } from '../ChartCardList';
 import DashboardMenuList from '../DashboardMenuList';
+import DashboardListFeedback from '../DashboardListFeedback';
 import { useStyles } from './style';
 
 interface IProps {
@@ -20,14 +21,23 @@ interface IProps {
 
 export default memo<IProps>((props) => {
   const { isShare = false } = props;
-  const { currentDashboard, updateDashboard, setCurrentDashboard, setSettingDashboard, refreshCurrentDashboard } =
-    useDashboardStore((state) => ({
-      currentDashboard: state.currentDashboard,
-      updateDashboard: state.updateDashboard,
-      setCurrentDashboard: state.setCurrentDashboard,
-      setSettingDashboard: state.setSettingDashboard,
-      refreshCurrentDashboard: state.refreshCurrentDashboard,
-    }));
+  const {
+    currentDashboard,
+    dashboardList,
+    dashboardListStatus,
+    updateDashboard,
+    setCurrentDashboard,
+    setSettingDashboard,
+    refreshCurrentDashboard,
+  } = useDashboardStore((state) => ({
+    currentDashboard: state.currentDashboard,
+    dashboardList: state.dashboardList,
+    dashboardListStatus: state.dashboardListStatus,
+    updateDashboard: state.updateDashboard,
+    setCurrentDashboard: state.setCurrentDashboard,
+    setSettingDashboard: state.setSettingDashboard,
+    refreshCurrentDashboard: state.refreshCurrentDashboard,
+  }));
 
   const createDashboardRef = useRef<EditChartModalRef>(null);
   const chartCardListRef = useRef<ChartCardListRef>(null);
@@ -79,9 +89,11 @@ export default memo<IProps>((props) => {
   const refreshChartList = () => {
     if (currentDashboard?.id) {
       setRefreshLoading(true);
-      refreshCurrentDashboard().then(() => {
-        setRefreshLoading(false);
-      });
+      refreshCurrentDashboard()
+        .catch(() => undefined)
+        .finally(() => {
+          setRefreshLoading(false);
+        });
     }
   };
 
@@ -98,14 +110,18 @@ export default memo<IProps>((props) => {
   if (!currentDashboard) {
     return (
       <Flex justify="center" align="center" style={{ height: '100%' }}>
-        <Empty
-          image={EmptyImage.ChartList}
-          title={i18n('dashboard.createDashboard.tip')}
-          buttonText={i18n('dashboard.editor.createDashboard')}
-          onButtonClick={() => {
-            setSettingDashboard({});
-          }}
-        />
+        {dashboardListStatus === 'success' && !dashboardList.length ? (
+          <Empty
+            image={EmptyImage.ChartList}
+            title={i18n('dashboard.createDashboard.tip')}
+            buttonText={i18n('dashboard.editor.createDashboard')}
+            onButtonClick={() => {
+              setSettingDashboard({});
+            }}
+          />
+        ) : (
+          <DashboardListFeedback />
+        )}
       </Flex>
     );
   }

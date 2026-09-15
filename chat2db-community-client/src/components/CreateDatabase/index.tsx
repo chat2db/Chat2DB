@@ -36,9 +36,6 @@ export interface ICreateDatabase {
   collation?: string;
 }
 
-// Databases that do not support comments during creation.
-const noCommentDatabase = [DatabaseTypeCode.MYSQL];
-
 const CreateDatabase = () => {
   const { styles } = useStyles();
   const [form] = Form.useForm<ICreateDatabase>();
@@ -62,6 +59,10 @@ const CreateDatabase = () => {
   const [previewReady, setPreviewReady] = useState(false);
   const screens = Grid.useBreakpoint();
 
+  const supportsComment = isDatabaseCapabilitySupported(
+    relyOnParams?.databaseType,
+    createType === 'database' ? DatabaseCapability.DATABASE_CREATE_COMMENT : DatabaseCapability.SCHEMA_CREATE_COMMENT,
+  );
   const supportsCharset = isDatabaseCapabilitySupported(
     relyOnParams?.databaseType,
     DatabaseCapability.DATABASE_CREATE_CHARSET,
@@ -220,6 +221,7 @@ const CreateDatabase = () => {
       dataSourceId: relyOnParams.dataSourceId,
       databaseName: relyOnParams.databaseName,
       sql,
+      errorContinue: false,
     };
     setConfirmLoading(true);
     setErrorMessage(null);
@@ -288,7 +290,7 @@ const CreateDatabase = () => {
             <Form.Item label={i18n('common.label.name')} name={config.formName}>
               <Input ref={inputRef} autoComplete="off" />
             </Form.Item>
-            {noCommentDatabase.includes(relyOnParams.databaseType) ? null : (
+            {supportsComment && (
               <Form.Item label={i18n('common.label.comment')} name="comment">
                 <Input autoComplete="off" />
               </Form.Item>

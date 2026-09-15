@@ -72,6 +72,8 @@ package-lock.json
 /jpackage/input/win/dist/
 /jpackage/input/win/lib/
 /jpackage/input/win/local_version.json
+/jpackage/input/*/version.json
+/jpackage/input/*/tools/
 /jpackage/input/runtime/
 /jpackage/input/mac/Frameworks/
 /jpackage/output/

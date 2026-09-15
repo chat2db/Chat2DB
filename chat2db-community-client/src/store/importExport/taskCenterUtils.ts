@@ -1,4 +1,4 @@
-import { ImportExportTaskStatus } from '@/constants/importExport';
+import { ImportExportTaskStatus, ImportExportTaskType } from '@/constants/importExport';
 import { ErrorCode } from '@/constants/request';
 import { ImportExportTaskDetails, ImportExportTaskEvent } from '@/typings/importExport';
 
@@ -8,6 +8,7 @@ export const TASK_EVENT_INITIAL_PAGE_SIZE = 10;
 export const TASK_EVENT_PAGE_SIZE = 200;
 export const ACTIVE_TASK_POLL_INTERVAL = 1000;
 export const FAILED_TASK_POLL_INTERVAL = 1500;
+export const IMPORT_TARGET_TABLE_REFRESH_EVENT = 'chat2db:import-target-table-refresh';
 
 export type TaskStatusById = Record<string, ImportExportTaskStatus>;
 
@@ -16,11 +17,40 @@ export interface TaskNotificationCursor {
   taskId: number;
 }
 
+export interface TaskListLoadMoreRequest {
+  stateGeneration: number;
+  requestGeneration: number;
+}
+
+export const createTaskListRequestCoordinator = () => {
+  let stateGeneration = 0;
+  let loadMoreRequestGeneration = 0;
+
+  return {
+    invalidateState: () => {
+      stateGeneration += 1;
+    },
+    beginLoadMoreRequest: (): TaskListLoadMoreRequest => {
+      loadMoreRequestGeneration += 1;
+      return {
+        stateGeneration,
+        requestGeneration: loadMoreRequestGeneration,
+      };
+    },
+    canApplyLoadMoreResponse: (request: TaskListLoadMoreRequest) =>
+      request.stateGeneration === stateGeneration && request.requestGeneration === loadMoreRequestGeneration,
+    isLatestLoadMoreRequest: (request: TaskListLoadMoreRequest) =>
+      request.requestGeneration === loadMoreRequestGeneration,
+  };
+};
+
 const TERMINAL_TASK_STATUSES = new Set([
   ImportExportTaskStatus.SUCCESS,
   ImportExportTaskStatus.FAILED,
   ImportExportTaskStatus.CANCELLED,
 ]);
+
+const IMPORT_TASK_TYPES = new Set([ImportExportTaskType.DATA_FILE_IMPORT, ImportExportTaskType.SQL_FILE_IMPORT]);
 
 const NON_RETRYABLE_POLLING_ERRORS = new Set<string>([
   ErrorCode.NeedLoggedIn,
@@ -64,13 +94,25 @@ export const listAllTasksByStatus = async (
 
 export const mergeTasks = (...taskGroups: ImportExportTaskDetails[][]) => {
   const tasksById = new Map<number, ImportExportTaskDetails>();
-  taskGroups.flat().forEach((task) => tasksById.set(task.id, task));
+  taskGroups.flat().forEach((task) => {
+    const previous = tasksById.get(task.id);
+    if (previous) {
+      const previousTerminal = TERMINAL_TASK_STATUSES.has(previous.status);
+      const incomingTerminal = TERMINAL_TASK_STATUSES.has(task.status);
+      if (previousTerminal && !incomingTerminal) return;
+      if (previousTerminal === incomingTerminal && taskUpdateTime(task) < taskUpdateTime(previous)) return;
+    }
+    tasksById.set(task.id, task);
+  });
   return [...tasksById.values()].sort((left, right) => {
     const leftCreatedAt = new Date(left.createdAt).getTime() || 0;
     const rightCreatedAt = new Date(right.createdAt).getTime() || 0;
     return rightCreatedAt - leftCreatedAt;
   });
 };
+
+const taskUpdateTime = (task: ImportExportTaskDetails) =>
+  new Date(task.updatedAt ?? task.finishedAt ?? task.startedAt ?? task.createdAt).getTime() || 0;
 
 export const loadMissingTrackedTasks = async (
   trackedTaskIds: number[],
@@ -158,4 +200,15 @@ export const shouldRetryTaskPolling = (error: unknown): boolean => {
   }
   const errorCode = (error as { errorCode?: unknown }).errorCode;
   return typeof errorCode !== 'string' || !NON_RETRYABLE_POLLING_ERRORS.has(errorCode);
+};
+
+export const shouldRefreshImportTargetTable = (
+  previousTask: ImportExportTaskDetails | undefined,
+  currentTask: ImportExportTaskDetails,
+) => {
+  if (!IMPORT_TASK_TYPES.has(currentTask.type)) return false;
+  if (!currentTask.target?.dataSourceId || !currentTask.target?.tableName) return false;
+  if (currentTask.status !== ImportExportTaskStatus.SUCCESS) return false;
+  if (previousTask && previousTask.id !== currentTask.id) return false;
+  return previousTask?.status !== ImportExportTaskStatus.SUCCESS;
 };
