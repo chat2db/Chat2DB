@@ -76,12 +76,17 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
             logArtifactWritten(executionContext, draft);
             completeSuccessfully(draft);
         } catch (TaskCancelledException | CancellationException e) {
-            completeCancelled(executionContext.artifactDraft());
+            if (isCancellationRequested()) {
+                completeCancelled(executionContext.artifactDraft());
+            } else {
+                completeFailed(TaskErrorCode.TASK_INTERNAL_ERROR.name(), "Task execution failed", null, e,
+                        executionContext.artifactDraft());
+            }
         } catch (TaskExecutionException e) {
             completeFailed(e.getCode(), e.publicMessage(), e.getSafeReason(), e,
                     executionContext.artifactDraft());
         } catch (Throwable e) {
-            if (runningTask.cancellationToken().isCancelled() || Thread.currentThread().isInterrupted()) {
+            if (isCancellationRequested()) {
                 completeCancelled(executionContext.artifactDraft());
             } else {
                 completeFailed(TaskErrorCode.TASK_INTERNAL_ERROR.name(), "Task execution failed", null, e,
@@ -97,6 +102,10 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
                 runningTask.markFinished();
             }
         }
+    }
+
+    private boolean isCancellationRequested() {
+        return runningTask.cancellationToken().isCancelled();
     }
 
     private void logArtifactWritten(TaskExecutionContextImpl executionContext, ArtifactDraft draft) {
@@ -145,7 +154,14 @@ final class TaskRunner<S extends TaskSpec> implements Runnable {
                 return;
             }
             if (draft != null) {
-                artifactId = artifactService.publish(draft);
+                artifactId = artifactService.publish(draft, target -> taskStorage.appendEvent(TaskEvent.builder()
+                        .taskId(submission.taskId())
+                        .level(TaskEventLevel.INFO.name())
+                        .code(TaskEventCode.ARTIFACT_PUBLICATION_STARTED.name())
+                        .stage(TaskStage.FINALIZING.name())
+                        .message("Saving export file")
+                        .details(Map.of(TaskConstants.ARTIFACT_ID_DETAIL_KEY, target))
+                        .build()));
                 taskStorage.appendEvent(TaskEvent.builder()
                         .taskId(submission.taskId())
                         .level(TaskEventLevel.INFO.name())

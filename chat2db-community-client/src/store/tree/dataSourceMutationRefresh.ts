@@ -4,6 +4,7 @@ import type { Key } from 'react';
 interface DataSourceMutationRefreshDependencies {
   refreshTreeData: () => Promise<boolean>;
   getDataSourceList: () => TreeNodeData[] | null;
+  expandParent?: (node: TreeNodeData) => void;
   setSelectedKeys: (keys: Key[]) => void;
   setScrollTargetKey: (key: Key | null) => void;
   loadData: (node: TreeNodeData) => Promise<unknown>;
@@ -27,6 +28,7 @@ export async function hydrateDataSourceAfterMutation(
       return null;
     }
 
+    dependencies.expandParent?.(dataSource);
     dependencies.setSelectedKeys([dataSource.key]);
     dependencies.setScrollTargetKey(dataSource.key);
     await dependencies.loadData(dataSource);

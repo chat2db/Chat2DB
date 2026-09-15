@@ -120,8 +120,9 @@ class TaskExecutorRegistryTest {
                 });
         ArtifactService failingArtifactService = new ArtifactServiceImpl() {
             @Override
-            public String publish(ArtifactDraft ignored) {
-                throw new IllegalStateException("Publish failed");
+            void copyArtifact(Path source, java.io.OutputStream output) throws IOException {
+                output.write('x');
+                throw new IOException("Publish failed");
             }
         };
         TaskRunner<ExportTaskSpec> runner = new TaskRunner<>(

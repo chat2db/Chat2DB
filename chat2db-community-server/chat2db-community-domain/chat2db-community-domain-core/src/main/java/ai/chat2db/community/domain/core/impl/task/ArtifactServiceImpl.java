@@ -8,13 +8,16 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
+import java.io.OutputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 @Component
 public class ArtifactServiceImpl implements ArtifactService {
@@ -42,6 +45,11 @@ public class ArtifactServiceImpl implements ArtifactService {
 
     @Override
     public String publish(ArtifactDraft draft) {
+        return publish(draft, artifactId -> {});
+    }
+
+    @Override
+    public String publish(ArtifactDraft draft, Consumer<String> onTargetCreated) {
         if (draft == null) {
             throw new IllegalArgumentException("Artifact draft is incomplete");
         }
@@ -50,21 +58,48 @@ public class ArtifactServiceImpl implements ArtifactService {
                 throw new IllegalArgumentException("Artifact draft is incomplete");
             }
             Path source = draft.getTemporaryFile().toPath();
-            Path target = draft.getTargetFile().toPath();
             if (!Files.isRegularFile(source) || !Files.isReadable(source)) {
                 throw new IllegalStateException("Artifact draft is not readable");
             }
+            OutputStream output = createTarget(draft);
+            Path target = draft.getTargetFile().toPath();
             try {
-                Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(source, target);
+                try (output) {
+                    onTargetCreated.accept(target.toAbsolutePath().toString());
+                    copyArtifact(source, output);
+                }
+                Files.delete(source);
+                return target.toAbsolutePath().toString();
+            } catch (IOException | RuntimeException | Error e) {
+                try {
+                    Files.deleteIfExists(target);
+                } catch (IOException cleanupFailure) {
+                    e.addSuppressed(cleanupFailure);
+                }
+                throw e;
             }
-            return target.toAbsolutePath().toString();
         } catch (IOException e) {
             throw new IllegalStateException("Could not publish artifact", e);
         } finally {
             releaseTarget(draft);
         }
+    }
+
+    private OutputStream createTarget(ArtifactDraft draft) throws IOException {
+        File requestedTarget = draft.getTargetFile().getAbsoluteFile();
+        while (true) {
+            try {
+                // CREATE_NEW checks and creates atomically, including existing symbolic links.
+                return Files.newOutputStream(draft.getTargetFile().toPath(), StandardOpenOption.CREATE_NEW);
+            } catch (FileAlreadyExistsException e) {
+                releaseTarget(draft);
+                draft.setTargetFile(reserveAvailableTarget(requestedTarget.getParentFile(), requestedTarget.getName()));
+            }
+        }
+    }
+
+    void copyArtifact(Path source, OutputStream output) throws IOException {
+        Files.copy(source, output);
     }
 
     @Override
@@ -148,14 +183,14 @@ public class ArtifactServiceImpl implements ArtifactService {
             String candidateName = index == 0 ? fileName : baseName + "_" + index + suffix;
             File candidate = new File(directory, candidateName);
             Path candidatePath = candidate.toPath().toAbsolutePath().normalize();
-            if (!Files.exists(candidatePath) && reservedTargets.add(candidatePath)) {
+            if (!Files.exists(candidatePath, LinkOption.NOFOLLOW_LINKS) && reservedTargets.add(candidatePath)) {
                 return candidate;
             }
         }
         while (true) {
             File candidate = new File(directory, baseName + "_" + UUID.randomUUID() + suffix);
             Path candidatePath = candidate.toPath().toAbsolutePath().normalize();
-            if (!Files.exists(candidatePath) && reservedTargets.add(candidatePath)) {
+            if (!Files.exists(candidatePath, LinkOption.NOFOLLOW_LINKS) && reservedTargets.add(candidatePath)) {
                 return candidate;
             }
         }

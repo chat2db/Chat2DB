@@ -78,6 +78,29 @@ class LocalWorkspaceStoragePaginationTest {
     }
 
     @Test
+    void consoleSelectorReturnsEmptyPageBeyondIntegerOffsetRange() {
+        ConsoleStorage.INSTANCE.save(new Operation());
+
+        List<Operation> page = ConsoleStorage.INSTANCE.getDataList(
+                new Operation(), Integer.MAX_VALUE, 2);
+
+        assertTrue(page.isEmpty());
+    }
+
+    @Test
+    void operationSelectorDoesNotReverseCallerOwnedList() {
+        Operation first = operation(1L);
+        Operation second = operation(2L);
+        Operation third = operation(3L);
+        List<Operation> operations = new ArrayList<>(List.of(first, second, third));
+
+        List<Operation> page = new Operation().select(operations, 1, 2);
+
+        assertEquals(List.of(third, second), page);
+        assertEquals(List.of(first, second, third), operations);
+    }
+
+    @Test
     void operationLogListReturnsOnlyTheRequestedSlice() {
         for (int i = 0; i < 5; i++) {
             OperationLogStorage.INSTANCE.save(new OperationLog());
@@ -257,5 +280,11 @@ class LocalWorkspaceStoragePaginationTest {
         log.setSchemaName(schemaName);
         log.setDdl(ddl);
         return OperationLogStorage.INSTANCE.save(log);
+    }
+
+    private static Operation operation(long id) {
+        Operation operation = new Operation();
+        operation.setId(id);
+        return operation;
     }
 }

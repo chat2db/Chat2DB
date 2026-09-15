@@ -17,6 +17,10 @@
     <dependencies>
         <dependency>
             <groupId>ai.chat2db</groupId>
+            <artifactId>chat2db-community-updater</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>ai.chat2db</groupId>
             <artifactId>chat2db-community-tools</artifactId>
         </dependency>
         <dependency>

@@ -1,5 +1,6 @@
 package ai.chat2db.community.tools.util;
 
+import com.alibaba.fastjson2.JSONException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -39,6 +40,18 @@ class JsonFileUtilsTest {
         for (String content : List.of("broken JSON", "null")) {
             Files.writeString(path, content);
             assertThrows(RuntimeException.class, () -> JsonFileUtils.readArray(path.toFile(), Entry.class));
+            assertEquals(content, Files.readString(path));
+        }
+    }
+
+    @Test
+    void excessiveNumberLiteralsAreRejectedWithoutChangingTheFile() throws IOException {
+        Path path = directory.resolve("records.json");
+        String digits = "9".repeat(10_001);
+        for (String content : List.of("[" + digits + "]", "[{\"value\":-" + digits + "}]")) {
+            Files.writeString(path, content);
+
+            assertThrows(JSONException.class, () -> JsonFileUtils.readArray(path.toFile(), Object.class));
             assertEquals(content, Files.readString(path));
         }
     }

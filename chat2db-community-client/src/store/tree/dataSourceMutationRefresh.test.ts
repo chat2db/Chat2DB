@@ -21,6 +21,7 @@ async function testUsesCanonicalNodeLoadedAfterMutation() {
       return true;
     },
     getDataSourceList: () => dataSourceList,
+    expandParent: (node) => events.push(`expand:${String(node.key)}`),
     setSelectedKeys: (keys) => events.push(`select:${String(keys[0])}`),
     setScrollTargetKey: (key) => events.push(`scroll:${String(key)}`),
     loadData: async (node) => {
@@ -31,6 +32,7 @@ async function testUsesCanonicalNodeLoadedAfterMutation() {
   assert.equal(result, canonicalNode);
   assert.deepEqual(events, [
     'refresh',
+    'expand:dataSource_42',
     'select:dataSource_42',
     'scroll:dataSource_42',
     'load:dataSource_42',

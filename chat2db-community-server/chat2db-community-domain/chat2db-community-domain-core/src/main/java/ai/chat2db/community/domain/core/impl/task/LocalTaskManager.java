@@ -262,7 +262,8 @@ public class LocalTaskManager {
                 Map<String, Object> details = event.getDetails();
                 if (TaskEventCode.ARTIFACT_PREPARED.name().equals(event.getCode())) {
                     temporaryPath = detail(details, TaskConstants.ARTIFACT_TEMPORARY_PATH_DETAIL_KEY);
-                } else if (TaskEventCode.ARTIFACT_PUBLISHED.name().equals(event.getCode())) {
+                } else if (TaskEventCode.ARTIFACT_PUBLICATION_STARTED.name().equals(event.getCode())
+                        || TaskEventCode.ARTIFACT_PUBLISHED.name().equals(event.getCode())) {
                     publishedPath = detail(details, TaskConstants.ARTIFACT_ID_DETAIL_KEY);
                 }
             }

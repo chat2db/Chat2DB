@@ -124,7 +124,7 @@ export interface TreeAction {
   setTreeData: (treeData: TreeState['treeData'] | any) => void;
   getTreeData: (props?: { refresh?: boolean; force?: boolean; throwOnError?: boolean }) => Promise<boolean>;
   refreshTreeData: () => Promise<boolean>;
-  refreshDataSourceAfterMutation: (dataSourceId: number) => Promise<void>;
+  refreshDataSourceAfterMutation: (dataSourceId: number, options?: { expandParent?: boolean }) => Promise<void>;
   // Database structure synchronization
   schemaSync: () => void;
   setSelectedKeys: (selectedKeys: TreeState['selectedKeys']) => void;
@@ -219,10 +219,19 @@ export const createTreeAction: StateCreator<TreeStore, [['zustand/devtools', nev
       refreshNode: (node) => get().handleLoadData(node, { refresh: true, preserveInteraction: true }),
       refreshRoot: () => get().getTreeData({ refresh: true }),
     }),
-  refreshDataSourceAfterMutation: async (dataSourceId) => {
+  refreshDataSourceAfterMutation: async (dataSourceId, options) => {
     await hydrateDataSourceAfterMutation(dataSourceId, {
       refreshTreeData: () => get().getTreeData({ refresh: true, throwOnError: true }),
       getDataSourceList: () => get().dataSourceList,
+      expandParent: options?.expandParent
+        ? (dataSource) => {
+            const treeData = get().treeData;
+            const parentNode = treeData ? getParentNode(dataSource.key, treeData) : null;
+            if (parentNode) {
+              get().setExpandedKeys(appendExpandedTreeKey(get().expandedKeys, parentNode.key));
+            }
+          }
+        : undefined,
       setSelectedKeys: get().setSelectedKeys,
       setScrollTargetKey: get().setScrollTargetKey,
       loadData: (node) => get().handleLoadData(node),
