@@ -172,6 +172,10 @@ export default {
   'workspace.task.event.importingRecords': 'Importando {1} registros',
   'workspace.task.event.sqlFileReadStarted': 'Leyendo el archivo SQL de importación',
   'workspace.task.event.sqlFileParsed': 'Archivo SQL analizado',
+  'workspace.task.event.batchCompletedTotal': 'Lote completado: {1} filas importadas, {2} filas importadas en total',
+  'workspace.task.event.csvImportSummary': 'Importación CSV completada: {1} filas importadas en {2} segundos',
+  'workspace.task.event.csvImportFinished': 'Importación CSV completada',
+  'workspace.task.event.batchCompletedRows': 'Lote completado: {1} filas importadas',
   'workspace.task.event.sqlBatchExecuted': 'Lote SQL ejecutado',
   'workspace.task.event.sqlStatementExecuted': 'Sentencia SQL ejecutada',
   'workspace.task.delete.confirm':
@@ -422,4 +426,10 @@ export default {
   'workspace.routine.tips.onlyMysqlRoutine': 'Por ahora solo se admiten funciones y procedimientos de MySQL',
   'workspace.routine.tips.refreshSuccess': 'Se volvió a cargar el DDL del servidor',
   'workspace.routine.tips.revertSuccess': 'Se revirtió a la versión cargada',
+    'workspace.importExport.ultraMode': 'Modo ultrarrápido',
+    'workspace.importExport.beta': 'Beta',
+    'workspace.importExport.ultraModeHint': 'Usa procesamiento paralelo multi-hilo: más rápido, pero con mayor consumo de recursos',
+    'workspace.importExport.ultraModeConfirmTitle': 'Habilitar modo ultrarrápido',
+    'workspace.importExport.ultraModeAcknowledge': "Usa más CPU local y conexiones de base de datos, aumentando la presión de concurrencia. Las dependencias de orden SQL pueden causar fallos; los datos escritos no se revierten automáticamente.",
+    'workspace.importExport.ultraModeConfirm': 'Habilitar',
 };
