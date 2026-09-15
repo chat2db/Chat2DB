@@ -6,12 +6,10 @@ import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
 import ai.chat2db.community.domain.core.impl.db.CsvParser;
 import ai.chat2db.community.domain.core.impl.task.imports.BaseImporter;
-import ai.chat2db.community.domain.core.impl.task.imports.ImportColumnResolver;
 import ai.chat2db.community.domain.core.impl.task.imports.ImportRowBatcher;
 import ai.chat2db.community.domain.core.impl.task.imports.ImportRowSqlBuilder;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -30,7 +28,7 @@ final class ParallelCSVImporter extends BaseImporter {
             new CsvParser(options).forEachRow(Path.of(spec.getSourceFile()), row -> {
                 int rowNumber = ++sourceRow[0];
                 if (Boolean.TRUE.equals(options.getHasHeader()) && rowNumber == options.getHeaderRow()) {
-                    batcher[0] = createBatcher(spec, context, columns, row, rowSqlBuilder);
+                    batcher[0] = createBatcher(context, row, rowSqlBuilder);
                     return;
                 }
                 if (rowNumber < options.getDataStartRow()
@@ -39,7 +37,7 @@ final class ParallelCSVImporter extends BaseImporter {
                 }
                 if (batcher[0] == null) {
                     int width = Math.max(row.size(), CSVImporter.mappedSourceColumnCount(spec));
-                    batcher[0] = createBatcher(spec, context, columns, CSVImporter.syntheticHeader(width), rowSqlBuilder);
+                    batcher[0] = createBatcher(context, CSVImporter.syntheticHeader(width), rowSqlBuilder);
                 }
                 batcher[0].accept(rowNumber, rowSqlBuilder.build(row, rowNumber));
             }, context::checkCancelled);
@@ -60,22 +58,9 @@ final class ParallelCSVImporter extends BaseImporter {
         }
     }
 
-    private ImportRowBatcher createBatcher(ImportTaskSpec spec, TaskExecutionContext context,
-            List<TableColumn> columns, Map<Integer, String> headers, ImportRowSqlBuilder rowSqlBuilder) {
-        ImportColumnResolver.Resolution resolution = ImportColumnResolver.resolveForSpec(columns, values(headers), spec);
-
-        ImportColumnResolver.validateForImport(columns, resolution, spec);
+    private ImportRowBatcher createBatcher(TaskExecutionContext context,
+            Map<Integer, String> headers, ImportRowSqlBuilder rowSqlBuilder) {
         rowSqlBuilder.acceptHead(headers);
         return new ImportRowBatcher(context);
     }
-
-    private static List<String> values(Map<Integer, String> row) {
-        int count = row.keySet().stream().mapToInt(Integer::intValue).max().orElse(-1) + 1;
-        List<String> values = new ArrayList<>(count);
-        for (int index = 0; index < count; index++) {
-            values.add(row.get(index));
-        }
-        return values;
-    }
-
 }

@@ -235,16 +235,26 @@ class CSVImporterColumnMappingTest {
     }
 
     @Test
-    void fastModeRejectsDuplicateMappingBeforeWritingRows(@TempDir Path directory) throws Exception {
+    void bothModesKeepTheLastMappingForADuplicateTarget(@TempDir Path directory) throws Exception {
         Path input = Files.writeString(directory.resolve("duplicates.csv"), "Full Name,status\nAlice,OVERRIDE\n");
-        ImportTaskSpec spec = ImportTaskSpec.builder().mode("FAST").sourceFile(input.toString())
-                .target(TaskTargetSnapshot.builder().tableName("orders").build())
-                .columnMappings(List.of(new ImportColumnMapping("Full Name", "name"),
-                        new ImportColumnMapping("status", "name"))).build();
+        for (String mode : List.of("STANDARD", "FAST")) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("DELETE FROM orders");
+            }
+            ImportTaskSpec spec = ImportTaskSpec.builder().mode(mode).sourceFile(input.toString())
+                    .target(TaskTargetSnapshot.builder().tableName("orders").build())
+                    .columnMappings(List.of(new ImportColumnMapping("Full Name", "name"),
+                            new ImportColumnMapping("status", "name"))).build();
 
-        assertThrows(RuntimeException.class,
-                () -> new CSVImporter().doImportData(spec, new RecordingTaskExecutionContext(), columns()));
-        assertRowCount(0);
+            new CSVImporter().doImportData(spec, new RecordingTaskExecutionContext(), columns());
+
+            try (Statement statement = connection.createStatement();
+                 ResultSet rows = statement.executeQuery("SELECT name FROM orders")) {
+                org.junit.jupiter.api.Assertions.assertTrue(rows.next());
+                assertEquals("OVERRIDE", rows.getString(1), mode);
+                assertEquals(false, rows.next());
+            }
+        }
     }
 
     @Test
