@@ -3,7 +3,6 @@ package ai.chat2db.community.domain.core.impl.task;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -12,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
  * work; the permit count starts low and is tuned by a throughput observer in an AIMD style: every
  * time {@link #WINDOW_ROWS} rows of data have flowed through since the last evaluation, the gate
  * compares the throughput of the finished window with the previous one and grows by one permit on
- * improvement, or gives back a quarter of the permits on regression. The fan-out therefore
+ * improvement above 10%, or gives back a quarter of the permits on regression above 10%. The fan-out therefore
  * converges to the level the target system actually tolerates instead of a fixed guess, and it
  * backs off on its own when the source or the target becomes the bottleneck.
  *
@@ -46,9 +45,13 @@ public final class AdaptiveConcurrencyGate extends Semaphore {
     /** Total permits in circulation; only the tuning paths change it, and never past maxPermits. */
     private final AtomicInteger totalPermits;
 
-    private final AtomicLong windowRows = new AtomicLong();
+    private static final double GROW_MARGIN = 1.10D;
 
-    private final AtomicLong windowNanos = new AtomicLong();
+    private static final double SHRINK_MARGIN = 0.90D;
+
+    private long windowRows;
+
+    private long windowNanos;
 
     private double lastThroughput = -1.0D;
 
@@ -67,22 +70,18 @@ public final class AdaptiveConcurrencyGate extends Semaphore {
      * Records one completed work unit ({@code rows} rows over {@code nanos} wall time); once the
      * observation window fills, the fan-out is retuned. Never throws into the caller.
      */
-    public void record(long rows, long nanos) {
+    public synchronized void record(long rows, long nanos) {
         if (rows <= 0 || nanos <= 0) {
             return;
         }
-        windowRows.addAndGet(rows);
-        windowNanos.addAndGet(nanos);
-        if (windowRows.get() < WINDOW_ROWS) {
+        windowRows += rows;
+        windowNanos += nanos;
+        if (windowRows < WINDOW_ROWS) {
             return;
         }
-        synchronized (this) {
-            if (windowRows.get() < WINDOW_ROWS) {
-                // A concurrent caller already consumed this window.
-                return;
-            }
-            tuneThroughput(windowRows.getAndSet(0L), windowNanos.getAndSet(0L));
-        }
+        tuneThroughput(windowRows, windowNanos);
+        windowRows = 0L;
+        windowNanos = 0L;
     }
 
     /** Waits for a permit while checking cancellation between bounded waits. */
@@ -97,14 +96,14 @@ public final class AdaptiveConcurrencyGate extends Semaphore {
         try {
             double throughput = rows * 1_000_000.0D / Math.max(1L, nanos);
             if (lastThroughput > 0.0D) {
-                if (throughput > lastThroughput) {
+                if (throughput > lastThroughput * GROW_MARGIN) {
                     // Additive increase, capped by the hard total so growth cannot overshoot the
                     // configured ceiling even while workers hold permits.
                     if (totalPermits.get() < maxPermits) {
                         release();
                         totalPermits.incrementAndGet();
                     }
-                } else if (throughput < lastThroughput && totalPermits.get() > floor) {
+                } else if (throughput < lastThroughput * SHRINK_MARGIN && totalPermits.get() > floor) {
                     // Multiplicative decrease: a regression cuts fast, growth is careful so a
                     // lucky window cannot oversubscribe the target system.
                     int cut = Math.max(1, totalPermits.get() / 4);

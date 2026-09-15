@@ -98,6 +98,44 @@ class AdaptiveConcurrencyGateTest {
     }
 
     @Test
+    void ignoresThroughputChangesWithinTenPercentIncludingBoundaries() {
+        AdaptiveConcurrencyGate gate = AdaptiveConcurrencyGate.create(2, 4);
+        gate.record(100_000, 100 * MILLI);
+        gate.record(110_000, 100 * MILLI);
+        assertEquals(2, gate.totalPermits());
+        gate.record(100_000, 100 * MILLI);
+        gate.record(90_000, 100 * MILLI);
+        assertEquals(2, gate.totalPermits());
+        gate.record(100_000, 100 * MILLI);
+        assertEquals(3, gate.totalPermits());
+    }
+
+    @Test
+    void concurrentSamplesWithEqualEfficiencyDoNotChangePermits() throws Exception {
+        AdaptiveConcurrencyGate gate = AdaptiveConcurrencyGate.create(2, 4);
+        var executor = Executors.newFixedThreadPool(4);
+        CountDownLatch start = new CountDownLatch(1);
+        var futures = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+        try {
+            for (int worker = 1; worker <= 4; worker++) {
+                long rows = worker * 10_000L;
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    for (int sample = 0; sample < 2_000; sample++) {
+                        gate.record(rows, rows * MILLI);
+                    }
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (var future : futures) future.get(10, TimeUnit.SECONDS);
+            assertEquals(2, gate.totalPermits());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void ignoresInvalidObservations() {
         AdaptiveConcurrencyGate gate = AdaptiveConcurrencyGate.create(2, 4);
         gate.record(0, MILLI);

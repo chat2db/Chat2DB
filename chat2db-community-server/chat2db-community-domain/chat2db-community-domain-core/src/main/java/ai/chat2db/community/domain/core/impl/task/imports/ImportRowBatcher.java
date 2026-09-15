@@ -290,6 +290,11 @@ public final class ImportRowBatcher implements AutoCloseable {
         try {
             DefaultSQLExecutor.getInstance().executeJdbcBatchInsert(
                     Chat2DBContext.getConnection(), batch.sqls(), context, this::checkActive);
+            long elapsed = System.nanoTime() - started;
+            if (gate != null) {
+                gate.record(rows, elapsed);
+            }
+            batchSizer.record(rows, elapsed);
             importedCount.add(rows);
             reportProgress();
             context.logInfo("BATCH_EXECUTED", "SQL batch executed",
@@ -305,11 +310,6 @@ public final class ImportRowBatcher implements AutoCloseable {
             }
             throw batchFailure;
         } finally {
-            long elapsed = System.nanoTime() - started;
-            if (gate != null) {
-                gate.record(rows, elapsed);
-            }
-            batchSizer.record(rows, elapsed);
             if (workerPool != null) {
                 batchCompleted();
             }
