@@ -17,14 +17,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class PageLimitRequest {
 
-    /** Set by builders only when they append a synthetic result column. */
-    private String paginationRowId;
-
-    public String createPaginationRowId() {
-        // At most 30 ASCII characters, including on older Oracle versions.
-        paginationRowId = PAGINATION_ROW_ID + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
-        return paginationRowId;
-    }
+    /** Candidate alias supplied to builders; only emitted helper columns are hidden. */
+    @Builder.Default
+    private String paginationRowId = PAGINATION_ROW_ID + "_"
+            + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
 
     @NotBlank
     private String sql;

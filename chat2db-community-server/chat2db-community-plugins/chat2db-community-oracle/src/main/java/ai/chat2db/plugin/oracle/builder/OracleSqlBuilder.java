@@ -230,7 +230,7 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         int pageSize = request.getPageSize();
         int startRow = offset;
         int endRow = offset + pageSize;
-        String rowId = startRow > 0 ? request.createPaginationRowId() : null;
+        String rowId = startRow > 0 ? request.getPaginationRowId() : null;
         StringBuilder sqlBuilder = new StringBuilder(sql.length() + 120);
         sqlBuilder.append(SQL_SELECT);
         if (startRow > 0) {

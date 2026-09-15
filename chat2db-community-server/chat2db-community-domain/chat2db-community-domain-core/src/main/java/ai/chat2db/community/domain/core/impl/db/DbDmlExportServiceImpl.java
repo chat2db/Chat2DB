@@ -32,6 +32,7 @@ import ai.chat2db.spi.model.value.JDBCDataValue;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.util.JdbcUtils;
 import ai.chat2db.spi.util.SqlUtils;
+import ai.chat2db.spi.util.ResultSetUtils;
 import cn.hutool.core.date.DatePattern;
 import com.alibaba.druid.DbType;
 import com.alibaba.druid.sql.SQLUtils;
@@ -165,12 +166,8 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
     }
 
     private List<Integer> exportColumnIndexes(SqlExecutionPlan plan, List<Header> headers, String paginationRowId) {
-        List<Integer> indexes = new ArrayList<>(sqlExecutionPolicyManager.includedColumnIndexes(plan, headers));
-        int last = headers.size() - 1;
-        if (paginationRowId != null && last >= 0 && paginationRowId.equalsIgnoreCase(headers.get(last).getName())) {
-            indexes.remove(Integer.valueOf(last));
-        }
-        return indexes;
+        ResultSetUtils.removePaginationColumn(headers, Header::getName, paginationRowId);
+        return sqlExecutionPolicyManager.includedColumnIndexes(plan, headers);
     }
 
     private String buildFileName(String tableName) {

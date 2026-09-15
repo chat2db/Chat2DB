@@ -149,7 +149,6 @@ class OscarPaginationTest {
                         return new ai.chat2db.plugin.oscar.builder.OscarSqlBuilder() {
                             @Override
                             public String buildPageLimit(PageLimitRequest request) {
-                                request.createPaginationRowId();
                                 return "SELECT * FROM MISSING_PAGINATION_TABLE";
                             }
                         };

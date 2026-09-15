@@ -14,11 +14,22 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 
 @Slf4j
 public class ResultSetUtils {
 
+
+    /** Removes the explicitly identified, appended helper and returns its JDBC index, or -1. */
+    public static <T> int removePaginationColumn(List<T> columns, Function<T, String> columnName, String rowId) {
+        int last = columns.size() - 1;
+        if (rowId != null && last >= 0 && rowId.equalsIgnoreCase(columnName.apply(columns.get(last)))) {
+            columns.remove(last);
+            return last + 1;
+        }
+        return -1;
+    }
 
     public static List<String> getRsHeader(ResultSet rs) {
         try {

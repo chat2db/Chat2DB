@@ -157,7 +157,7 @@ class SqlServerSqlBuilderTest {
     }
 
     @Test
-    void legacyPaginationRecordsItsGeneratedColumnWhileModernPaginationDoesNot() {
+    void legacyPaginationUsesSuppliedAliasAndModernPaginationDoesNotAddIt() {
         ConnectInfo info = new ConnectInfo();
         info.setDbType("SQLSERVER");
         info.setDbVersion("10.0");
@@ -172,8 +172,8 @@ class SqlServerSqlBuilderTest {
             org.junit.jupiter.api.Assertions.assertTrue(sql.endsWith(rowId + " BETWEEN 11 AND 20"));
             info.setDbVersion("15.0");
             PageLimitRequest modern = PageLimitRequest.builder().sql("SELECT * FROM users").offset(10).pageSize(10).build();
-            new SqlServerSqlBuilder().buildPageLimit(modern);
-            org.junit.jupiter.api.Assertions.assertNull(modern.getPaginationRowId());
+            String modernSql = new SqlServerSqlBuilder().buildPageLimit(modern);
+            org.junit.jupiter.api.Assertions.assertFalse(modernSql.contains(modern.getPaginationRowId()));
         } finally {
             Chat2DBContext.removeContext();
         }

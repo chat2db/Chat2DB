@@ -347,11 +347,8 @@ public class DefaultDBManager implements IDbManager {
                     .consumer(resultSet -> {
                 ResultSetMetaData metaData = resultSet.getMetaData();
                 List<String> columnList = ResultSetUtils.getRsHeader(resultSet);
-                int columnCount = metaData.getColumnCount();
-                String rowId = pageRequest.getPaginationRowId();
-                if (rowId != null && rowId.equalsIgnoreCase(columnList.get(columnCount - 1))) {
-                    columnList.remove(--columnCount);
-                }
+                ResultSetUtils.removePaginationColumn(columnList, name -> name, pageRequest.getPaginationRowId());
+                int columnCount = columnList.size();
                 List<String> valueList = new ArrayList<>();
                 int n = 0;
                 while (resultSet.next()) {

@@ -369,8 +369,7 @@ public class DefaultSQLExecutor implements ICommandExecutor {
 
     private ExecuteResponse generateQueryExecuteResponse(Statement stmt, boolean limitRowSize, Integer offset,
                                                          Integer count, String paginationRowId) throws SQLException {
-        ExecuteResponse executeResult = ExecuteResponse.builder().success(Boolean.TRUE)
-                .extra(paginationRowId == null ? null : new HashMap<>(Map.of(PAGINATION_ROW_ID_KEY, paginationRowId))).build();
+        ExecuteResponse executeResult = ExecuteResponse.builder().success(Boolean.TRUE).build();
         executeResult.setDescription(I18nUtils.getMessage("sqlResult.success"));
         ResultSet rs = null;
         try {
@@ -380,7 +379,10 @@ public class DefaultSQLExecutor implements ICommandExecutor {
             List<Header> headerList = generateHeaderList(resultSetMetaData);
 
 
-            int chat2dbAutoRowIdIndex = getPaginationRowIdIndex(headerList, paginationRowId);
+            int chat2dbAutoRowIdIndex = ResultSetUtils.removePaginationColumn(headerList, Header::getName, paginationRowId);
+            if (chat2dbAutoRowIdIndex > 0) {
+                executeResult.setExtra(new HashMap<>(Map.of(PAGINATION_ROW_ID_KEY, paginationRowId)));
+            }
             List<List<ResultCell>> dataList = generateDataList(rs, col, chat2dbAutoRowIdIndex, limitRowSize,
                     offset, count);
 
@@ -427,34 +429,6 @@ public class DefaultSQLExecutor implements ICommandExecutor {
             }
         }
         return dataList;
-    }
-
-
-    private int getPaginationRowIdIndex(List<Header> headers, String paginationRowId) {
-        int last = headers.size() - 1;
-        if (paginationRowId != null && last >= 0 && paginationRowId.equalsIgnoreCase(headers.get(last).getName())) {
-            headers.remove(last);
-            return last + 1;
-        }
-        return -1;
-    }
-
-    private static String paginationRowId(SimpleSqlStatement statement) {
-        return statement instanceof PagedSqlStatement paged ? paged.rowId : null;
-    }
-
-    /** Keeps generated-column provenance local to this execution, including fallback and cancellation. */
-    private static final class PagedSqlStatement extends SimpleSqlStatement {
-        private final String rowId;
-
-        private PagedSqlStatement(SimpleSqlStatement original, String sql, String rowId) {
-            super(sql);
-            this.rowId = rowId;
-            setSqlType(original.getSqlType());
-            setComment(original.getComment());
-            setRefreshTargets(original.getRefreshTargets());
-            setTables(original.getTables());
-        }
     }
 
 
@@ -949,11 +923,11 @@ public class DefaultSQLExecutor implements ICommandExecutor {
             String buildPageLimit = Chat2DBContext.getSqlBuilder().dql().buildPageLimit(pageRequest);
             if (StringUtils.isNotBlank(buildPageLimit)) {
                 try {
-                    SimpleSqlStatement pagedStatement = simpleSqlStatement;
                     if (type == null || !StringUtils.equals(type, ai.chat2db.community.domain.api.enums.parser.SqlTypeEnum.SELECT_INTO.name())) {
-                        pagedStatement = new PagedSqlStatement(simpleSqlStatement, buildPageLimit, pageRequest.getPaginationRowId());
+                        simpleSqlStatement.setSql(buildPageLimit);
+                        simpleSqlStatement.setPaginationRowId(pageRequest.getPaginationRowId());
                     }
-                    executeResults = executeMulti(pagedStatement, connection, true, 0, count,
+                    executeResults = executeMulti(simpleSqlStatement, connection, true, 0, count,
                             param.getResultSetId(), executionContext);
                     if (CollectionUtils.isNotEmpty(executeResults)) {
                         for (ExecuteResponse executeResult : executeResults) {
@@ -964,6 +938,8 @@ public class DefaultSQLExecutor implements ICommandExecutor {
                     }
                 } catch (Exception e) {
                     log.error("Execute sql: {} exception", buildPageLimit, e);
+                } finally {
+                    simpleSqlStatement.setPaginationRowId(null);
                 }
             }
         }
@@ -1026,11 +1002,11 @@ public class DefaultSQLExecutor implements ICommandExecutor {
             String buildPageLimit = Chat2DBContext.getSqlBuilder().dql().buildPageLimit(pageRequest);
             if (StringUtils.isNotBlank(buildPageLimit)) {
                 try {
-                    SimpleSqlStatement pagedStatement = simpleSqlStatement;
                     if (type == null || !StringUtils.equals(type, ai.chat2db.community.domain.api.enums.parser.SqlTypeEnum.SELECT_INTO.name())) {
-                        pagedStatement = new PagedSqlStatement(simpleSqlStatement, buildPageLimit, pageRequest.getPaginationRowId());
+                        simpleSqlStatement.setSql(buildPageLimit);
+                        simpleSqlStatement.setPaginationRowId(pageRequest.getPaginationRowId());
                     }
-                    executeResults = executeMultiStreaming(pagedStatement, connection, true,
+                    executeResults = executeMultiStreaming(simpleSqlStatement, connection, true,
                             0, count, param.getResultSetId(), consumer, statementListener, cancellation,
                             sqlType, originalSql, pageNo, pageSize, streamResultSequence, statementSequence,
                             executionContext);
@@ -1043,6 +1019,8 @@ public class DefaultSQLExecutor implements ICommandExecutor {
                     }
                 } catch (Exception e) {
                     log.error("Execute sql: {} exception", buildPageLimit, e);
+                } finally {
+                    simpleSqlStatement.setPaginationRowId(null);
                 }
             }
         }
@@ -1147,7 +1125,7 @@ public class DefaultSQLExecutor implements ICommandExecutor {
                     resultCount++;
                     if (Objects.isNull(resultSetId) || resultCount == resultSetId) {
                         long fetchStartedNanos = System.nanoTime();
-                        executeResult = generateQueryExecuteResponse(stmt, limitRowSize, offset, count, paginationRowId(simpleSqlStatement));
+                        executeResult = generateQueryExecuteResponse(stmt, limitRowSize, offset, count, simpleSqlStatement.getPaginationRowId());
                         fetchDurationNanos = ExecutionTiming.elapsedNanos(fetchStartedNanos);
                         executeResult.setResultSetId(resultCount);
                     }
@@ -1237,7 +1215,7 @@ public class DefaultSQLExecutor implements ICommandExecutor {
                         executeResult = streamQueryExecuteResponse(stmt, limitRowSize, offset, count, consumer,
                                 cancellation, sqlType, sql, originalSql, pageNo, pageSize, resultCount,
                                 streamResultSequence.incrementAndGet(), statementSequence, startedAtEpochMs,
-                                executionContext, executeDurationNanos, paginationRowId(simpleSqlStatement));
+                                executionContext, executeDurationNanos, simpleSqlStatement.getPaginationRowId());
                         executeResult.setSql(sql);
                         executeResult.setOriginalSql(originalSql);
                     }
@@ -1288,7 +1266,6 @@ public class DefaultSQLExecutor implements ICommandExecutor {
         ExecutionMetrics executionMetrics = ExecutionTiming.started(startedAtEpochMs);
         ExecuteResponse executeResult = ExecuteResponse.builder()
                 .success(Boolean.TRUE)
-                .extra(paginationRowId == null ? null : new HashMap<>(Map.of(PAGINATION_ROW_ID_KEY, paginationRowId)))
                 .statementSequence(statementSequence)
                 .executionMetrics(executionMetrics)
                 .executionContext(executionContext)
@@ -1307,7 +1284,10 @@ public class DefaultSQLExecutor implements ICommandExecutor {
             ResultSetMetaData resultSetMetaData = rs.getMetaData();
             int col = resultSetMetaData.getColumnCount();
             List<Header> headerList = generateHeaderList(resultSetMetaData);
-            int chat2dbAutoRowIdIndex = getPaginationRowIdIndex(headerList, paginationRowId);
+            int chat2dbAutoRowIdIndex = ResultSetUtils.removePaginationColumn(headerList, Header::getName, paginationRowId);
+            if (chat2dbAutoRowIdIndex > 0) {
+                executeResult.getExtra().put(PAGINATION_ROW_ID_KEY, paginationRowId);
+            }
             fetchDurationNanos = ExecutionTiming.addNanos(
                     fetchDurationNanos, ExecutionTiming.elapsedNanos(metadataStartedNanos));
             executeResult.setHeaderList(headerList);

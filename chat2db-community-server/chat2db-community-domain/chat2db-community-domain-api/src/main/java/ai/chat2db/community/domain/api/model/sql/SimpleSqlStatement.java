@@ -14,6 +14,7 @@ public class SimpleSqlStatement {
 
     private String sql;
     private String sqlType;
+    private String paginationRowId;
     private String comment;
     private List<RefreshTarget> refreshTargets;
     private List<SimpleTable> tables;
