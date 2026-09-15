@@ -143,9 +143,26 @@ public final class ImportRowBatcher implements AutoCloseable {
         this.gate = builtGate;
         this.workerPool = builtPool;
         if (this.workerPool != null) {
-            for (int index = 0; index < this.workerCount; index++) {
-                int workerIndex = index;
-                this.workerPool.execute(() -> runWorker(workerIndex));
+            try {
+                for (int index = 0; index < this.workerCount; index++) {
+                    int workerIndex = index;
+                    this.workerPool.execute(() -> runWorker(workerIndex));
+                }
+            } catch (RuntimeException startupFailure) {
+                this.workerPool.shutdownNow();
+                boolean interrupted = false;
+                while (!this.workerPool.isTerminated()) {
+                    try {
+                        this.workerPool.awaitTermination(200L, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException e) {
+                        interrupted = true;
+                        this.workerPool.shutdownNow();
+                    }
+                }
+                if (interrupted) {
+                    Thread.currentThread().interrupt();
+                }
+                throw startupFailure;
             }
         }
     }
