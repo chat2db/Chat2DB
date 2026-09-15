@@ -423,9 +423,9 @@ export default {
   'workspace.routine.tips.refreshSuccess': '서버 DDL을 다시 불러왔습니다',
   'workspace.routine.tips.revertSuccess': '불러온 버전으로 되돌렸습니다',
     'workspace.importExport.ultraMode': '초고속 모드',
+    'workspace.importExport.beta': 'Beta',
     'workspace.importExport.ultraModeHint': '멀티스레드 병렬 처리를 사용하여 더 빠르지만 리소스 사용량이 증가합니다',
     'workspace.importExport.ultraModeConfirmTitle': '초고속 모드 활성화',
-    'workspace.importExport.ultraModeAcknowledge':
-      '대상에 외래 키 순서, 부모/자식 ID, 행 간 트리거 또는 업무 순서의 강한 종속성이 없음을 확인하고 병렬 쓰기 위험을 수락합니다',
+    'workspace.importExport.ultraModeAcknowledge': "로컬 CPU와 데이터베이스 연결을 더 사용하여 데이터베이스 동시성 부하가 증가합니다. SQL 순서 의존성이 있으면 실패할 수 있으며, 이미 기록된 데이터는 자동으로 롤백되지 않습니다.",
     'workspace.importExport.ultraModeConfirm': '활성화',
 };

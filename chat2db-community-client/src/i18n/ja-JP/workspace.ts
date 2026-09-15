@@ -128,10 +128,10 @@ export default {
   'workspace.menu.copyStructureData': '構造とデータをコピー',
   'workspace.importExport.targetTable': 'ターゲットテーブル',
     'workspace.importExport.ultraMode': '超高速モード',
+    'workspace.importExport.beta': 'Beta',
     'workspace.importExport.ultraModeHint': 'マルチスレッド並列処理を使用します：より高速ですが、リソース使用量が増加します',
     'workspace.importExport.ultraModeConfirmTitle': '超高速モードを有効化',
-    'workspace.importExport.ultraModeAcknowledge':
-      '対象に外部キー順序、親子 ID、行をまたぐトリガー、業務順序の強い依存関係がないことを確認し、並列書き込みのリスクを受け入れます',
+    'workspace.importExport.ultraModeAcknowledge': "ローカル CPU とデータベース接続を多く使用し、データベースの同時実行負荷が増加します。SQL に順序依存がある場合は失敗する可能性があり、書き込み済みデータは自動ロールバックされません。",
     'workspace.importExport.ultraModeConfirm': '有効にする',
   'workspace.importExport.fileType': 'ファイルタイプ',
   'workspace.importExport.exportLocation': 'エクスポート位置',

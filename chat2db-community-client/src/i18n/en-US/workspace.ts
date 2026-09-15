@@ -129,10 +129,10 @@ export default {
   'workspace.menu.copyStructure': 'Copy structure',
   'workspace.menu.copyStructureData': 'Copy structure and data',
     'workspace.importExport.ultraMode': 'Ultra-Fast Mode',
+    'workspace.importExport.beta': 'Beta',
     'workspace.importExport.ultraModeHint': 'Uses multi-threaded parallel processing: faster, but higher resource usage',
     'workspace.importExport.ultraModeConfirmTitle': 'Enable Ultra-Fast Mode',
-    'workspace.importExport.ultraModeAcknowledge':
-      'I confirm that the target has no strong foreign-key ordering, parent/child ID, cross-row trigger, or business-order dependency, and I accept parallel-write risks',
+    'workspace.importExport.ultraModeAcknowledge': "Uses more local CPU and database connections, increasing database concurrency pressure. SQL ordering dependencies may cause failure; written data is not rolled back automatically.",
     'workspace.importExport.ultraModeConfirm': 'Enable',
   'workspace.importExport.targetTable': 'Target table',
   'workspace.importExport.fileType': 'File type',

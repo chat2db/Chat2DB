@@ -427,9 +427,9 @@ export default {
   'workspace.routine.tips.refreshSuccess': 'Se volvió a cargar el DDL del servidor',
   'workspace.routine.tips.revertSuccess': 'Se revirtió a la versión cargada',
     'workspace.importExport.ultraMode': 'Modo ultrarrápido',
+    'workspace.importExport.beta': 'Beta',
     'workspace.importExport.ultraModeHint': 'Usa procesamiento paralelo multi-hilo: más rápido, pero con mayor consumo de recursos',
     'workspace.importExport.ultraModeConfirmTitle': 'Habilitar modo ultrarrápido',
-    'workspace.importExport.ultraModeAcknowledge':
-      'Confirmo que el destino no tiene dependencias fuertes de orden de claves foráneas, ID padre/hijo, triggers entre filas ni orden de negocio, y acepto los riesgos de escritura paralela',
+    'workspace.importExport.ultraModeAcknowledge': "Usa más CPU local y conexiones de base de datos, aumentando la presión de concurrencia. Las dependencias de orden SQL pueden causar fallos; los datos escritos no se revierten automáticamente.",
     'workspace.importExport.ultraModeConfirm': 'Habilitar',
 };
