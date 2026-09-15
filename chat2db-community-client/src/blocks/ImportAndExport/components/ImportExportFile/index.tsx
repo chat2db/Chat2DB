@@ -137,11 +137,9 @@ const ImportExportFile = forwardRef((props: IProps, ref: ForwardedRef<ImportExpo
       onValuesChange={handleFormChange}
       initialValues={formValue}
     >
-      {isExport && (
-        <Form.Item label={`${i18n('workspace.importExport.targetTable')}:`} name="tableNameDisplay">
-          <Input autoComplete="off" disabled />
-        </Form.Item>
-      )}
+      <Form.Item label={`${i18n('workspace.importExport.targetTable')}:`} name="tableNameDisplay">
+        <Input autoComplete="off" disabled />
+      </Form.Item>
       <Form.Item label={`${i18n('workspace.importExport.fileType')}:`} name="exportType">
         <Select options={exportTypeOptions} />
       </Form.Item>
