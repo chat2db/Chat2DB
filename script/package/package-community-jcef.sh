@@ -16,6 +16,7 @@ Targets:
 Environment:
   SKIP_BACKEND=true             Skip Maven backend build.
   SKIP_FRONTEND=true            Skip frontend build.
+  COMMUNITY_SOURCE_DIR          Source checkout (defaults to this repository).
   COMMUNITY_RELEASE_EPOCH       Release sequence (positive for published updates).
   COMMUNITY_UPDATE_KEY_ID       Update signing public key identifier.
   COMMUNITY_UPDATE_PUBLIC_KEY_B64  Ed25519 public key.
@@ -36,7 +37,7 @@ VERSION="$1"
 TARGET="${2:-prepare}"
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-ROOT_DIR=$(cd "${SCRIPT_DIR}/../.." && pwd)
+ROOT_DIR=$(cd "${COMMUNITY_SOURCE_DIR:-${SCRIPT_DIR}/../..}" && pwd)
 SERVER_DIR="${ROOT_DIR}/chat2db-community-server"
 CLIENT_DIR="${ROOT_DIR}/chat2db-community-client"
 JPACKAGE_INPUT_DIR="${ROOT_DIR}/jpackage/input"
