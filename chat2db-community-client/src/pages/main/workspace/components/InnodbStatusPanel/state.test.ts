@@ -6,6 +6,8 @@ import {
   beginInnodbStatusRefresh,
   getInnodbStatusCopyText,
   initialInnodbStatusViewState,
+  loadLatestInnodbStatus,
+  type InnodbStatusViewState,
 } from './state';
 
 const successfulResult: IInnodbStatusResponse = {
@@ -47,4 +49,63 @@ assert.equal(
 );
 assert.equal(getInnodbStatusCopyText(null), '', 'copy is empty when no successful result exists');
 
-console.log('InnoDB status panel state tests passed.');
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
+async function testStaleRefreshCannotReplaceLatestResult() {
+  const generationRef = { current: 0 };
+  const first = deferred<IInnodbStatusResponse>();
+  const second = deferred<IInnodbStatusResponse>();
+  let state = initialInnodbStatusViewState;
+  const updateState = (updater: (current: InnodbStatusViewState) => InnodbStatusViewState) => {
+    state = updater(state);
+  };
+  const oldResult = { ...successfulResult, capturedAt: 'old' };
+  const newResult = { ...successfulResult, capturedAt: 'new' };
+
+  const firstRun = loadLatestInnodbStatus(generationRef, () => first.promise, updateState, () => 'first');
+  const secondRun = loadLatestInnodbStatus(generationRef, () => second.promise, updateState, () => 'second');
+  first.resolve(oldResult);
+  await firstRun;
+  assert.equal(state.loading, true, 'a stale completion must not settle the latest request');
+  assert.equal(state.result, null, 'a stale result must not become visible');
+
+  second.resolve(newResult);
+  await secondRun;
+  assert.equal(state.loading, false);
+  assert.equal(state.result, newResult);
+}
+
+async function testStaleFailureCannotReplaceLatestSuccess() {
+  const generationRef = { current: 0 };
+  const first = deferred<IInnodbStatusResponse>();
+  const second = deferred<IInnodbStatusResponse>();
+  let state = initialInnodbStatusViewState;
+  const updateState = (updater: (current: InnodbStatusViewState) => InnodbStatusViewState) => {
+    state = updater(state);
+  };
+
+  const firstRun = loadLatestInnodbStatus(generationRef, () => first.promise, updateState, () => 'first');
+  const secondRun = loadLatestInnodbStatus(generationRef, () => second.promise, updateState, () => 'second');
+  second.resolve(successfulResult);
+  await secondRun;
+  first.reject(new Error('stale failure'));
+  await firstRun;
+
+  assert.equal(state.result, successfulResult);
+  assert.equal(state.error, null);
+}
+
+Promise.all([testStaleRefreshCannotReplaceLatestResult(), testStaleFailureCannotReplaceLatestSuccess()])
+  .then(() => console.log('InnoDB status panel state tests passed.'))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

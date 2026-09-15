@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Collapse, Empty, List, Space, Spin, Tabs, Tag, Typography } from 'antd';
 import { Copy, RefreshCw } from 'lucide-react';
 
@@ -8,11 +8,11 @@ import { copyToClipboard } from '@/utils';
 import { staticMessage } from '@chat2db/ui';
 import {
   applyInnodbStatusFailure,
-  applyInnodbStatusSuccess,
-  beginInnodbStatusRefresh,
   getInnodbStatusCopyText,
   initialInnodbStatusViewState,
+  loadLatestInnodbStatus,
 } from './state';
+import { invalidateLatestRequest } from '@/utils/latestRequest';
 import { useStyles } from './style';
 
 interface InnodbStatusPanelProps {
@@ -27,6 +27,7 @@ interface InnodbStatusPanelProps {
 const InnodbStatusPanel = ({ data }: InnodbStatusPanelProps) => {
   const { styles } = useStyles();
   const [state, setState] = useState(initialInnodbStatusViewState);
+  const requestGenerationRef = useRef(0);
   const dataSourceId = data?.dataSourceId;
 
   const loadStatus = useCallback(() => {
@@ -36,23 +37,21 @@ const InnodbStatusPanel = ({ data }: InnodbStatusPanelProps) => {
       );
       return;
     }
-    setState(beginInnodbStatusRefresh);
-    sqlService
-      .getInnodbStatus({
+    void loadLatestInnodbStatus(
+      requestGenerationRef,
+      () => sqlService.getInnodbStatus({
         dataSourceId,
         databaseName: data?.databaseName,
-      })
-      .then((result) => {
-        setState((currentState) => applyInnodbStatusSuccess(currentState, result, new Date().toISOString()));
-      })
-      .catch((error) => {
-        setState((currentState) => applyInnodbStatusFailure(currentState, error));
-      });
+      }),
+      setState,
+      () => new Date().toISOString(),
+    );
   }, [data?.databaseName, dataSourceId]);
 
   useEffect(() => {
     setState(initialInnodbStatusViewState);
     loadStatus();
+    return () => invalidateLatestRequest(requestGenerationRef);
   }, [loadStatus]);
 
   const copyRawText = () => {

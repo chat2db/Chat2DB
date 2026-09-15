@@ -27,7 +27,7 @@ class InnodbStatusParserTest {
 
         assertSameLineCount(rawText, response.getRawText());
         assertFalse(response.getRawText().contains("secret-value"));
-        assertTrue(response.getRawText().contains("UPDATE orders SET status='paid', password=<redacted> WHERE id=1"));
+        assertTrue(response.getRawText().contains("UPDATE orders SET status='<redacted>', password=<redacted> WHERE id=1"));
         assertTrue(response.getSections().stream()
                 .map(InnodbStatusSection::getNormalizedTitle)
                 .anyMatch("LATEST DETECTED DEADLOCK"::equals));
@@ -45,11 +45,11 @@ class InnodbStatusParserTest {
         assertEquals(4, victim.getActiveSeconds());
         assertEquals("11", victim.getMysqlThreadId());
         assertEquals("91", victim.getQueryId());
-        assertEquals("UPDATE orders SET status='paid', password=<redacted> WHERE id=1", victim.getSql());
+        assertEquals("UPDATE orders SET status='<redacted>', password=<redacted> WHERE id=1", victim.getSql());
         assertEquals(1, victim.getHeldLocks().size());
         assertEquals(1, victim.getWaitedLocks().size());
         assertFalse(deadlock.getRawText().contains("secret-value"));
-        assertTrue(deadlock.getRawText().contains("UPDATE orders SET status='paid', password=<redacted> WHERE id=1"));
+        assertTrue(deadlock.getRawText().contains("UPDATE orders SET status='<redacted>', password=<redacted> WHERE id=1"));
         assertResponseDoesNotLeak(response, "secret-value");
     }
 
@@ -101,11 +101,60 @@ class InnodbStatusParserTest {
                 *** WE ROLL BACK TRANSACTION (1)
                 """);
 
-        assertTrue(response.getRawText().contains("CREATE USER 'reader'@'%' IDENTIFIED BY <redacted>"));
+        assertTrue(response.getRawText().contains("CREATE USER '<redacted>'@'<redacted>' IDENTIFIED BY <redacted>"));
         assertTrue(response.getSections().get(1).getText().contains("IDENTIFIED BY <redacted>"));
-        assertEquals("CREATE USER 'reader'@'%' IDENTIFIED BY <redacted>",
+        assertEquals("CREATE USER '<redacted>'@'<redacted>' IDENTIFIED BY <redacted>",
                 response.getLatestDeadlock().getTransactions().get(0).getSql());
         assertResponseDoesNotLeak(response, "reader-secret");
+    }
+
+    @Test
+    void redactsSqlStringLiteralsWithoutSensitiveAssignmentNames() throws JsonProcessingException {
+        InnodbStatusResponse response = InnodbStatusParser.parse("""
+                ------------------------
+                LATEST DETECTED DEADLOCK
+                ------------------------
+                2026-08-31 11:59:59
+                *** (1) TRANSACTION:
+                TRANSACTION 30001, ACTIVE 1 sec
+                MySQL thread id 88, OS thread handle 1408, query id 808 localhost app updating
+                INSERT INTO audit_log(event_name, payload)
+                VALUES (_utf8mb4'login', N'literal-secret')
+                RECORD LOCKS space id 2 page no 4 index PRIMARY of table `app`.`audit_log`
+                Record lock, heap no 2 PHYSICAL RECORD: n_fields 4; compact format
+                 3: len 14; hex 6c69746572616c2d736563726574; asc literal-secret;;
+                *** WE ROLL BACK TRANSACTION (1)
+                """);
+
+        String serialized = OBJECT_MAPPER.writeValueAsString(response);
+        assertFalse(serialized.contains("literal-secret"), serialized);
+        assertFalse(serialized.contains("6c69746572616c2d736563726574"), serialized);
+        assertFalse(serialized.contains("'login'"), serialized);
+        assertTrue(response.getRawText().contains("VALUES (_utf8mb4'<redacted>', N'<redacted>')"));
+        assertTrue(response.getRawText().contains("3: len 14; hex <redacted>; asc <redacted>;;"));
+        assertEquals("INSERT INTO audit_log(event_name, payload)\nVALUES (_utf8mb4'<redacted>', N'<redacted>')",
+                response.getLatestDeadlock().getTransactions().get(0).getSql());
+    }
+
+    @Test
+    void redactsMultiLineSqlStringLiteralsFromEveryResponseField() throws JsonProcessingException {
+        InnodbStatusResponse response = InnodbStatusParser.parse("""
+                ------------------------
+                LATEST DETECTED DEADLOCK
+                ------------------------
+                2026-08-31 11:59:59
+                *** (1) TRANSACTION:
+                TRANSACTION 30001, ACTIVE 1 sec
+                MySQL thread id 88, OS thread handle 1408, query id 808 localhost app updating
+                UPDATE audit_log SET payload='first line
+                literal-secret-second-line' WHERE id=1
+                *** WE ROLL BACK TRANSACTION (1)
+                """);
+
+        String serialized = OBJECT_MAPPER.writeValueAsString(response);
+        assertFalse(serialized.contains("first line"), serialized);
+        assertFalse(serialized.contains("literal-secret-second-line"), serialized);
+        assertTrue(response.getRawText().contains("payload='<redacted>'\n WHERE id=1"));
     }
 
     @Test

@@ -55,6 +55,6 @@ class MysqlDiagnosticsManagerTest {
 
         String serialized = OBJECT_MAPPER.writeValueAsString(response);
         assertFalse(serialized.contains("reader-secret"), serialized);
-        assertTrue(response.getRawText().contains("CREATE USER 'reader'@'%' IDENTIFIED BY <redacted>"));
+        assertTrue(response.getRawText().contains("CREATE USER '<redacted>'@'<redacted>' IDENTIFIED BY <redacted>"));
     }
 }

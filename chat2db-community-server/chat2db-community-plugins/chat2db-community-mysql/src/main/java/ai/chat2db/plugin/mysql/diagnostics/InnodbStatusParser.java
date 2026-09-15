@@ -259,7 +259,72 @@ final class InnodbStatusParser {
             return null;
         }
         String redacted = SENSITIVE_ASSIGNMENT.matcher(text).replaceAll("$1<redacted>");
-        return IDENTIFIED_BY.matcher(redacted).replaceAll("$1<redacted>");
+        redacted = IDENTIFIED_BY.matcher(redacted).replaceAll("$1<redacted>");
+        return redactPhysicalRecordValues(redactQuotedLiterals(redacted));
+    }
+
+    private static String redactPhysicalRecordValues(String text) {
+        String[] lines = text.split("\n", -1);
+        for (int index = 0; index < lines.length; index++) {
+            String line = lines[index];
+            boolean carriageReturn = line.endsWith("\r");
+            String content = carriageReturn ? line.substring(0, line.length() - 1) : line;
+            int hexStart = content.indexOf("; hex ");
+            int ascStart = hexStart < 0 ? -1 : content.indexOf("; asc ", hexStart + 6);
+            if (hexStart >= 0 && ascStart > hexStart && content.endsWith(";;")) {
+                lines[index] = content.substring(0, hexStart + 6) + "<redacted>; asc <redacted>;;"
+                        + (carriageReturn ? "\r" : "");
+            }
+        }
+        return String.join("\n", lines);
+    }
+
+    private static String redactQuotedLiterals(String text) {
+        StringBuilder result = new StringBuilder(text.length());
+        for (int index = 0; index < text.length(); index++) {
+            char current = text.charAt(index);
+            if ((current != '\'' && current != '"') || isWordApostrophe(text, index, current)) {
+                result.append(current);
+                continue;
+            }
+
+            char quote = current;
+            result.append(quote).append("<redacted>").append(quote);
+            for (index++; index < text.length(); index++) {
+                current = text.charAt(index);
+                if (current == '\\' && index + 1 < text.length()) {
+                    index++;
+                    continue;
+                }
+                if (current == quote) {
+                    if (index + 1 < text.length() && text.charAt(index + 1) == quote) {
+                        index++;
+                        continue;
+                    }
+                    break;
+                }
+                if (current == '\n' || current == '\r') {
+                    result.append(current);
+                }
+            }
+        }
+        return result.toString();
+    }
+
+    private static boolean isWordApostrophe(String text, int index, char quote) {
+        if (quote != '\'' || index == 0 || index + 1 >= text.length()
+                || !Character.isLetterOrDigit(text.charAt(index - 1))
+                || !Character.isLetterOrDigit(text.charAt(index + 1))) {
+            return false;
+        }
+        int tokenStart = index - 1;
+        while (tokenStart > 0 && Character.isLetterOrDigit(text.charAt(tokenStart - 1))) {
+            tokenStart--;
+        }
+        if (tokenStart > 0 && text.charAt(tokenStart - 1) == '_') {
+            return false;
+        }
+        return index - tokenStart != 1 || "nNxXbB".indexOf(text.charAt(tokenStart)) < 0;
     }
 
     private static InnodbDeadlockTransaction findTransaction(List<InnodbDeadlockTransaction> transactions,

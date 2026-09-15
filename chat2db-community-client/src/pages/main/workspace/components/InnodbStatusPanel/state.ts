@@ -1,4 +1,5 @@
 import type { IInnodbStatusResponse } from '@/service/sql';
+import { beginLatestRequest, isLatestRequest, type RequestGenerationRef } from '@/utils/latestRequest';
 
 export interface InnodbStatusViewState {
   loading: boolean;
@@ -59,4 +60,24 @@ export function formatInnodbStatusError(error: unknown): string {
 
 export function getInnodbStatusCopyText(result: IInnodbStatusResponse | null): string {
   return result?.rawText || '';
+}
+
+export async function loadLatestInnodbStatus(
+  requestGenerationRef: RequestGenerationRef,
+  loadStatus: () => Promise<IInnodbStatusResponse>,
+  updateState: (updater: (state: InnodbStatusViewState) => InnodbStatusViewState) => void,
+  receivedAt: () => string,
+) {
+  const requestGeneration = beginLatestRequest(requestGenerationRef);
+  updateState(beginInnodbStatusRefresh);
+  try {
+    const result = await loadStatus();
+    if (isLatestRequest(requestGenerationRef, requestGeneration)) {
+      updateState((state) => applyInnodbStatusSuccess(state, result, receivedAt()));
+    }
+  } catch (error) {
+    if (isLatestRequest(requestGenerationRef, requestGeneration)) {
+      updateState((state) => applyInnodbStatusFailure(state, error));
+    }
+  }
 }

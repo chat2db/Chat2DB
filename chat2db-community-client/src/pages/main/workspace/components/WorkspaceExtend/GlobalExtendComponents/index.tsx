@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTreeStore } from '@/store/tree';
 import { GlobalComponents } from '../config';
@@ -13,6 +13,8 @@ import i18n from '@/i18n';
 import type { TreeNodeData } from '@/typings/tree';
 import accountAdminService from '@/service/accountAdmin';
 import InnodbStatusPanel from '../../InnodbStatusPanel';
+import { invalidateLatestRequest } from '@/utils/latestRequest';
+import { loadLatestAccountGrants } from './accountGrantsRequest';
 
 const GlobalExtendComponents = () => {
   const { styles } = useStyles();
@@ -119,28 +121,29 @@ const AccountGrants = ({ data }: AccountGrantsProps) => {
   const { styles } = useStyles();
   const [loading, setLoading] = useState(false);
   const [grants, setGrants] = useState<string[]>([]);
+  const requestGenerationRef = useRef(0);
 
   useEffect(() => {
     if (!data?.dataSourceId || !data.user || !data.host) {
       setGrants([]);
+      setLoading(false);
       return;
     }
     setLoading(true);
-    accountAdminService
-      .grants({
-        dataSourceId: data.dataSourceId,
-        user: data.user,
-        host: data.host,
-      })
-      .then((res) => {
-        setGrants(res || []);
-      })
-      .catch(() => {
-        setGrants([]);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    void loadLatestAccountGrants(
+      requestGenerationRef,
+      () =>
+        accountAdminService.grants({
+          dataSourceId: data.dataSourceId,
+          user: data.user,
+          host: data.host,
+        }),
+      setGrants,
+      () => setLoading(false),
+    );
+    return () => {
+      invalidateLatestRequest(requestGenerationRef);
+    };
   }, [data?.dataSourceId, data?.user, data?.host]);
 
   return (
