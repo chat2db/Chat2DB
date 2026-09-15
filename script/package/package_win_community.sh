@@ -15,7 +15,10 @@ MAIN_CLASS="org.springframework.boot.loader.launch.PropertiesLauncher"
 ARTIFACT_BASE="Chat2DB-Community"
 WIN_UPGRADE_UUID="4D7C78BC-B42F-4F81-9F5F-56E3F5E4E9B2"
 
-PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT=$(cd "${COMMUNITY_SOURCE_DIR:-${SCRIPT_DIR}/../..}" && pwd)
+source "${SCRIPT_DIR}/community-version.sh"
+NATIVE_VERSION=$(community_native_version "${APP_VERSION}")
 LICENSE_FILE="${PROJECT_ROOT}/LICENSE"
 INPUT_DIR="${PROJECT_ROOT}/jpackage/input/win"
 MAIN_JAR_PATH="${INPUT_DIR}/${MAIN_JAR}"
@@ -68,7 +71,7 @@ JPACKAGE_ARGS=(
     --dest "${OUTPUT_DIR}"
     --input "${INPUT_DIR}"
     --name "${APP_NAME}"
-    --app-version "${APP_VERSION}"
+    --app-version "${NATIVE_VERSION}"
     --vendor "${VENDOR_NAME}"
     --runtime-image "${RUNTIME_IMAGE_PATH}"
     --main-jar "${MAIN_JAR}"
@@ -110,7 +113,7 @@ done
 echo "[run] jpackage ${JPACKAGE_ARGS[*]}"
 jpackage "${JPACKAGE_ARGS[@]}"
 
-SRC_MSI="${OUTPUT_DIR}/${APP_NAME}-${APP_VERSION}.msi"
+SRC_MSI="${OUTPUT_DIR}/${APP_NAME}-${NATIVE_VERSION}.msi"
 DST_MSI="${OUTPUT_DIR}/${ARTIFACT_BASE}-${APP_VERSION}.msi"
 if [ ! -f "${SRC_MSI}" ]; then
     echo "[error] jpackage did not produce ${SRC_MSI}" >&2

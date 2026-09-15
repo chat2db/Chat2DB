@@ -18,7 +18,10 @@ MAIN_JAR="chat2db-community.jar"
 MAIN_CLASS="org.springframework.boot.loader.launch.PropertiesLauncher"
 APP_ICON_NAME="${APP_NAME}.icns"
 
-PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT=$(cd "${COMMUNITY_SOURCE_DIR:-${SCRIPT_DIR}/../..}" && pwd)
+source "${SCRIPT_DIR}/community-version.sh"
+NATIVE_VERSION=$(community_native_version "${APP_VERSION}")
 INPUT_DIR="${PROJECT_ROOT}/jpackage/input/mac"
 RESOURCE_TEMPLATE_DIR="${INPUT_DIR}/../macres"
 RESOURCE_DIR="${PROJECT_ROOT}/jpackage/output/macres-community"
@@ -64,10 +67,10 @@ prepare_resource_dir() {
         cp "${ICON_FILE}" "${RESOURCE_DIR}/${APP_ICON_NAME}"
     fi
     if [ -f "${INFO_PLIST_FILE}" ]; then
-        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${APP_VERSION}" "${INFO_PLIST_FILE}" 2>/dev/null \
-            || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string ${APP_VERSION}" "${INFO_PLIST_FILE}"
-        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${APP_VERSION}" "${INFO_PLIST_FILE}" 2>/dev/null \
-            || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${APP_VERSION}" "${INFO_PLIST_FILE}"
+        /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${NATIVE_VERSION}" "${INFO_PLIST_FILE}" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string ${NATIVE_VERSION}" "${INFO_PLIST_FILE}"
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${NATIVE_VERSION}" "${INFO_PLIST_FILE}" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string ${NATIVE_VERSION}" "${INFO_PLIST_FILE}"
     fi
 }
 
@@ -111,7 +114,7 @@ package_application() {
         "--verbose"
         "--type" "dmg"
         "--name" "${APP_NAME}"
-        "--app-version" "${APP_VERSION}"
+        "--app-version" "${NATIVE_VERSION}"
         "--vendor" "${VENDOR_NAME}"
         "--input" "${INPUT_DIR}"
         "--main-jar" "${MAIN_JAR}"
@@ -197,9 +200,9 @@ validate_packaged_dmg() {
     bundle_version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "${plist_file}" 2>/dev/null || true)
     icon_name=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "${plist_file}" 2>/dev/null || true)
 
-    if [ "${short_version}" != "${APP_VERSION}" ] || [ "${bundle_version}" != "${APP_VERSION}" ]; then
+    if [ "${short_version}" != "${NATIVE_VERSION}" ] || [ "${bundle_version}" != "${NATIVE_VERSION}" ]; then
         cleanup_mount
-        echo "Error: packaged app version mismatch. expected=${APP_VERSION}, short=${short_version}, bundle=${bundle_version}" >&2
+        echo "Error: packaged app version mismatch. expected=${NATIVE_VERSION}, short=${short_version}, bundle=${bundle_version}" >&2
         exit 1
     fi
 

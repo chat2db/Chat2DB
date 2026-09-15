@@ -21,6 +21,46 @@ reproducible. Tag-triggered builds publish only after every platform's packages
 and the Docker job succeed. Manual builds use the explicit `release_epoch`
 workflow input and upload Actions artifacts without publishing a Release.
 
+### Manual Beta workflow
+
+Run `jcef_release.yml` from the protected `main` branch with these inputs:
+
+| Input | Meaning |
+| --- | --- |
+| `version` | Application version such as `5.3.7-beta.3`, without `v`; Beta sequence 1–98 |
+| `source_ref` | Reviewed Community branch, tag or commit to package |
+| `release_epoch` | Explicit positive update sequence; no implicit default |
+
+The workflow resolves `source_ref` once and all platform jobs check out that
+commit. Packaging helpers and the Windows wrapper template come from the
+workflow commit, so the selected source branch need not contain this workflow
+or the latest packaging scripts. Source branches must contain the Community
+application, updater module, and desktop resources expected by the helpers.
+Only select reviewed source: its build scripts execute in a signing-enabled job.
+`build-provenance.json` in each Actions artifact records both commits, the
+requested ref, application/native versions, channel, and update sequence.
+
+Application metadata, frontend version and installer filenames keep the full
+version. `community-version.sh` maps it to the numeric installer version:
+`major.minor.(patch * 100 + stage)`, where Beta stage is 1–98 and Stable stage
+is 99. For example, `5.3.7-beta.3` becomes `5.3.703`, followed by Stable
+`5.3.7` as `5.3.799`. Native major/minor must fit 0–255 and build must fit
+0–65535. macOS bundle versions, Windows MSI/EXE metadata and Linux package
+versions use this numeric form. Beta update manifests use channel `BETA` and
+the same native version. Keep this mapping for subsequent Stable packages to
+avoid a native-version downgrade after installing a Beta.
+
+Manual Beta runs create a GitHub Pre-release with the installers and update
+resources after all platform jobs pass. They do not publish Docker images or
+stable/latest pointers. The release is explicitly marked prerelease and does
+not become the stable Community update source.
+Beta-tag pushes are rejected before signing/publication. Numeric Stable tags
+retain the formal release path. This does not add a Beta update feed to the
+installed Community client.
+
+For separate source and helper checkouts, `COMMUNITY_SOURCE_DIR` points to the
+application checkout; by default the packaging scripts use their own repository.
+
 Configure these secrets in the corresponding release/test environment:
 
 | Secret | Purpose |

@@ -18,7 +18,10 @@ MAIN_CLASS="org.springframework.boot.loader.launch.PropertiesLauncher"
 PROTOCOL_NAME="chat2db-community"
 PROTOCOL_DESCRIPTION="Chat2DB Community Protocol Handler"
 
-PROJECT_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT=$(cd "${COMMUNITY_SOURCE_DIR:-${SCRIPT_DIR}/../..}" && pwd)
+source "${SCRIPT_DIR}/community-version.sh"
+NATIVE_VERSION=$(community_native_version "${APP_VERSION}")
 LICENSE_FILE="${PROJECT_ROOT}/LICENSE"
 INPUT_DIR="${PROJECT_ROOT}/jpackage/input/linux"
 MAIN_JAR_PATH="${INPUT_DIR}/${MAIN_JAR}"
@@ -137,7 +140,7 @@ build_base_args() {
     local dest_dir="$1"
     BASE_ARGS=(
         "--name" "${APP_NAME}"
-        "--app-version" "${APP_VERSION}"
+        "--app-version" "${NATIVE_VERSION}"
         "--vendor" "${VENDOR_NAME}"
         "--input" "${INPUT_DIR}"
         "--main-jar" "${MAIN_JAR}"
