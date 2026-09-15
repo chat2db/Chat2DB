@@ -1,6 +1,8 @@
 package ai.chat2db.plugin.generic;
 
 import ai.chat2db.plugin.generic.identifier.GenericIdentifierProcessor;
+import ai.chat2db.plugin.duckdb.builder.DuckDBSqlBuilder;
+import ai.chat2db.spi.ISqlBuilder;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.community.domain.api.config.DBConfig;
 import ai.chat2db.community.domain.api.constant.DBConfigConstants;
@@ -34,6 +36,13 @@ public class GenericMetaData extends DefaultMetaService implements IDbMetaData {
 
     public GenericMetaData(DBConfig dbConfig) {
         this.injectedConfig = dbConfig;
+    }
+
+    @Override
+    public ISqlBuilder getSqlBuilder() {
+        DBConfig config = currentConfig();
+        return config != null && "DUCKDB".equalsIgnoreCase(config.getDbType())
+                ? new DuckDBSqlBuilder() : super.getSqlBuilder();
     }
 
     private DBConfig currentConfig() {

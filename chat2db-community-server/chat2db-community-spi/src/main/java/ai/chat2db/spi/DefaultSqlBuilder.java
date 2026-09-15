@@ -252,13 +252,10 @@ public class DefaultSqlBuilder implements ISqlBuilder, IIdentifierSqlBuilder, ID
             sqlBuilder.append(SQLConstants.LINE_SEPARATOR_LIMIT_SQL);
             sqlBuilder.append(pageSize);
         } else {
-            // Standard SQL LIMIT <pageSize> OFFSET <offset> — the MySQL comma form
-            // (LIMIT <offset>,<pageSize>) is a MySQL-only extension that
-            // non-MySQL dialects using the default builder reject.
             sqlBuilder.append(SQLConstants.LINE_SEPARATOR_LIMIT_SQL);
-            sqlBuilder.append(pageSize);
-            sqlBuilder.append(" OFFSET ");
             sqlBuilder.append(offset);
+            sqlBuilder.append(SQLConstants.COMMA);
+            sqlBuilder.append(pageSize);
         }
         return sqlBuilder.toString();
     }
