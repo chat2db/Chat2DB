@@ -23,6 +23,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static ai.chat2db.spi.constant.SQLConstants.PAGINATION_ROW_ID;
 
 public final class SqlServerSqlBuilderConstants {
 
@@ -60,8 +61,8 @@ public final class SqlServerSqlBuilderConstants {
     public static final String RENAME_TABLE_SCRIPT = "exec sp_rename '%s','%s','OBJECT' \ngo\n";
 
     // ROW_NUMBER pagination for SQL Server < 2012
-    public static final String SQL_ROW_NUMBER_PREFIX = "SELECT * FROM (SELECT TMP_PAGE.*, ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) AS CAHT2DB_AUTO_ROW_ID FROM (\n";
-    public static final String SQL_ROW_NUMBER_SUFFIX = "\n) TMP_PAGE) TMP_PAGE WHERE CAHT2DB_AUTO_ROW_ID BETWEEN ";
+    public static final String SQL_ROW_NUMBER_PREFIX = "SELECT * FROM (SELECT TMP_PAGE.*, ROW_NUMBER() OVER(ORDER BY (SELECT NULL)) AS " + PAGINATION_ROW_ID + " FROM (\n";
+    public static final String SQL_ROW_NUMBER_SUFFIX = "\n) TMP_PAGE) TMP_PAGE WHERE " + PAGINATION_ROW_ID + " BETWEEN ";
     public static final String SQL_AND = " AND ";
 
 

@@ -2,6 +2,9 @@ package ai.chat2db.spi.constant;
 
 public final class SQLConstants {
 
+    // Internal pagination alias. Keep the historical spelling for existing dialects.
+    public static final String PAGINATION_ROW_ID = "CAHT2DB_AUTO_ROW_ID";
+
     public static final String EMPTY = "";
     public static final String SPACE = " ";
     public static final String TAB = "\t";

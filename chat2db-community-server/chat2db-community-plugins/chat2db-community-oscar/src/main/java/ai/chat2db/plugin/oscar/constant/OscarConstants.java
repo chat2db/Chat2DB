@@ -1,5 +1,7 @@
 package ai.chat2db.plugin.oscar.constant;
 
+import static ai.chat2db.spi.constant.SQLConstants.PAGINATION_ROW_ID;
+
 public final class OscarConstants {
 
     public static final String CONFIG_FILE = "oscar.json";
@@ -58,9 +60,9 @@ public final class OscarConstants {
             """;
 
     public static final String PAGE_OUTER_SELECT_PREFIX = "SELECT * FROM ( ";
-    public static final String PAGE_INNER_SELECT_PREFIX = " SELECT TMP_PAGE.*, ROWNUM CHAT2DB_AUTO_ROW_ID FROM ( ";
+    public static final String PAGE_INNER_SELECT_PREFIX = " SELECT TMP_PAGE.*, ROWNUM " + PAGINATION_ROW_ID + " FROM ( ";
     public static final String PAGE_ROWNUM_FILTER_SQL = " ) TMP_PAGE WHERE ROWNUM <= ";
-    public static final String PAGE_AUTO_ROW_ID_FILTER_SQL = " ) WHERE CHAT2DB_AUTO_ROW_ID > ";
+    public static final String PAGE_AUTO_ROW_ID_FILTER_SQL = " ) WHERE " + PAGINATION_ROW_ID + " > ";
     public static final String INTERVAL_DAY_TO_SECOND_SQL_TEMPLATE = "INTERVAL DAY(%d) TO SECOND(%d)";
     public static final String INTERVAL_YEAR_TO_MONTH_SQL_TEMPLATE = "INTERVAL YEAR(%d) TO MONTH";
 

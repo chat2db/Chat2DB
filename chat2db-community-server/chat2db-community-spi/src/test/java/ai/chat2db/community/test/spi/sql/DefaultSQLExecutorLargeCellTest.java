@@ -181,7 +181,7 @@ class DefaultSQLExecutorLargeCellTest {
     }
 
     @Test
-    void queryResultStripsCorrectAutoRowIdColumn() throws Exception {
+    void queryResultPreservesUserColumnWithCorrectlySpelledName() throws Exception {
         try (Connection connection = DriverManager.getConnection(
                 "jdbc:h2:mem:sql_executor_correct_auto_row_id;DB_CLOSE_DELAY=-1")) {
             putContext(connection);
@@ -189,13 +189,13 @@ class DefaultSQLExecutorLargeCellTest {
             ExecuteResponse result = DefaultSQLExecutor.getInstance().execute(SqlStatementExecuteRequest.builder()
                     .sql("SELECT 7 AS CHAT2DB_AUTO_ROW_ID, 'visible' AS name")
                     .connection(connection)
-                    .limitRowSize(true)
+                    .limitRowSize(false)
                     .offset(0)
                     .count(1)
                     .build());
 
-            assertEquals(List.of("NAME"), result.getHeaderList().stream().map(Header::getName).toList());
-            assertEquals(List.of(List.of("visible")), result.getDisplayDataList());
+            assertEquals(List.of("CHAT2DB_AUTO_ROW_ID", "NAME"), result.getHeaderList().stream().map(Header::getName).toList());
+            assertEquals(List.of(List.of("7", "visible")), result.getDisplayDataList());
         }
     }
 

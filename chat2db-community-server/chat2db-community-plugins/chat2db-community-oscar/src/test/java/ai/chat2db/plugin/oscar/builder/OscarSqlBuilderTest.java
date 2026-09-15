@@ -1,6 +1,7 @@
 package ai.chat2db.plugin.oscar.builder;
 
 import ai.chat2db.spi.model.request.PageLimitRequest;
+import static ai.chat2db.spi.constant.SQLConstants.PAGINATION_ROW_ID;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,7 +21,7 @@ class OscarSqlBuilderTest {
                 .build());
 
         assertEquals("SELECT * FROM ( \nSELECT ID, NAME FROM EMPLOYEE\n ) TMP_PAGE WHERE ROWNUM <= 10", sql);
-        assertFalse(sql.contains("CHAT2DB_AUTO_ROW_ID"));
+        assertFalse(sql.contains(PAGINATION_ROW_ID));
     }
 
     @Test
@@ -34,9 +35,9 @@ class OscarSqlBuilderTest {
                 .pageSize(10)
                 .build());
 
-        assertEquals("SELECT * FROM (  SELECT TMP_PAGE.*, ROWNUM CHAT2DB_AUTO_ROW_ID FROM ( \n"
+        assertEquals("SELECT * FROM (  SELECT TMP_PAGE.*, ROWNUM " + PAGINATION_ROW_ID + " FROM ( \n"
                         + "SELECT ID, NAME FROM EMPLOYEE\n"
-                        + " ) TMP_PAGE WHERE ROWNUM <= 20 ) WHERE CHAT2DB_AUTO_ROW_ID > 10",
+                        + " ) TMP_PAGE WHERE ROWNUM <= 20 ) WHERE " + PAGINATION_ROW_ID + " > 10",
                 sql);
     }
 }
