@@ -90,11 +90,6 @@ public interface IPlugin {
         return null;
     }
 
-    /** Returns dialect-specific table-change validation, or {@code null} when none is needed. */
-    default ITableModificationValidator getTableModificationValidator() {
-        return null;
-    }
-
     /**
      * Returns the optional account manager for this plugin.
      *

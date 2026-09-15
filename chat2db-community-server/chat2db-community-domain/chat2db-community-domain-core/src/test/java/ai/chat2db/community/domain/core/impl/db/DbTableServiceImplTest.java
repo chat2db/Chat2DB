@@ -11,11 +11,6 @@ import ai.chat2db.spi.DefaultMetaService;
 import ai.chat2db.spi.DefaultSqlBuilder;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.IPlugin;
-import ai.chat2db.spi.ITableModificationValidator;
-import ai.chat2db.community.tools.exception.BusinessException;
-import java.sql.Connection;
-import java.lang.reflect.Proxy;
-import java.util.ArrayList;
 import ai.chat2db.spi.ISqlBuilder;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
 import ai.chat2db.spi.sql.Chat2DBContext;
@@ -26,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class DbTableServiceImplTest {
 
@@ -103,55 +98,6 @@ class DbTableServiceImplTest {
         List<Sql> sqlList = tableService.buildSql(oldTable, newTable, TableBuilderConfig.defaultConfig());
 
         assertFalse(sqlList.get(0).getSql().isBlank());
-    }
-
-    @Test
-    void dialectValidationRunsBeforeTheBuilderAndReceivesNormalizedOldColumns() {
-        List<String> events = new ArrayList<>();
-        putValidationPlugin(events, false);
-        tableService.buildSql(tableWithColumn(true, null), tableWithColumn(false, "MODIFY"), TableBuilderConfig.defaultConfig());
-        assertEquals(List.of("validate", "build"), events);
-    }
-
-    @Test
-    void rejectedDialectValidationNeverInvokesTheBuilder() {
-        List<String> events = new ArrayList<>();
-        putValidationPlugin(events, true);
-        assertThrows(BusinessException.class, () -> tableService.buildSql(
-                tableWithColumn(true, null), tableWithColumn(false, "MODIFY"), TableBuilderConfig.defaultConfig()));
-        assertEquals(List.of("validate"), events);
-    }
-
-    private void putValidationPlugin(List<String> events, boolean reject) {
-        putTestContext();
-        Connection connection = (Connection) Proxy.newProxyInstance(getClass().getClassLoader(),
-                new Class<?>[]{Connection.class}, (proxy, method, args) -> {
-                    if (method.getName().equals("isClosed")) return false;
-                    if (method.getName().equals("close")) return null;
-                    throw new AssertionError("Unexpected connection operation: " + method.getName());
-                });
-        Chat2DBContext.getConnectInfo().setConnection(connection);
-        IPlugin original = Chat2DBContext.PLUGIN_MAP.get(TEST_DB_TYPE);
-        Chat2DBContext.PLUGIN_MAP.put(TEST_DB_TYPE, new IPlugin() {
-            public DBConfig getDBConfig() { return original.getDBConfig(); }
-            public ITableModificationValidator getTableModificationValidator() {
-                return (actual, before, after) -> {
-                    assertSame(connection, actual);
-                    assertSame(before.getColumnList().get(0), after.getColumnList().get(0).getOldColumn());
-                    events.add("validate");
-                    if (reject) throw new BusinessException("test.modification.rejected");
-                };
-            }
-            public IDbMetaData getDbMetaData() {
-                return new DefaultMetaService() {
-                    public ISqlBuilder getSqlBuilder() {
-                        return new DefaultSqlBuilder() {
-                            public String buildAlterTable(Table before, Table after) { events.add("build"); return "ALTER TABLE t"; }
-                        };
-                    }
-                };
-            }
-        });
     }
 
     private static void putTestContext() {

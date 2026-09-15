@@ -6,8 +6,11 @@ import ai.chat2db.community.domain.api.model.metadata.Table;
 import ai.chat2db.community.domain.api.model.metadata.TableColumn;
 import ai.chat2db.community.domain.api.model.metadata.TableIndex;
 import ai.chat2db.community.domain.api.model.metadata.TableIndexColumn;
+import ai.chat2db.plugin.informix.InformixMetaData;
 import ai.chat2db.plugin.informix.parser.InformixSqlParser;
+import ai.chat2db.plugin.informix.validation.InformixTableModificationValidator;
 import ai.chat2db.spi.DefaultSqlBuilder;
+import ai.chat2db.spi.sql.Chat2DBContext;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.DatabaseMetaData;
@@ -32,6 +35,12 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
 
     @Override
     public String buildAlterTable(Table oldTable, Table newTable) {
+        // Only MODIFY needs live constraint inspection; other DDL stays connection-free.
+        if (newTable.getColumnList().stream()
+                .anyMatch(column -> EditStatusEnum.MODIFY.name().equals(column.getEditStatus()))) {
+            new InformixTableModificationValidator(new InformixMetaData())
+                    .validate(Chat2DBContext.getConnection(), oldTable, newTable);
+        }
         StringBuilder script = new StringBuilder();
         String tableName = qualifiedTable(oldTable.getSchemaName(), newTable.getName());
         if (!StringUtils.equals(oldTable.getName(), newTable.getName())) {

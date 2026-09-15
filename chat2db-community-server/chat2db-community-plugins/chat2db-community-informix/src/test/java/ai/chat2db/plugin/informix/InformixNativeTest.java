@@ -265,7 +265,6 @@ class InformixNativeTest {
         column.setOldName("qty"); column.setDefaultValue("1"); column.setNullable(0);
         Table before = Table.builder().schemaName("informix").name(table).columnList(List.of()).indexList(List.of()).build();
         Table after = Table.builder().name(table + "_new").columnList(List.of(column)).indexList(List.of()).build();
-        new InformixPlugin().getTableModificationValidator().validate(connection, before, after);
         String script = new InformixSqlBuilder().buildAlterTable(before, after);
         String[] statements = script.split(";");
         execute(statements[0]);
@@ -317,7 +316,6 @@ class InformixNativeTest {
     private void alter(String table, TableColumn column) throws SQLException {
         Table before = Table.builder().name(table).schemaName("informix").columnList(List.of()).indexList(List.of()).build();
         Table after = Table.builder().name(table).columnList(List.of(column)).indexList(List.of()).build();
-        new InformixPlugin().getTableModificationValidator().validate(connection, before, after);
         String sql = new InformixSqlBuilder().buildAlterTable(before, after);
         assertTrue(sql.startsWith("ALTER TABLE 'informix'." + table));
         execute(sql);

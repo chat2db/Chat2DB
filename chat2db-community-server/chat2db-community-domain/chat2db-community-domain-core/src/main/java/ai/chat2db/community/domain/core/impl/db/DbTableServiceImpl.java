@@ -24,7 +24,6 @@ import ai.chat2db.community.tools.util.ExceptionUtils;
 import ai.chat2db.spi.IDbManager;
 import ai.chat2db.spi.IDbMetaData;
 import ai.chat2db.spi.ISqlBuilder;
-import ai.chat2db.spi.ITableModificationValidator;
 import ai.chat2db.community.domain.api.enums.plugin.EditStatusEnum;
 import ai.chat2db.community.domain.api.enums.plugin.ObjectTypeEnum;
 import ai.chat2db.community.domain.api.model.metadata.*;
@@ -148,10 +147,6 @@ public class DbTableServiceImpl implements IDbTableService {
             sqls.add(Sql.builder().sql(sqlBuilder.ddl().table().buildCreateTable(newTable, tableBuilderConfig)).build());
         } else {
             initUpdatePrimaryKey(oldTable, newTable);
-            ITableModificationValidator validator = Chat2DBContext.getTableModificationValidator();
-            if (validator != null) {
-                validator.validate(Chat2DBContext.getConnection(), oldTable, newTable);
-            }
             sqls.add(Sql.builder().sql(sqlBuilder.ddl().table().buildAlterTable(oldTable, newTable)).build());
         }
         return sqls;
