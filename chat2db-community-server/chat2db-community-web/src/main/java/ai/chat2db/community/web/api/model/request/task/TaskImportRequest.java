@@ -25,7 +25,7 @@ public class TaskImportRequest extends DataSourceBaseRequest {
 
     private CsvOptions csvOptions;
 
-    /** Execution mode: ULTRA_FAST or STANDARD (default when absent). */
+    /** Execution mode: FAST or STANDARD (default when absent). */
     private String mode;
 
 }

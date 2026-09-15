@@ -1,22 +1,12 @@
 package ai.chat2db.community.domain.api.model.task;
 
-import org.apache.commons.lang3.StringUtils;
+/** CSV import modes. Request fields remain strings containing these uppercase names. */
+public enum TaskExecutionMode {
+    STANDARD,
+    FAST;
 
-/**
- * CSV import execution mode. ULTRA_FAST uses parallel row batches with adaptive tuning;
- * absent or unknown values resolve to STANDARD.
- */
-public final class TaskExecutionMode {
-
-    public static final String ULTRA_FAST = "ULTRA_FAST";
-
-    public static final String STANDARD = "STANDARD";
-
-    private TaskExecutionMode() {
-    }
-
-    /** True only for an explicit {@code ULTRA_FAST}; anything else (null, blank, unknown) is standard. */
-    public static boolean isUltraFast(String mode) {
-        return ULTRA_FAST.equalsIgnoreCase(StringUtils.trimToEmpty(mode));
+    /** Only an explicit FAST selects parallel execution; other values retain ordinary behavior. */
+    public static boolean isFast(String mode) {
+        return FAST.name().equals(mode);
     }
 }

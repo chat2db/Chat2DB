@@ -81,10 +81,10 @@ class DbMappedImportServiceImplTest {
         var options = ai.chat2db.community.domain.api.model.task.CsvOptions.defaults();
         options.setDelimiter(";");
         execution.setCsvOptions(options);
-        execution.setMode("ULTRA_FAST");
+        execution.setMode("FAST");
 
         assertEquals(42L, service.submit(execution));
-        assertEquals("ULTRA_FAST", submitted.get().getMode());
+        assertEquals("FAST", submitted.get().getMode());
         assertEquals(";", submitted.get().getCsvOptions().getDelimiter());
         assertEquals("name", submitted.get().getColumnMappings().get(0).getTargetColumn());
     }

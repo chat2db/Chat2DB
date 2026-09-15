@@ -30,7 +30,7 @@ export interface ImportExportTaskDetails {
 }
 
 /** CSV import execution mode; absent resolves to STANDARD on the backend. */
-export type ImportExecutionMode = 'ULTRA_FAST' | 'STANDARD';
+export type ImportExecutionMode = 'FAST' | 'STANDARD';
 
 export interface ImportExportTaskEvent {
   eventId: number;

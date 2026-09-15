@@ -160,7 +160,7 @@ class ImportRowBatcherParallelTest {
                 .importFileId("parallel-import-test-source")
                 .format("CSV")
                 .target(TaskTargetSnapshot.builder().dataSourceId(1L).tableName("BULK_ROWS").build())
-                .mode("ULTRA_FAST")
+                .mode("FAST")
                 .columnMappings(List.of(
                         new ImportColumnMapping("ID", "ID"),
                         new ImportColumnMapping("NAME", "NAME")))

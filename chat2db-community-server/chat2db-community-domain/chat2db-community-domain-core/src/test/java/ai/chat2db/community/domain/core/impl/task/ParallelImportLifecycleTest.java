@@ -274,7 +274,7 @@ class ParallelImportLifecycleTest {
             writer.write("ID,NAME\n");
             for (int id = 1; id <= count; id++) writer.write(id + "," + name + "\n");
         }
-        return ImportTaskSpec.builder().sourceFile(csv.toString()).format("CSV").mode("ULTRA_FAST")
+        return ImportTaskSpec.builder().sourceFile(csv.toString()).format("CSV").mode("FAST")
                 .target(TaskTargetSnapshot.builder().tableName("ROWS_TARGET").build())
                 .columnMappings(List.of(new ImportColumnMapping("ID", "ID"), new ImportColumnMapping("NAME", "NAME"))).build();
     }

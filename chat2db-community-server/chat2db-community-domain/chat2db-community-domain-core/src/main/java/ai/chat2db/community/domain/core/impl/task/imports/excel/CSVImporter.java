@@ -18,7 +18,7 @@ public class CSVImporter extends BaseExcelImporter implements IImportStrategy {
 
     @Override
     protected void doImportData(ImportTaskSpec spec, TaskExecutionContext context, List<TableColumn> columns) {
-        if (TaskExecutionMode.isUltraFast(spec.getMode())) {
+        if (TaskExecutionMode.isFast(spec.getMode())) {
             new ParallelCSVImporter().doImportData(spec, context, columns);
             return;
         }

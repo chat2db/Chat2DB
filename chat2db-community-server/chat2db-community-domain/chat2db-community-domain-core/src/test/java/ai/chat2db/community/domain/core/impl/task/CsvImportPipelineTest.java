@@ -213,7 +213,7 @@ class CsvImportPipelineTest {
                 .taskType("DATA_FILE_IMPORT")
                 .sourceFile(csv.toString())
                 .format("CSV")
-                .mode("ULTRA_FAST")
+                .mode("FAST")
                 .target(TaskTargetSnapshot.builder().dataSourceId(1L).tableName("TARGET_ROWS").build())
                 .columnMappings(List.of(
                         new ImportColumnMapping("ROW_ID", "ID"),

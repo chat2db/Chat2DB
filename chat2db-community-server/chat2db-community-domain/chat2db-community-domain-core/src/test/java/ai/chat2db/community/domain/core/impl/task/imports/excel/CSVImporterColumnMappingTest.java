@@ -237,7 +237,7 @@ class CSVImporterColumnMappingTest {
     @Test
     void fastModeRejectsDuplicateMappingBeforeWritingRows(@TempDir Path directory) throws Exception {
         Path input = Files.writeString(directory.resolve("duplicates.csv"), "Full Name,status\nAlice,OVERRIDE\n");
-        ImportTaskSpec spec = ImportTaskSpec.builder().mode("ULTRA_FAST").sourceFile(input.toString())
+        ImportTaskSpec spec = ImportTaskSpec.builder().mode("FAST").sourceFile(input.toString())
                 .target(TaskTargetSnapshot.builder().tableName("orders").build())
                 .columnMappings(List.of(new ImportColumnMapping("Full Name", "name"),
                         new ImportColumnMapping("status", "name"))).build();
@@ -277,7 +277,7 @@ class CSVImporterColumnMappingTest {
     @Test
     void fastAndStandardModesPreserveWhitespaceInSourceNames(@TempDir Path directory) throws Exception {
         Path input = Files.writeString(directory.resolve("spaces.csv"), "Name, Name\nplain,spaced\n");
-        for (String mode : List.of("STANDARD", "ULTRA_FAST")) {
+        for (String mode : List.of("STANDARD", "FAST")) {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("DELETE FROM orders");
             }
