@@ -1,4 +1,5 @@
 export default {
+  'connection.message.testSshTimeout': 'SSH connection test timed out. Check the host and network, then try again.',
   'connection.title': 'Connections',
   'connection.title.connections': 'Connections',
   'connection.title.createConnection': 'New Connection',

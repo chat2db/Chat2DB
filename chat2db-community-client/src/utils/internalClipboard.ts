@@ -15,13 +15,13 @@ export function clearInternalClipboard() {
 
 export function setInternalResultGridClipboard(rows: string[][]) {
   internalResultGridClipboard = {
-    text: serializeGrid(rows),
+    text: serializeGrid(rows).replace(/\r\n?/g, '\n'),
     rows: rows.map((row) => [...row]),
   };
 }
 
 export function getInternalResultGridClipboard(text: string) {
-  if (internalResultGridClipboard?.text !== text) {
+  if (internalResultGridClipboard?.text !== text.replace(/\r\n?/g, '\n')) {
     return null;
   }
   return internalResultGridClipboard.rows.map((row) => [...row]);
