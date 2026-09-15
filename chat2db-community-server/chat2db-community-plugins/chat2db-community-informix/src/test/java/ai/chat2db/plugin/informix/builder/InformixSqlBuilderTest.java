@@ -65,6 +65,28 @@ class InformixSqlBuilderTest {
         assertEquals("/* test */ EXPLAIN SELECT 1", builder.buildExplain("/* test */ EXPLAIN SELECT 1"));
     }
 
+    @Test
+    void renameQualifiesAndEscapesOwnerAndDelimitedTableNames() {
+        Table before = table("order.items", List.of());
+        before.setSchemaName("team'o");
+        Table after = table("order\"archive", List.of());
+        after.setSchemaName("team'o");
+        assertEquals("RENAME TABLE 'team''o'.\"order.items\" TO \"order\"\"archive\";\n",
+                new InformixSqlBuilder().buildAlterTable(before, after));
+    }
+
+    @Test
+    void typeAliasesKeepLengthAndDoNotDefaultToOneCharacter() {
+        for (String type : List.of("character varying", "CHARACTER   VARYING", " char varying ")) {
+            TableColumn column = new TableColumn();
+            column.setColumnType(type);
+            column.setColumnSize(64);
+            column.setNullable(0);
+            column.setDefaultValue("'four'");
+            assertEquals("VARCHAR(64) DEFAULT 'four' NOT NULL", InformixSqlBuilder.columnDefinition(column));
+        }
+    }
+
     private static Table table(String name, List<TableColumn> columns) {
         return Table.builder()
                 .name(name)

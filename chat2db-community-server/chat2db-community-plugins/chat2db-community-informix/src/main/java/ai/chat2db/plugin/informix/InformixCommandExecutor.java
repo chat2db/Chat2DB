@@ -69,7 +69,7 @@ public final class InformixCommandExecutor extends DefaultSQLExecutor {
         Chat2DBContext.guardStatement(statement.getSql());
         long startedAtEpochMs = System.currentTimeMillis();
         long executeStartedNanos = System.nanoTime();
-        String plan = explainClient.getExplainInfo(connection, sql);
+        String plan = explainClient.getExplainInfo(connection, sql, statementListener, cancellation);
         long executeDurationNanos = ExecutionTiming.elapsedNanos(executeStartedNanos);
         checkCanceled(cancellation);
 

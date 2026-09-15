@@ -17,6 +17,10 @@ import java.util.Set;
 /** Informix table alterations and the EXPLAIN command handled by its executor. */
 public class InformixSqlBuilder extends DefaultSqlBuilder {
 
+    private static final Set<String> LENGTH_TYPES = Set.of("CHAR", "CHARACTER", "NCHAR", "VARCHAR", "NVARCHAR",
+            "LVARCHAR", "DECIMAL", "DEC", "NUMERIC", "MONEY");
+    private static final Set<String> SCALE_TYPES = Set.of("DECIMAL", "DEC", "NUMERIC", "MONEY");
+
     @Override
     public String buildExplain(String sql) {
         // Consumed by InformixCommandExecutor; never sent to JDBC as executable SQL.
@@ -26,13 +30,14 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
     @Override
     public String buildAlterTable(Table oldTable, Table newTable) {
         StringBuilder script = new StringBuilder();
-        if (!StringUtils.equalsIgnoreCase(oldTable.getName(), newTable.getName())) {
+        String tableName = qualifiedTable(oldTable.getSchemaName(), newTable.getName());
+        if (!StringUtils.equals(oldTable.getName(), newTable.getName())) {
             // Informix: RENAME TABLE old TO new (not ALTER TABLE old RENAME TO new)
-            script.append("RENAME TABLE ").append(oldTable.getName()).append(" TO ")
-                    .append(newTable.getName()).append(";\n");
+            script.append("RENAME TABLE ").append(qualifiedTable(oldTable.getSchemaName(), oldTable.getName()))
+                    .append(" TO ").append(identifier(newTable.getName())).append(";\n");
         }
         if (!StringUtils.equalsIgnoreCase(oldTable.getComment(), newTable.getComment())) {
-            script.append(generateTableCommentSQL(newTable.getName(), newTable.getComment())).append("\n");
+            script.append(generateTableCommentSQL(tableName, newTable.getComment())).append("\n");
         }
         for (TableColumn tableColumn : newTable.getColumnList()) {
             if (StringUtils.isNotBlank(tableColumn.getEditStatus())
@@ -47,44 +52,52 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
         for (TableIndex tableIndex : newTable.getIndexList()) {
             if (StringUtils.isNotBlank(tableIndex.getEditStatus())
                     && StringUtils.isNotBlank(tableIndex.getType())) {
-                script.append(generateIndexAlterSQL(tableIndex)).append("\n");
+                script.append(generateIndexAlterSQL(tableIndex, oldTable.getSchemaName(), tableName)).append("\n");
             }
         }
         return script.toString();
     }
 
     private String generateColumnAlterSQL(TableColumn tableColumn, Table oldTable, String tableName) {
+        String owner = StringUtils.defaultIfBlank(oldTable.getSchemaName(), tableColumn.getSchemaName());
+        String target = qualifiedTable(owner, tableName);
+        String columnName = identifier(tableColumn.getName());
         if (EditStatusEnum.DELETE.name().equals(tableColumn.getEditStatus())) {
-            return "ALTER TABLE " + tableColumn.getTableName() + " DROP COLUMN " + tableColumn.getName() + ";";
+            return "ALTER TABLE " + target + " DROP COLUMN " + columnName + ";";
         }
         if (EditStatusEnum.ADD.name().equals(tableColumn.getEditStatus())) {
-            return "ALTER TABLE " + tableColumn.getTableName() + " ADD COLUMN " + tableColumn.getName() + " "
+            return "ALTER TABLE " + target + " ADD COLUMN " + columnName + " "
                     + tableColumn.getColumnType() + ";";
         }
         if (EditStatusEnum.MODIFY.name().equals(tableColumn.getEditStatus())) {
-            // Informix: ALTER TABLE t MODIFY (col type) (not MODIFY COLUMN col type)
-            // Match the owner used by constraint inspection, even when another
-            // schema has a table with the same name.
-            String owner = StringUtils.defaultIfBlank(oldTable.getSchemaName(), tableColumn.getSchemaName());
-            String target = StringUtils.isBlank(owner) ? tableName : owner + "." + tableName;
-            return "ALTER TABLE " + target + " MODIFY (" + tableColumn.getName() + " "
+            // Match the owner used by constraint inspection; setSchema() does not
+            // change the default owner in Informix JDBC.
+            String oldName = tableColumn.getOldColumn() == null
+                    ? StringUtils.defaultIfBlank(tableColumn.getOldName(), tableColumn.getName())
+                    : tableColumn.getOldColumn().getName();
+            String rename = StringUtils.equals(oldName, tableColumn.getName()) ? ""
+                    : "RENAME COLUMN " + target + "." + identifier(oldName) + " TO " + columnName + ";\n";
+            return rename + "ALTER TABLE " + target + " MODIFY (" + columnName + " "
                     + columnDefinition(tableColumn) + ");";
         }
         if (tableColumn.getComment() != null) {
-            return "COMMENT ON COLUMN " + tableColumn.getTableName() + "." + tableColumn.getName()
+            return "COMMENT ON COLUMN " + target + "." + columnName
                     + " IS '" + tableColumn.getComment().replace("'", "''") + "';";
         }
         return "";
     }
 
     static String columnDefinition(TableColumn column) {
-        String type = column.getColumnType();
-        String baseType = type.toUpperCase(Locale.ROOT);
+        String type = column.getColumnType().trim();
+        String baseType = type.replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        if (Set.of("CHARACTER VARYING", "CHAR VARYING").contains(baseType)) {
+            type = "VARCHAR";
+            baseType = type;
+        }
         Integer size = column.getColumnSize();
-        if (size != null && size > 0 && Set.of("CHAR", "CHARACTER", "NCHAR", "VARCHAR", "NVARCHAR", "LVARCHAR",
-                "DECIMAL", "DEC", "NUMERIC", "MONEY").contains(baseType)) {
+        if (size != null && size > 0 && LENGTH_TYPES.contains(baseType)) {
             type += "(" + size;
-            if (Set.of("DECIMAL", "DEC", "NUMERIC", "MONEY").contains(baseType)
+            if (SCALE_TYPES.contains(baseType)
                     && column.getDecimalDigits() != null && column.getDecimalDigits() >= 0) {
                 type += "," + column.getDecimalDigits();
             }
@@ -104,9 +117,9 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
         return definition.toString();
     }
 
-    private String generateIndexAlterSQL(TableIndex tableIndex) {
+    private String generateIndexAlterSQL(TableIndex tableIndex, String owner, String tableName) {
         if (EditStatusEnum.DELETE.name().equals(tableIndex.getEditStatus())) {
-            return "DROP INDEX " + tableIndex.getName() + ";";
+            return "DROP INDEX " + qualifiedTable(owner, tableIndex.getName()) + ";";
         }
         if (EditStatusEnum.ADD.name().equals(tableIndex.getEditStatus())) {
             StringBuilder columnNames = new StringBuilder();
@@ -114,13 +127,26 @@ public class InformixSqlBuilder extends DefaultSqlBuilder {
                 if (columnNames.length() > 0) {
                     columnNames.append(", ");
                 }
-                columnNames.append(column.getColumnName());
+                columnNames.append(identifier(column.getColumnName()));
             }
             boolean unique = IndexTypeEnum.UNIQUE.getName().equals(tableIndex.getType());
-            return "CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + tableIndex.getName() + " ON "
-                    + tableIndex.getTableName() + " (" + columnNames + ");";
+            return "CREATE " + (unique ? "UNIQUE " : "") + "INDEX " + qualifiedTable(owner, tableIndex.getName()) + " ON "
+                    + tableName + " (" + columnNames + ");";
         }
         return "";
+    }
+
+    private static String qualifiedTable(String owner, String name) {
+        // Informix accepts a quoted owner string in ANSI and non-ANSI databases,
+        // including connections without DELIMIDENT. It also preserves owner case.
+        String prefix = StringUtils.isBlank(owner) ? "" : "'" + owner.replace("'", "''") + "'.";
+        return prefix + identifier(name);
+    }
+
+    private static String identifier(String name) {
+        // Ordinary names also work without DELIMIDENT. Names requiring delimiters
+        // use the same DELIMIDENT connection setting required to create them.
+        return name.matches("[A-Za-z_][A-Za-z0-9_$]*") ? name : "\"" + name.replace("\"", "\"\"") + "\"";
     }
 
     private String generateTableCommentSQL(String tableName, String comment) {

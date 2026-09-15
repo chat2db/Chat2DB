@@ -2,6 +2,8 @@ package ai.chat2db.plugin.informix;
 
 import ai.chat2db.plugin.informix.parser.InformixSqlParser;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
+import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
+import ai.chat2db.community.domain.api.service.db.ISqlExecutionCancellation;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.JdbcDriverManager;
 import ai.chat2db.spi.util.JdbcUtils;
@@ -30,6 +32,12 @@ public class InformixExplainClient {
     }
 
     String getExplainInfo(Connection connection, String sql) throws SQLException {
+        return getExplainInfo(connection, sql, null, null);
+    }
+
+    String getExplainInfo(Connection connection, String sql, ISqlExecutionStatementListener listener,
+                          ISqlExecutionCancellation cancellation) throws SQLException {
+        checkCanceled(cancellation);
         List<Token> tokens = new InformixSqlParser().getAllTokensOnDefault(sql).stream()
                 .filter(token -> token.getType() != Token.EOF).toList();
         if (tokens.isEmpty() || !Set.of("SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "MERGE")
@@ -45,19 +53,20 @@ public class InformixExplainClient {
         // Use the existing session for preparation, including its database, temporary
         // tables and transaction. Querying SMI on it would replace the current plan.
         try (Connection observer = openObserver(connection)) {
-            int sessionId;
-            try (Statement statement = connection.createStatement();
-                 ResultSet result = statement.executeQuery(
-                         "SELECT FIRST 1 DBINFO('sessionid') FROM systables")) {
-                if (!result.next()) {
-                    throw new SQLException("Informix session ID is unavailable");
+            int sessionId = withStatement(connection.createStatement(), listener, cancellation, statement -> {
+                try (ResultSet result = statement.executeQuery(
+                        "SELECT FIRST 1 DBINFO('sessionid') FROM systables")) {
+                    if (!result.next()) {
+                        throw new SQLException("Informix session ID is unavailable");
+                    }
+                    return result.getInt(1);
                 }
-                sessionId = result.getInt(1);
-            }
-            try (PreparedStatement prepared = connection.prepareStatement(sql)) {
+            });
+            return withStatement(connection.prepareStatement(sql), listener, cancellation, prepared -> {
                 prepared.getMetaData(); // Force server preparation; never call execute().
-                return readPlan(observer, sessionId);
-            }
+                checkCanceled(cancellation);
+                return readPlan(observer, sessionId, listener, cancellation);
+            });
         }
     }
 
@@ -88,10 +97,11 @@ public class InformixExplainClient {
         return url;
     }
 
-    private String readPlan(Connection observer, int sessionId) throws SQLException {
-        try (PreparedStatement statement = observer.prepareStatement(
+    private String readPlan(Connection observer, int sessionId, ISqlExecutionStatementListener listener,
+                            ISqlExecutionCancellation cancellation) throws SQLException {
+        return withStatement(observer.prepareStatement(
                 "SELECT * FROM sysmaster:syssqexplain WHERE sqx_sessionid = ? "
-                        + "AND sqx_iscurrent = 'Y' AND sqx_ismain = 'Y'")) {
+                        + "AND sqx_iscurrent = 'Y' AND sqx_ismain = 'Y'"), listener, cancellation, statement -> {
             statement.setInt(1, sessionId);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
@@ -110,6 +120,35 @@ public class InformixExplainClient {
                         + "\nEstimated Rows: " + result.getString("sqx_estrows")
                         + "\nDetailed plan: unavailable from the server for this statement";
             }
+        });
+    }
+
+    private static <S extends Statement, T> T withStatement(S statement,
+            ISqlExecutionStatementListener listener, ISqlExecutionCancellation cancellation,
+            StatementOperation<S, T> operation) throws SQLException {
+        try (statement) {
+            if (listener != null) {
+                listener.onStatementCreated(statement);
+            }
+            checkCanceled(cancellation);
+            T result = operation.run(statement);
+            checkCanceled(cancellation);
+            return result;
+        } finally {
+            if (listener != null) {
+                listener.onStatementClosed(statement);
+            }
         }
+    }
+
+    private static void checkCanceled(ISqlExecutionCancellation cancellation) throws SQLException {
+        if (cancellation != null && cancellation.isCanceled()) {
+            throw new SQLException("SQL execution canceled");
+        }
+    }
+
+    @FunctionalInterface
+    private interface StatementOperation<S extends Statement, T> {
+        T run(S statement) throws SQLException;
     }
 }

@@ -1,6 +1,11 @@
 package ai.chat2db.plugin.informix;
 
 import org.junit.jupiter.api.Test;
+import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
 import ai.chat2db.community.domain.api.model.datasource.SSHInfo;
 import java.sql.DatabaseMetaData;
@@ -84,9 +89,75 @@ class InformixExplainClientTest {
         assertThrows(SQLException.class, () -> InformixExplainClient.observerUrl(source, info));
     }
 
+    @Test
+    void cancellationInterruptsTheObserverQueryAndReleasesOnlyOwnedResources() throws Exception {
+        Fixture fixture = new Fixture(new String[]{"sqx_sqlstatementplan"}, new String[]{"PLAN"});
+        fixture.blockQuery = true;
+        AtomicBoolean canceled = new AtomicBoolean();
+        AtomicReference<Statement> active = new AtomicReference<>();
+        List<Statement> created = new ArrayList<>();
+        List<Statement> closed = new ArrayList<>();
+        ISqlExecutionStatementListener listener = new ISqlExecutionStatementListener() {
+            public void onStatementCreated(Statement statement) { created.add(statement); active.set(statement); }
+            public void onStatementClosed(Statement statement) { closed.add(statement); active.compareAndSet(statement, null); }
+        };
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        try {
+            Future<String> plan = worker.submit(() -> fixture.client.getExplainInfo(
+                    fixture.source, "DELETE FROM t", listener, canceled::get));
+            assertTrue(fixture.queryStarted.await(2, TimeUnit.SECONDS));
+            canceled.set(true);
+            assertNotNull(active.get());
+            active.get().cancel();
+            ExecutionException failure = assertThrows(ExecutionException.class, () -> plan.get(2, TimeUnit.SECONDS));
+            assertInstanceOf(SQLException.class, failure.getCause());
+            assertEquals(1, fixture.cancelCalls.get());
+            assertEquals(3, created.size());
+            assertEquals(3, closed.size());
+            assertNull(active.get());
+            assertTrue(fixture.closed.containsAll(List.of("observer", "prepared", "session", "monitor")));
+            assertFalse(fixture.closed.contains("source"));
+        } finally {
+            fixture.queryReleased.countDown();
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(3, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void cancellationDuringRegistrationPreventsQueryExecutionAndUnregistersStatement() throws Exception {
+        Fixture fixture = new Fixture(new String[]{"sqx_sqlstatementplan"}, new String[]{"PLAN"});
+        AtomicBoolean canceled = new AtomicBoolean();
+        AtomicInteger created = new AtomicInteger();
+        AtomicInteger closed = new AtomicInteger();
+        ISqlExecutionStatementListener listener = new ISqlExecutionStatementListener() {
+            public void onStatementCreated(Statement statement) { created.incrementAndGet(); canceled.set(true); }
+            public void onStatementClosed(Statement statement) { closed.incrementAndGet(); }
+        };
+        assertThrows(SQLException.class, () -> fixture.client.getExplainInfo(
+                fixture.source, "SELECT * FROM t", listener, canceled::get));
+        assertEquals(1, created.get());
+        assertEquals(1, closed.get());
+        assertEquals(1, fixture.queryStarted.getCount());
+        assertTrue(fixture.closed.containsAll(List.of("session", "observer")));
+        assertFalse(fixture.closed.contains("source"));
+    }
+
+    @Test
+    void alreadyCanceledRequestDoesNotOpenAnObserver() throws Exception {
+        Fixture fixture = new Fixture(new String[]{"sqx_sqlstatementplan"}, new String[]{"PLAN"});
+        assertThrows(SQLException.class,
+                () -> fixture.client.getExplainInfo(fixture.source, "SELECT 1", null, () -> true));
+        assertTrue(fixture.closed.isEmpty());
+    }
+
     private static final class Fixture {
         final List<String> closed = new ArrayList<>();
-        SQLException queryFailure;
+        volatile SQLException queryFailure;
+        boolean blockQuery;
+        final CountDownLatch queryStarted = new CountDownLatch(1);
+        final CountDownLatch queryReleased = new CountDownLatch(1);
+        final AtomicInteger cancelCalls = new AtomicInteger();
         final Connection source;
         final InformixExplainClient client;
 
@@ -94,7 +165,18 @@ class InformixExplainClientTest {
             CachedRowSet plan = rows(columns, values);
             PreparedStatement monitor = proxy(PreparedStatement.class, "monitor", (method, args) -> switch (method) {
                 case "setInt" -> { assertEquals(73, args[1]); yield null; }
-                case "executeQuery" -> { if (queryFailure != null) throw queryFailure; yield plan; }
+                case "executeQuery" -> {
+                    queryStarted.countDown();
+                    if (blockQuery && !queryReleased.await(3, TimeUnit.SECONDS)) throw new SQLException("Probe timed out");
+                    if (queryFailure != null) throw queryFailure;
+                    yield plan;
+                }
+                case "cancel" -> {
+                    cancelCalls.incrementAndGet();
+                    queryFailure = new SQLException("Query canceled");
+                    queryReleased.countDown();
+                    yield null;
+                }
                 default -> throw new AssertionError("Unexpected monitor call: " + method);
             });
             Connection observer = proxy(Connection.class, "observer", (method, args) -> {

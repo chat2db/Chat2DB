@@ -7,6 +7,7 @@ import ai.chat2db.community.domain.api.model.result.ExecuteResponse;
 import ai.chat2db.community.domain.api.model.result.ResultCell;
 import ai.chat2db.community.domain.api.model.sql.SqlExecuteRequest;
 import ai.chat2db.community.domain.api.service.db.ISqlExecutionResultConsumer;
+import ai.chat2db.community.domain.api.service.db.ISqlExecutionStatementListener;
 import ai.chat2db.community.tools.exception.BusinessException;
 import ai.chat2db.community.tools.util.I18nUtils;
 import ai.chat2db.plugin.informix.builder.InformixSqlBuilder;
@@ -146,7 +147,15 @@ class InformixNativeTest {
             public void updateCount(ExecuteResponse response) { fail("EXPLAIN produced an update count"); }
             public void statementFinished(String sql, long duration) { }
         };
-        InformixCommandExecutor.INSTANCE.executeStreaming(request("SELECT * FROM " + table), consumer, null, () -> false);
+        List<Statement> created = new ArrayList<>();
+        List<Statement> closed = new ArrayList<>();
+        ISqlExecutionStatementListener listener = new ISqlExecutionStatementListener() {
+            public void onStatementCreated(Statement statement) { created.add(statement); }
+            public void onStatementClosed(Statement statement) { closed.add(statement); }
+        };
+        InformixCommandExecutor.INSTANCE.executeStreaming(request("SELECT * FROM " + table), consumer, listener, () -> false);
+        assertEquals(3, created.size());
+        assertEquals(new HashSet<>(created), new HashSet<>(closed));
         assertEquals(1, starts[0]);
         assertEquals(1, finished.size());
         assertEquals(1, rows.size());
@@ -195,6 +204,75 @@ class InformixNativeTest {
         assertThrows(SQLException.class, () -> execute("INSERT INTO " + parent + " VALUES(1,-1)"));
     }
 
+    @Test
+    void changingVarcharToAliasPreservesExistingTextAndLength() throws Exception {
+        String table = create("note VARCHAR(16) DEFAULT 'four' NOT NULL");
+        execute("INSERT INTO " + table + "(note) VALUES('four')");
+        TableColumn column = column(table, "note", "character varying");
+        column.setColumnSize(64);
+        column.setDefaultValue("'four'");
+        column.setNullable(0);
+        alter(table, column);
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery("SELECT note FROM " + table)) {
+            assertTrue(result.next());
+            assertEquals("four", result.getString(1));
+        }
+        try (ResultSet columns = connection.getMetaData().getColumns(null, "informix", table, "note")) {
+            assertTrue(columns.next());
+            assertEquals(64, columns.getInt("COLUMN_SIZE"));
+            assertEquals(DatabaseMetaData.columnNoNulls, columns.getInt("NULLABLE"));
+        }
+    }
+
+    @Test
+    @EnabledIfEnvironmentVariable(named = "INFORMIX_TEST_ANSI_URL", matches = ".+")
+    void renameOnlyChangesTheSelectedOwnerInAnsiDatabase() throws Exception {
+        String name = "ifx_owner_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String owner = "other_owner";
+        try (Connection ansi = JdbcDriverManager.getConnection(System.getenv("INFORMIX_TEST_ANSI_URL"),
+                System.getenv("INFORMIX_TEST_USER"), System.getenv("INFORMIX_TEST_PASSWORD"), driverConfig);
+             Statement statement = ansi.createStatement()) {
+            List<String> created = new ArrayList<>();
+            try {
+                statement.execute("CREATE TABLE 'informix'." + name + " (id INTEGER)");
+                created.add("'informix'." + name);
+                statement.execute("CREATE TABLE '" + owner + "'." + name + " (id INTEGER)");
+                created.add("'" + owner + "'." + name);
+                statement.execute("INSERT INTO 'informix'." + name + " VALUES(1)");
+                statement.execute("INSERT INTO '" + owner + "'." + name + " VALUES(2)");
+                Table before = Table.builder().schemaName(owner).name(name).columnList(List.of()).indexList(List.of()).build();
+                Table after = Table.builder().schemaName(owner).name(name + "_new").columnList(List.of()).indexList(List.of()).build();
+                statement.execute(new InformixSqlBuilder().buildAlterTable(before, after));
+                created.set(1, "'" + owner + "'." + name + "_new");
+                try (ResultSet rows = statement.executeQuery("SELECT id FROM 'informix'." + name)) {
+                    assertTrue(rows.next()); assertEquals(1, rows.getInt(1));
+                }
+                try (ResultSet rows = statement.executeQuery("SELECT id FROM '" + owner + "'." + name + "_new")) {
+                    assertTrue(rows.next()); assertEquals(2, rows.getInt(1));
+                }
+            } finally {
+                for (String table : created) statement.execute("DROP TABLE " + table);
+            }
+        }
+    }
+
+    @Test
+    void renameWithTypeModificationUsesTheNewTableAndColumnNames() throws Exception {
+        String table = create("qty SMALLINT DEFAULT 1 NOT NULL");
+        execute("INSERT INTO " + table + " VALUES(7)");
+        TableColumn column = column(table, "quantity", "INTEGER");
+        column.setOldName("qty"); column.setDefaultValue("1"); column.setNullable(0);
+        Table before = Table.builder().schemaName("informix").name(table).columnList(List.of()).indexList(List.of()).build();
+        Table after = Table.builder().name(table + "_new").columnList(List.of(column)).indexList(List.of()).build();
+        String script = new InformixSqlBuilder().buildAlterTable(before, after);
+        String[] statements = script.split(";");
+        execute(statements[0]);
+        tables.set(tables.size() - 1, table + "_new");
+        for (int i = 1; i < statements.length; i++) if (!statements[i].isBlank()) execute(statements[i]);
+        assertEquals(7, scalar("SELECT quantity FROM " + table + "_new"));
+    }
+
     private String create(String columns) throws Exception {
         String table = "ifx_2488_" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         execute("CREATE TABLE " + table + " (" + columns + ")");
@@ -222,7 +300,7 @@ class InformixNativeTest {
         Table before = Table.builder().name(table).schemaName("informix").columnList(List.of()).indexList(List.of()).build();
         Table after = Table.builder().name(table).columnList(List.of(column)).indexList(List.of()).build();
         String sql = new InformixSqlBuilder().buildAlterTable(before, after);
-        assertTrue(sql.startsWith("ALTER TABLE informix." + table));
+        assertTrue(sql.startsWith("ALTER TABLE 'informix'." + table));
         execute(sql);
     }
 
