@@ -2,8 +2,9 @@ package ai.chat2db.spi.constant;
 
 public final class SQLConstants {
 
-    // Internal pagination alias. Keep the historical spelling for existing dialects.
-    public static final String PAGINATION_ROW_ID = "CAHT2DB_AUTO_ROW_ID";
+    // Prefix for per-request pagination columns; never a globally reserved result name.
+    public static final String PAGINATION_ROW_ID_KEY = "paginationRowId";
+    public static final String PAGINATION_ROW_ID = "CHAT2DB_AUTO_ROW_ID";
 
     public static final String EMPTY = "";
     public static final String SPACE = " ";

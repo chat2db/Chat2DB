@@ -21,15 +21,13 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 
-import static ai.chat2db.spi.constant.SQLConstants.PAGINATION_ROW_ID;
-
 public final class OracleSqlBuilderConstants {
 
     public static final String SQL_WHERE_ROWID_IN_OPEN_PAREN_SELECT_ROWID_FROM = " where rowid in (select rowid from ";
     public static final String VALUE_AND_ROWNUM_EQUAL_1_CLOSE_PAREN = " and rownum = 1)";
     public static final String VALUE_DOUBLE_QUOTE_IS_SINGLE_QUOTE = "\" IS '";
     public static final String SQL_CLOSE_PAREN_TMP_PAGE_WHERE_ROWNUM_EQUAL = " ) TMP_PAGE WHERE ROWNUM <= ";
-    public static final String SQL_CLOSE_PAREN_WHERE_CAHT2DB_AUTO_ROW_ID = " ) WHERE " + PAGINATION_ROW_ID + " > ";
+    public static final String SQL_CLOSE_PAREN_WHERE_CHAT2DB_AUTO_ROW_ID = " ) WHERE %s > ";
     public static final String UNDEFINED_KEYWORD = "undefined";
     public static final String SQL_SHARING_EQUAL = "SHARING = ";
     public static final String SQL_DEFAULT_COLLATE = "DEFAULT COLLATE ";
@@ -44,7 +42,7 @@ public final class OracleSqlBuilderConstants {
     public static final String SQL_RENAME = "RENAME TO ";
     public static final String SQL_REPLACE = "OR REPLACE ";
     public static final String SQL_SELECT = "SELECT * FROM ( ";
-    public static final String SQL_SELECT_TMP_PAGE_ROWNUM_CAHT2DB = " SELECT TMP_PAGE.*, ROWNUM " + PAGINATION_ROW_ID + " FROM ( ";
+    public static final String SQL_SELECT_TMP_PAGE_ROWNUM_CHAT2DB = " SELECT TMP_PAGE.*, ROWNUM %s FROM ( ";
 
     private OracleSqlBuilderConstants() {
     }

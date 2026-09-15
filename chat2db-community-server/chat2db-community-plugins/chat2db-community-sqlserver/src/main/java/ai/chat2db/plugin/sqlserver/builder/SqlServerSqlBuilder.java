@@ -302,10 +302,11 @@ public class SqlServerSqlBuilder extends DefaultSqlBuilder {
         // SQL Server < 2012: use ROW_NUMBER() window function
         int startRow = offset + 1;
         int endRow = offset + pageSize;
+        String rowId = request.createPaginationRowId();
         StringBuilder sqlBuilder = new StringBuilder(sql.length() + 120);
-        sqlBuilder.append(SQL_ROW_NUMBER_PREFIX);
+        sqlBuilder.append(SQL_ROW_NUMBER_PREFIX.formatted(rowId));
         sqlBuilder.append(sql);
-        sqlBuilder.append(SQL_ROW_NUMBER_SUFFIX);
+        sqlBuilder.append(SQL_ROW_NUMBER_SUFFIX.formatted(rowId));
         sqlBuilder.append(startRow);
         sqlBuilder.append(SQL_AND);
         sqlBuilder.append(endRow);

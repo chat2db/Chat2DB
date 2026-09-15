@@ -156,6 +156,29 @@ class SqlServerSqlBuilderTest {
         return buildCopyWhere(columnType, Collections.singletonList(value));
     }
 
+    @Test
+    void legacyPaginationRecordsItsGeneratedColumnWhileModernPaginationDoesNot() {
+        ConnectInfo info = new ConnectInfo();
+        info.setDbType("SQLSERVER");
+        info.setDbVersion("10.0");
+        info.setDriverConfig(new DriverConfig());
+        Chat2DBContext.putContext(info);
+        try {
+            PageLimitRequest request = PageLimitRequest.builder().sql("SELECT * FROM users").offset(10).pageSize(10).build();
+            String sql = new SqlServerSqlBuilder().buildPageLimit(request);
+            String rowId = request.getPaginationRowId();
+            org.junit.jupiter.api.Assertions.assertTrue(rowId.matches("CHAT2DB_AUTO_ROW_ID_[a-f0-9]{10}"));
+            org.junit.jupiter.api.Assertions.assertTrue(sql.contains(" AS " + rowId + " FROM"));
+            org.junit.jupiter.api.Assertions.assertTrue(sql.endsWith(rowId + " BETWEEN 11 AND 20"));
+            info.setDbVersion("15.0");
+            PageLimitRequest modern = PageLimitRequest.builder().sql("SELECT * FROM users").offset(10).pageSize(10).build();
+            new SqlServerSqlBuilder().buildPageLimit(modern);
+            org.junit.jupiter.api.Assertions.assertNull(modern.getPaginationRowId());
+        } finally {
+            Chat2DBContext.removeContext();
+        }
+    }
+
     private static String buildPageLimit(String sql) {
         ConnectInfo connectInfo = new ConnectInfo();
         connectInfo.setDbType("SQLSERVER");

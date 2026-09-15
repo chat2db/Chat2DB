@@ -82,6 +82,7 @@ public class QueryResultExportTaskExecutor implements TaskExecutor<ExportTaskSpe
         DbDmlExportRequest request = new DbDmlExportRequest();
         request.setSql(spec.getSql());
         request.setOriginalSql(spec.getOriginalSql());
+        request.setPaginationRowId(spec.getPaginationRowId());
         request.setDatabaseName(spec.getTarget().getDatabaseName());
         request.setSchemaName(spec.getTarget().getSchemaName());
         request.setResultSetId(spec.getResultSetId());

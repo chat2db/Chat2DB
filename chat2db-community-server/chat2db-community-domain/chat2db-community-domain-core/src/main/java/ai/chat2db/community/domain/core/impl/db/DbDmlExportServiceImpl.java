@@ -102,6 +102,9 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
         }
         String tableName = resolveTableName(sql, param.getDatabaseName(), param.getSchemaName());
         param.setSql(sql);
+        if (EasyEnumUtils.getEnum(ExportSizeEnum.class, param.getExportSize()) != ExportSizeEnum.CURRENT_PAGE) {
+            param.setPaginationRowId(null);
+        }
         return DbDmlExportPlan.builder()
                 .fileName(buildFileName(tableName))
                 .exportType(exportType)
@@ -119,12 +122,12 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
         SqlExecutionPlan plan = authorizeExport(param);
         ExportTypeEnum exportType = ExportTypeEnum.from(param.getExportType());
         if (ExportTypeEnum.CSV == exportType) {
-            exportCsv(plan, outputStream, param.getResultSetId(), statementListener, cancellationChecker,
+            exportCsv(plan, outputStream, param.getResultSetId(), param.getPaginationRowId(), statementListener, cancellationChecker,
                     rowListener, finalizationListener);
             return;
         }
         if (ExportTypeEnum.EXCEL == exportType) {
-            exportExcel(plan, outputStream, param.getResultSetId(), statementListener, cancellationChecker,
+            exportExcel(plan, outputStream, param.getResultSetId(), param.getPaginationRowId(), statementListener, cancellationChecker,
                     rowListener, finalizationListener);
             return;
         }
@@ -161,6 +164,15 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
         return sql;
     }
 
+    private List<Integer> exportColumnIndexes(SqlExecutionPlan plan, List<Header> headers, String paginationRowId) {
+        List<Integer> indexes = new ArrayList<>(sqlExecutionPolicyManager.includedColumnIndexes(plan, headers));
+        int last = headers.size() - 1;
+        if (paginationRowId != null && last >= 0 && paginationRowId.equalsIgnoreCase(headers.get(last).getName())) {
+            indexes.remove(Integer.valueOf(last));
+        }
+        return indexes;
+    }
+
     private String buildFileName(String tableName) {
         return URLEncoder.encode(
                         tableName + "_" + LocalDateTime.now().format(DatePattern.PURE_DATETIME_FORMATTER),
@@ -168,7 +180,7 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
                 .replaceAll("\\+", "%20");
     }
 
-    private void exportCsv(SqlExecutionPlan plan, OutputStream outputStream, Integer resultSetId,
+    private void exportCsv(SqlExecutionPlan plan, OutputStream outputStream, Integer resultSetId, String paginationRowId,
             ISqlExecutionStatementListener statementListener, Runnable cancellationChecker,
             LongConsumer exportedRowsListener, Runnable fileFinalizationListener) {
         ExcelWrapper excelWrapper = new ExcelWrapper();
@@ -179,7 +191,7 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
                     .excelType(ExcelTypeEnum.CSV);
             List<Integer> includedIndexes = new ArrayList<>();
             DefaultSQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), plan.getSql(), headerList -> {
-                includedIndexes.addAll(sqlExecutionPolicyManager.includedColumnIndexes(plan, headerList));
+                includedIndexes.addAll(exportColumnIndexes(plan, headerList, paginationRowId));
                 excelWriterBuilder.head(EasyCollectionUtils.toList(select(headerList, includedIndexes),
                         header -> Lists.newArrayList(header.getName())));
                 excelWrapper.setExcelWriter(excelWriterBuilder.build());
@@ -198,7 +210,7 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
         }
     }
 
-    private void exportExcel(SqlExecutionPlan plan, OutputStream outputStream, Integer resultSetId,
+    private void exportExcel(SqlExecutionPlan plan, OutputStream outputStream, Integer resultSetId, String paginationRowId,
             ISqlExecutionStatementListener statementListener, Runnable cancellationChecker,
             LongConsumer exportedRowsListener, Runnable fileFinalizationListener) {
         ExcelWrapper excelWrapper = new ExcelWrapper();
@@ -209,7 +221,7 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
                     .excelType(ExcelTypeEnum.XLSX);
             List<Integer> includedIndexes = new ArrayList<>();
             DefaultSQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), plan.getSql(), headerList -> {
-                includedIndexes.addAll(sqlExecutionPolicyManager.includedColumnIndexes(plan, headerList));
+                includedIndexes.addAll(exportColumnIndexes(plan, headerList, paginationRowId));
                 List<List<String>> head = EasyCollectionUtils.toList(select(headerList, includedIndexes),
                         header -> Lists.newArrayList(header.getName()));
                 excelWrapper.setExcelWriter(excelWriterBuilder.build());
@@ -247,7 +259,7 @@ public class DbDmlExportServiceImpl implements IDbDmlExportService {
             IValueProcessor valueProcessor = Chat2DBContext.getDbMetaData().getValueProcessor();
             List<Integer> includedIndexes = new ArrayList<>();
             DefaultSQLExecutor.getInstance().execute(Chat2DBContext.getConnection(), plan.getSql(), headerList -> {
-                includedIndexes.addAll(sqlExecutionPolicyManager.includedColumnIndexes(plan, headerList));
+                includedIndexes.addAll(exportColumnIndexes(plan, headerList, param.getPaginationRowId()));
                 List<Header> includedHeaders = select(headerList, includedIndexes);
                 if (includedHeaders.isEmpty()) {
                     throw new IllegalStateException("SQL export has no authorized columns");

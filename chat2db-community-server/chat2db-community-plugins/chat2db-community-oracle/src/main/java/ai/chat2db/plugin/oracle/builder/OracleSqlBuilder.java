@@ -230,10 +230,11 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         int pageSize = request.getPageSize();
         int startRow = offset;
         int endRow = offset + pageSize;
+        String rowId = startRow > 0 ? request.createPaginationRowId() : null;
         StringBuilder sqlBuilder = new StringBuilder(sql.length() + 120);
         sqlBuilder.append(SQL_SELECT);
         if (startRow > 0) {
-            sqlBuilder.append(SQL_SELECT_TMP_PAGE_ROWNUM_CAHT2DB);
+            sqlBuilder.append(SQL_SELECT_TMP_PAGE_ROWNUM_CHAT2DB.formatted(rowId));
         }
         sqlBuilder.append(SQLConstants.LINE_SEPARATOR);
         sqlBuilder.append(sql);
@@ -241,7 +242,7 @@ public class OracleSqlBuilder extends DefaultSqlBuilder {
         sqlBuilder.append(SQL_CLOSE_PAREN_TMP_PAGE_WHERE_ROWNUM_EQUAL);
         sqlBuilder.append(endRow);
         if (startRow > 0) {
-            sqlBuilder.append(SQL_CLOSE_PAREN_WHERE_CAHT2DB_AUTO_ROW_ID);
+            sqlBuilder.append(SQL_CLOSE_PAREN_WHERE_CHAT2DB_AUTO_ROW_ID.formatted(rowId));
             sqlBuilder.append(startRow);
         }
         return sqlBuilder.toString();

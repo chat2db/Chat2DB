@@ -335,12 +335,9 @@ public class DefaultDBManager implements IDbManager {
         context.write(String.format(RECORD_TITLE, tableName));
         logTableQueryStarted(context, tableName);
         while (!finish.get()) {
-            String pageSql = sqlBuilder.dql().buildPageLimit(PageLimitRequest.builder()
-                    .sql(tableQuerySql)
-                    .offset(offset)
-                    .pageNo(page)
-                    .pageSize(batchSize)
-                    .build());
+            PageLimitRequest pageRequest = PageLimitRequest.builder()
+                    .sql(tableQuerySql).offset(offset).pageNo(page).pageSize(batchSize).build();
+            String pageSql = sqlBuilder.dql().buildPageLimit(pageRequest);
             DefaultSQLExecutor.getInstance().fetchAllTableRecords(FetchAllTableRecordsRequest.builder()
                     .connection(connection)
                     .sql(pageSql)
@@ -350,12 +347,17 @@ public class DefaultDBManager implements IDbManager {
                     .consumer(resultSet -> {
                 ResultSetMetaData metaData = resultSet.getMetaData();
                 List<String> columnList = ResultSetUtils.getRsHeader(resultSet);
+                int columnCount = metaData.getColumnCount();
+                String rowId = pageRequest.getPaginationRowId();
+                if (rowId != null && rowId.equalsIgnoreCase(columnList.get(columnCount - 1))) {
+                    columnList.remove(--columnCount);
+                }
                 List<String> valueList = new ArrayList<>();
                 int n = 0;
                 while (resultSet.next()) {
                     n++;
                     long currentExportedRows = exportedRows.incrementAndGet();
-                    for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                    for (int i = 1; i <= columnCount; i++) {
                         IValueProcessor valueProcessor = Chat2DBContext.getDbMetaData().getValueProcessor();
                         JDBCDataValue jdbcDataValue = new JDBCDataValue(resultSet, metaData, i, false);
                         String valueString = valueProcessor.getJdbcSqlValueString(jdbcDataValue);

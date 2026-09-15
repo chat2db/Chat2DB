@@ -21,4 +21,6 @@ public class DbDmlExportRequest {
     private String exportSize;
 
     private String originalSql;
+
+    private String paginationRowId;
 }

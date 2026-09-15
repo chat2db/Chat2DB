@@ -45,6 +45,7 @@ export interface ExportTaskParams extends IDatabaseBaseInfo {
   tableNames?: string[];
   sql?: string;
   originalSql?: string;
+  paginationRowId?: string;
   resultSetId?: number;
   exportSize?: string;
   format: ImportExportFileType;

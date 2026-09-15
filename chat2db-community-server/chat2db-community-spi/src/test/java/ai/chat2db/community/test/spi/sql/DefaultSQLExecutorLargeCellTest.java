@@ -162,7 +162,7 @@ class DefaultSQLExecutorLargeCellTest {
     }
 
     @Test
-    void queryResultStripsLegacyTypoAutoRowIdColumn() throws Exception {
+    void queryResultPreservesLegacySpellingAsUserColumn() throws Exception {
         try (Connection connection = DriverManager.getConnection(
                 "jdbc:h2:mem:sql_executor_legacy_auto_row_id;DB_CLOSE_DELAY=-1")) {
             putContext(connection);
@@ -175,8 +175,8 @@ class DefaultSQLExecutorLargeCellTest {
                     .count(1)
                     .build());
 
-            assertEquals(List.of("NAME"), result.getHeaderList().stream().map(Header::getName).toList());
-            assertEquals(List.of(List.of("visible")), result.getDisplayDataList());
+            assertEquals(List.of("CAHT2DB_AUTO_ROW_ID", "NAME"), result.getHeaderList().stream().map(Header::getName).toList());
+            assertEquals(List.of(List.of("7", "visible")), result.getDisplayDataList());
         }
     }
 

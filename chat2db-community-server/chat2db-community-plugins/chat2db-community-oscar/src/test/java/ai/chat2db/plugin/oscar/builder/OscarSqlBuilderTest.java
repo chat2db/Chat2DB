@@ -28,16 +28,19 @@ class OscarSqlBuilderTest {
     void shouldApplyUpperAndLowerBoundsAfterFirstPage() {
         OscarSqlBuilder builder = new OscarSqlBuilder();
 
-        String sql = builder.buildPageLimit(PageLimitRequest.builder()
+        PageLimitRequest request = PageLimitRequest.builder()
                 .sql("SELECT ID, NAME FROM EMPLOYEE")
                 .offset(10)
                 .pageNo(2)
                 .pageSize(10)
-                .build());
+                .build();
+        String sql = builder.buildPageLimit(request);
+        String rowId = request.getPaginationRowId();
+        org.junit.jupiter.api.Assertions.assertTrue(rowId.matches("CHAT2DB_AUTO_ROW_ID_[a-f0-9]{10}"));
 
-        assertEquals("SELECT * FROM (  SELECT TMP_PAGE.*, ROWNUM " + PAGINATION_ROW_ID + " FROM ( \n"
+        assertEquals("SELECT * FROM (  SELECT TMP_PAGE.*, ROWNUM " + rowId + " FROM ( \n"
                         + "SELECT ID, NAME FROM EMPLOYEE\n"
-                        + " ) TMP_PAGE WHERE ROWNUM <= 20 ) WHERE " + PAGINATION_ROW_ID + " > 10",
+                        + " ) TMP_PAGE WHERE ROWNUM <= 20 ) WHERE " + rowId + " > 10",
                 sql);
     }
 }

@@ -18,6 +18,8 @@ public class TaskExportRequest extends DataSourceBaseRequest {
 
     private String originalSql;
 
+    private String paginationRowId;
+
     private Integer resultSetId;
 
     private String exportSize;

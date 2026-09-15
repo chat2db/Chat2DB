@@ -155,6 +155,38 @@ class DbDmlExportServicePolicyTest {
         assertEquals(2, sql.lines().filter(line -> !line.isBlank()).count(), sql);
     }
 
+    @Test
+    void currentPageExportsExcludeOnlyTheRecordedHelper() throws Exception {
+        String rowId = "CHAT2DB_AUTO_ROW_ID_0123456789";
+        jdbcExecution.columns = List.of("CHAT2DB_AUTO_ROW_ID", "CAHT2DB_AUTO_ROW_ID", rowId);
+        jdbcExecution.rows = List.of(List.of("7", "8", "1"));
+        var plainService = new DbDmlExportServiceImpl(new SqlExecutionPolicyManager(List.of()),
+                new ExportCellProcessorChain(List.of()));
+        for (String format : List.of("CSV", "EXCEL", "INSERT")) {
+            for (String size : List.of("CURRENT_PAGE", "ALL")) {
+                DbDmlExportRequest request = new DbDmlExportRequest();
+                request.setSql("SELECT * FROM orders"); request.setOriginalSql("SELECT * FROM orders");
+                request.setExportSize(size); request.setExportType(format); request.setPaginationRowId(rowId);
+                plainService.prepareExport(request);
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                plainService.export(request, output, null, () -> {}, ignored -> {}, () -> {});
+                if (format.equals("EXCEL")) {
+                    try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(output.toByteArray()))) {
+                        assertEquals(size.equals("ALL") ? 3 : 2,
+                                workbook.getSheetAt(0).getRow(0).getPhysicalNumberOfCells());
+                        assertEquals("7", workbook.getSheetAt(0).getRow(1).getCell(0).getStringCellValue());
+                        assertEquals("8", workbook.getSheetAt(0).getRow(1).getCell(1).getStringCellValue());
+                    }
+                } else {
+                    String exported = output.toString(StandardCharsets.UTF_8);
+                    assertTrue(exported.contains("CHAT2DB_AUTO_ROW_ID"));
+                    assertTrue(exported.contains("CAHT2DB_AUTO_ROW_ID"));
+                    assertEquals(size.equals("ALL"), exported.contains(rowId));
+                }
+            }
+        }
+    }
+
     private ByteArrayOutputStream export(String exportType) throws Exception {
         DbDmlExportRequest request = new DbDmlExportRequest();
         request.setSql("SELECT 1");
@@ -198,8 +230,8 @@ class DbDmlExportServicePolicyTest {
     }
 
     private static final class JdbcExecution {
-        private final List<String> columns = List.of("id", "email", "secret");
-        private final List<List<String>> rows = List.of(
+        private List<String> columns = List.of("id", "email", "secret");
+        private List<List<String>> rows = List.of(
                 List.of("1", "first@example.com", "TOP_SECRET_1"),
                 List.of("2", "second@example.com", "TOP_SECRET_2"),
                 List.of("3", "third@example.com", "TOP_SECRET_3"));

@@ -183,6 +183,7 @@ export interface IManageResultData {
   executionMetrics?: IExecutionMetrics;
   executionContext?: IExecutionContext;
   extra?: {
+    paginationRowId?: string;
     messages?: ISqlExecutionMessage[];
     [key: string]: any;
   };

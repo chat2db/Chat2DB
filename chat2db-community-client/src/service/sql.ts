@@ -236,6 +236,7 @@ const deleteTablePin = createRequest<IUniversalTableParams, void>('/api/pin/tabl
 const getDMLCount = createRequest<IDmlResultRequest, number>('/api/rdb/dml/count', { method: 'post' });
 
 export interface IExportParams extends IDmlResultRequest {
+  paginationRowId?: string;
   originalSql: string;
   exportType: ExportTypeEnum;
   exportSize: ExportSizeEnum;

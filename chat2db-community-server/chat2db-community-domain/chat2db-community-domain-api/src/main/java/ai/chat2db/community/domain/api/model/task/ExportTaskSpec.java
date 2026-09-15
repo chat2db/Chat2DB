@@ -25,6 +25,8 @@ public class ExportTaskSpec implements TaskSpec {
 
     private String originalSql;
 
+    private String paginationRowId;
+
     private Integer resultSetId;
 
     private String exportSize;

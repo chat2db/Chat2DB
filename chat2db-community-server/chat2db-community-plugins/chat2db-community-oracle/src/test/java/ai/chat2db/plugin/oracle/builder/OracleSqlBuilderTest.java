@@ -22,23 +22,26 @@ class OracleSqlBuilderTest {
                 .build());
 
         assertEquals("SELECT * FROM ( \nSELECT ID, NAME FROM EMPLOYEE\n ) TMP_PAGE WHERE ROWNUM <= 10", sql);
-        assertFalse(sql.contains("CAHT2DB_AUTO_ROW_ID"));
+        assertFalse(sql.contains("CHAT2DB_AUTO_ROW_ID"));
     }
 
     @Test
     void shouldApplyUpperAndLowerBoundsAfterFirstPage() {
         OracleSqlBuilder builder = new OracleSqlBuilder();
 
-        String sql = builder.buildPageLimit(PageLimitRequest.builder()
+        PageLimitRequest request = PageLimitRequest.builder()
                 .sql("SELECT ID, NAME FROM EMPLOYEE")
                 .offset(10)
                 .pageNo(2)
                 .pageSize(10)
-                .build());
+                .build();
+        String sql = builder.buildPageLimit(request);
+        String rowId = request.getPaginationRowId();
+        org.junit.jupiter.api.Assertions.assertTrue(rowId.matches("CHAT2DB_AUTO_ROW_ID_[a-f0-9]{10}"));
 
-        assertEquals("SELECT * FROM (  SELECT TMP_PAGE.*, ROWNUM CAHT2DB_AUTO_ROW_ID FROM ( \n"
+        assertEquals("SELECT * FROM (  SELECT TMP_PAGE.*, ROWNUM " + rowId + " FROM ( \n"
                         + "SELECT ID, NAME FROM EMPLOYEE\n"
-                        + " ) TMP_PAGE WHERE ROWNUM <= 20 ) WHERE CAHT2DB_AUTO_ROW_ID > 10",
+                        + " ) TMP_PAGE WHERE ROWNUM <= 20 ) WHERE " + rowId + " > 10",
                 sql);
     }
 

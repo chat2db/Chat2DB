@@ -147,10 +147,11 @@ public class DB2SqlBuilder extends DefaultSqlBuilder {
         int pageSize = request.getPageSize();
         int startRow = offset + 1;
         int endRow = offset + pageSize;
+        String rowId = request.createPaginationRowId();
         StringBuilder sqlBuilder = new StringBuilder(sql.length() + 120);
-        sqlBuilder.append(SQL_SELECT_SELECT_TMP_PAGE_ROWNUMBER);
+        sqlBuilder.append(SQL_SELECT_SELECT_TMP_PAGE_ROWNUMBER.formatted(rowId));
         sqlBuilder.append(sql);
-        sqlBuilder.append(SQL_CLOSE_PAREN_AS_TMP_PAGE_CLOSE_PAREN_TMP_PAGE_WHERE_CAHT2DB_AUTO_ROW_ID);
+        sqlBuilder.append(SQL_CLOSE_PAREN_AS_TMP_PAGE_CLOSE_PAREN_TMP_PAGE_WHERE_CHAT2DB_AUTO_ROW_ID.formatted(rowId));
         sqlBuilder.append(startRow);
         sqlBuilder.append(SQL_AND);
         sqlBuilder.append(endRow);

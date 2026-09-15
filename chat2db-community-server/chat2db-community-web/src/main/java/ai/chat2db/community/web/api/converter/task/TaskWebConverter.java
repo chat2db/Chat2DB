@@ -37,6 +37,7 @@ public class TaskWebConverter {
                 .tableNames(request.getTableNames())
                 .sql(request.getSql())
                 .originalSql(request.getOriginalSql())
+                .paginationRowId(request.getPaginationRowId())
                 .resultSetId(request.getResultSetId())
                 .exportSize(exportSize)
                 .format(format)

@@ -25,6 +25,7 @@ export default memo<IProps>((props) => {
       ...(executeSqlParams || {}),
       sql: resultData.sql,
       originalSql: resultData.originalSql,
+      paginationRowId: exportSize === ExportSizeEnum.CURRENT_PAGE ? resultData.extra?.paginationRowId : undefined,
       exportType,
       exportSize,
     };

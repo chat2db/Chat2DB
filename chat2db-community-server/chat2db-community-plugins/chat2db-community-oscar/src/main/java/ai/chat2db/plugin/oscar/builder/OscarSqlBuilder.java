@@ -114,15 +114,16 @@ public class OscarSqlBuilder extends OscarBaseSqlBuilder {
         int startRow = request.getOffset();
         int pageSize = request.getPageSize();
         int endRow = startRow + pageSize;
+        String rowId = startRow > 0 ? request.createPaginationRowId() : null;
         StringBuilder sqlBuilder = new StringBuilder(sql.length() + 120);
         sqlBuilder.append(OscarConstants.PAGE_OUTER_SELECT_PREFIX);
         if (startRow > 0) {
-            sqlBuilder.append(OscarConstants.PAGE_INNER_SELECT_PREFIX);
+            sqlBuilder.append(OscarConstants.PAGE_INNER_SELECT_PREFIX.formatted(rowId));
         }
         sqlBuilder.append(SQLConstants.LINE_SEPARATOR).append(sql).append(SQLConstants.LINE_SEPARATOR);
         sqlBuilder.append(OscarConstants.PAGE_ROWNUM_FILTER_SQL).append(endRow);
         if (startRow > 0) {
-            sqlBuilder.append(OscarConstants.PAGE_AUTO_ROW_ID_FILTER_SQL).append(startRow);
+            sqlBuilder.append(OscarConstants.PAGE_AUTO_ROW_ID_FILTER_SQL.formatted(rowId)).append(startRow);
         }
         return sqlBuilder.toString();
     }
