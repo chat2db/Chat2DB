@@ -45,6 +45,8 @@ final class RunningTask {
 
     private volatile boolean closed;
 
+    private boolean resourcesCancelled;
+
     RunningTask(Long taskId) {
         this(taskId, CANCELLATION_EXECUTOR);
     }
@@ -81,7 +83,7 @@ final class RunningTask {
                 return false;
             }
             currentFuture = future;
-            currentCancelables = List.copyOf(cancelables);
+            currentCancelables = cancelResourcesLocked();
         }
         if (currentFuture != null) {
             currentFuture.cancel(mayInterruptIfRunning);
@@ -90,13 +92,29 @@ final class RunningTask {
         return true;
     }
 
+    void cancelResources() {
+        List<TaskCancelable> resources;
+        synchronized (cancellationLock) {
+            resources = cancelResourcesLocked();
+        }
+        resources.forEach(this::cancelRegisteredResourceAsync);
+    }
+
+    private List<TaskCancelable> cancelResourcesLocked() {
+        if (resourcesCancelled) {
+            return List.of();
+        }
+        resourcesCancelled = true;
+        return List.copyOf(cancelables);
+    }
+
     void registerCancelable(TaskCancelable resource) {
         if (resource == null) {
             return;
         }
         boolean cancelImmediately;
         synchronized (cancellationLock) {
-            cancelImmediately = cancelables.add(resource) && cancellationToken.isCancelled();
+            cancelImmediately = cancelables.add(resource) && resourcesCancelled;
         }
         if (cancelImmediately) {
             cancelRegisteredResourceAsync(resource);

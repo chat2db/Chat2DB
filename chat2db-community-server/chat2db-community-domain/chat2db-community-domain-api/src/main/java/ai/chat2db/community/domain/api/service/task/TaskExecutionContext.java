@@ -26,6 +26,10 @@ public interface TaskExecutionContext extends ISqlExecutionStatementListener {
 
     void registerCancelable(TaskCancelable resource);
 
+    /** Cancels registered work after execution fails, without changing the task's failure status. */
+    default void cancelResources() {
+    }
+
     ArtifactDraft createArtifact(String outputDirectory, String fileName, String mediaType);
 
     void write(String content);

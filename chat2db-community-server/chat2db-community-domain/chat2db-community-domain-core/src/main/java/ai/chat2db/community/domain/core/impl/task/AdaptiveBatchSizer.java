@@ -7,14 +7,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  * the sizer hill-climbs on the measured throughput (rows per second): a batch that beats the
  * running reference by {@link #GROW_MARGIN} doubles the size, one that falls short by
  * {@link #SHRINK_MARGIN} halves it. Sizes therefore follow what the machine and the target
- * database actually sustain instead of a fixed guess, and there is deliberately no upper bound on
- * growth - the throughput feedback is the only ceiling. {@link #MIN_BATCH} rows keeps a batch
+ * database actually sustain, bounded by {@link #MAX_BATCH}. {@link #MIN_BATCH} rows keeps a batch
  * worth sending even on the slowest target.
  */
 public final class AdaptiveBatchSizer {
 
     /** Lowest batch the tuner will settle on (1 thread x 100 rows contract floor). */
     private static final int MIN_BATCH = 100;
+
+    static final int MAX_BATCH = 50_000;
 
     private static final double GROW_MARGIN = 1.10D;
 
@@ -47,7 +48,7 @@ public final class AdaptiveBatchSizer {
         int current = batchSize.get();
         if (referenceThroughput > 0.0D) {
             if (throughput > referenceThroughput * GROW_MARGIN) {
-                batchSize.set(clamp(current * 2));
+                batchSize.set(clamp((long) current * 2));
             } else if (throughput < referenceThroughput * SHRINK_MARGIN) {
                 batchSize.set(clamp(current / 2));
             }
@@ -57,7 +58,7 @@ public final class AdaptiveBatchSizer {
                 : REFERENCE_ALPHA * throughput + (1.0D - REFERENCE_ALPHA) * referenceThroughput;
     }
 
-    private int clamp(int value) {
-        return Math.max(MIN_BATCH, value);
+    private int clamp(long value) {
+        return (int) Math.max(MIN_BATCH, Math.min(MAX_BATCH, value));
     }
 }

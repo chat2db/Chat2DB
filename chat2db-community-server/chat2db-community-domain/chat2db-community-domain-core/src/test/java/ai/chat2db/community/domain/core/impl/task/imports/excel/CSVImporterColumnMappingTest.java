@@ -274,6 +274,29 @@ class CSVImporterColumnMappingTest {
         }
     }
 
+    @Test
+    void fastAndStandardModesPreserveWhitespaceInSourceNames(@TempDir Path directory) throws Exception {
+        Path input = Files.writeString(directory.resolve("spaces.csv"), "Name, Name\nplain,spaced\n");
+        for (String mode : List.of("STANDARD", "ULTRA_FAST")) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("DELETE FROM orders");
+            }
+            ImportTaskSpec spec = ImportTaskSpec.builder().sourceFile(input.toString()).mode(mode)
+                    .target(TaskTargetSnapshot.builder().tableName("orders").build())
+                    .columnMappings(List.of(new ImportColumnMapping(" Name", "name"),
+                            new ImportColumnMapping("Name", "note"))).build();
+
+            new CSVImporter().doImportData(spec, new RecordingTaskExecutionContext(), columns());
+
+            try (Statement statement = connection.createStatement();
+                 ResultSet rows = statement.executeQuery("SELECT name, note FROM orders")) {
+                org.junit.jupiter.api.Assertions.assertTrue(rows.next());
+                assertEquals("spaced", rows.getString(1), mode);
+                assertEquals("plain", rows.getString(2), mode);
+            }
+        }
+    }
+
     private void assertRowCount(int expected) throws Exception {
         try (Statement statement = connection.createStatement();
                 ResultSet result = statement.executeQuery("SELECT COUNT(*) FROM orders")) {

@@ -97,6 +97,11 @@ final class TaskExecutionContextImpl implements TaskExecutionContext {
     }
 
     @Override
+    public void cancelResources() {
+        runningTask.cancelResources();
+    }
+
+    @Override
     public synchronized ArtifactDraft createArtifact(String outputDirectory, String fileName, String mediaType) {
         checkCancelled();
         if (artifactDraft != null) {

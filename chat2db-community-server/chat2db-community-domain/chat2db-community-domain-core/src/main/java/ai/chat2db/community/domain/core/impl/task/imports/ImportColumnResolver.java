@@ -14,7 +14,7 @@ import java.util.Map;
 
 /**
  * Resolves which file column feeds which table column. Explicit mappings win; otherwise matching is
- * case-insensitive on trimmed names.
+ * case-insensitive, preserving whitespace as in the existing preview and ordinary importer.
  */
 public final class ImportColumnResolver {
 
@@ -66,8 +66,7 @@ public final class ImportColumnResolver {
                         || StringUtils.isBlank(mapping.getTargetColumn())) {
                     throw new ParamBusinessException("columnMappings");
                 }
-                Integer sourceIndex = indexOfSource(mapping.getSourceColumn().trim(), fileHeaders,
-                        byNormalizedName);
+                Integer sourceIndex = byNormalizedName.get(normalize(mapping.getSourceColumn()));
                 if (sourceIndex == null) {
                     throw new ParamBusinessException("columnMappings source: " + mapping.getSourceColumn());
                 }
@@ -103,31 +102,7 @@ public final class ImportColumnResolver {
         return new Resolution(resolvedColumns, fileIndexes, missingTableColumns);
     }
 
-    private static Integer indexOfSource(String source, List<String> fileHeaders,
-            Map<String, Integer> byNormalizedName) {
-        Integer namedIndex = byNormalizedName.get(normalize(source));
-        if (namedIndex != null) {
-            return namedIndex;
-        }
-        try {
-            int index = Integer.parseInt(source);
-            return index >= 0 && index < fileHeaders.size() ? index : null;
-        } catch (NumberFormatException ignored) {
-            return byNormalizedName.get(normalize(source));
-        }
-    }
-
-    /**
-     * Case-insensitive match on trimmed names, ignoring a leading UTF-8 BOM.
-     */
     private static String normalize(String name) {
-        if (name == null) {
-            return "";
-        }
-        String trimmed = name;
-        if (!trimmed.isEmpty() && trimmed.charAt(0) == '\ufeff') {
-            trimmed = trimmed.substring(1);
-        }
-        return trimmed.trim().toLowerCase(java.util.Locale.ROOT);
+        return name == null ? "" : name.toUpperCase(java.util.Locale.ROOT);
     }
 }

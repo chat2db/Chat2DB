@@ -3,12 +3,11 @@ package ai.chat2db.community.domain.core.impl.task;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tuning behaviour of the fast-mode batch-size observer: the size starts at the configured
  * baseline, grows while the measured throughput keeps improving, shrinks when it regresses, never
- * falls below the contract floor of 100 rows, and is not capped on the way up.
+ * falls below the contract floor of 100 rows, and respects the row-count ceiling.
  */
 class AdaptiveBatchSizerTest {
 
@@ -18,8 +17,7 @@ class AdaptiveBatchSizerTest {
     void floorsInitialValueAtTheContractMinimum() {
         assertEquals(100, new AdaptiveBatchSizer(1).batchSize());
         assertEquals(20_000, new AdaptiveBatchSizer(20_000).batchSize());
-        assertEquals(500_000, new AdaptiveBatchSizer(500_000).batchSize(),
-                "the baseline may be large: there is no upper bound on the configured start");
+        assertEquals(50_000, new AdaptiveBatchSizer(Integer.MAX_VALUE).batchSize());
     }
 
     @Test
@@ -40,7 +38,7 @@ class AdaptiveBatchSizerTest {
         AdaptiveBatchSizer sizer = new AdaptiveBatchSizer(8_000);
         long nanos = 5 * MILLI;
         sizer.record(8_000, nanos); // reference
-        for (int round = 0; round < 12; round++) {
+        for (int round = 0; round < 64; round++) {
             nanos = nanos * 4; // four times slower: throughput clearly regresses
             sizer.record(sizer.batchSize(), nanos);
         }
@@ -48,16 +46,15 @@ class AdaptiveBatchSizerTest {
     }
 
     @Test
-    void hasNoUpperBoundOnGrowth() {
+    void repeatedGrowthStaysBoundedWithoutOverflow() {
         AdaptiveBatchSizer sizer = new AdaptiveBatchSizer(1_000);
         long nanos = 10 * MILLI;
         sizer.record(1_000, nanos);
-        for (int round = 0; round < 12; round++) {
+        for (int round = 0; round < 64; round++) {
             nanos = Math.max(1L, nanos / 2);
             sizer.record(1_000, nanos);
         }
-        assertTrue(sizer.batchSize() > 1_000_000,
-                "growth is unbounded by contract, the throughput feedback is the only ceiling");
+        assertEquals(50_000, sizer.batchSize());
     }
 
     @Test

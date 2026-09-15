@@ -143,6 +143,27 @@ class RunningTaskTest {
         assertEquals(1, secondCount.get());
     }
 
+    @Test
+    void failureCancellationKeepsFailureStatusAndCancelsLateStatementsOnce() {
+        List<Runnable> cancellations = new java.util.ArrayList<>();
+        RunningTask runningTask = new RunningTask(42L, cancellations::add);
+        TaskExecutionContextImpl context = new TaskExecutionContextImpl(42L, runningTask, null, null);
+        AtomicInteger firstCount = new AtomicInteger();
+        AtomicInteger lateCount = new AtomicInteger();
+        context.onStatementCreated(statement(firstCount));
+
+        context.cancelResources();
+        assertFalse(runningTask.cancellationToken().isCancelled());
+        context.onStatementCreated(statement(lateCount));
+        context.cancelResources();
+        runningTask.requestCancellation(true);
+
+        assertEquals(2, cancellations.size());
+        cancellations.forEach(Runnable::run);
+        assertEquals(1, firstCount.get());
+        assertEquals(1, lateCount.get());
+    }
+
     private static Statement statement(AtomicInteger count) {
         return (Statement) Proxy.newProxyInstance(Statement.class.getClassLoader(),
                 new Class<?>[] {Statement.class}, (proxy, method, args) -> {
