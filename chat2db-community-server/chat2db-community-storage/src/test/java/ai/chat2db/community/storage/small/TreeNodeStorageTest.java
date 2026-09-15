@@ -219,6 +219,51 @@ class TreeNodeStorageTest {
         assertEquals(expected, new TreeNodeStorage(storageFile).getNodes());
     }
 
+    @Test
+    void moveKeepsEachSupportedDropPosition() {
+        List<List<Node>> expected = List.of(
+                List.of(dataSourceNode(3L), namespaceNode(1L, dataSourceNode(2L))),
+                List.of(namespaceNode(1L, dataSourceNode(3L), dataSourceNode(2L))),
+                List.of(namespaceNode(1L, dataSourceNode(2L)), dataSourceNode(3L)),
+                List.of(namespaceNode(1L, dataSourceNode(2L), dataSourceNode(3L))));
+        for (int position = -1; position <= 2; position++) {
+            String fileName = "position-" + position + ".json";
+            TreeNodeStorage storage = newStorage(fileName);
+            storage.createTree(List.of(namespaceNode(1L, dataSourceNode(2L)), dataSourceNode(3L)));
+
+            storage.updatePosition(namespaceNode(1L), dataSourceNode(3L), position);
+
+            assertEquals(expected.get(position + 1), storage.getNodes());
+            assertEquals(expected.get(position + 1), newStorage(fileName).getNodes());
+        }
+    }
+
+    @Test
+    void movingNamespacePreservesStoredChildrenWithAnIdOnlyRequest() {
+        TreeNodeStorage storage = newStorage("namespace-move.json");
+        storage.createTree(List.of(namespaceNode(1L, dataSourceNode(2L)), namespaceNode(3L)));
+
+        storage.updatePosition(namespaceNode(3L), namespaceNode(1L), 0);
+
+        List<Node> expected = List.of(namespaceNode(3L, namespaceNode(1L, dataSourceNode(2L))));
+        assertEquals(expected, storage.getNodes());
+        assertEquals(expected, newStorage("namespace-move.json").getNodes());
+    }
+
+    @Test
+    void deletingNamespacePromotesCompleteChildrenAfterRemainingSiblings() {
+        TreeNodeStorage storage = newStorage("promote-children.json");
+        storage.createTree(List.of(namespaceNode(1L, namespaceNode(2L, dataSourceNode(3L)),
+                dataSourceNode(5L)), namespaceNode(4L)));
+
+        storage.deleteNode(namespaceNode(1L));
+
+        List<Node> expected = List.of(namespaceNode(4L), namespaceNode(2L, dataSourceNode(3L)),
+                dataSourceNode(5L));
+        assertEquals(expected, storage.getNodes());
+        assertEquals(expected, newStorage("promote-children.json").getNodes());
+    }
+
     private void assertInvalidDropPreservesTree(String fileName, Node dropToNode, Node dragNode) {
         TreeNodeStorage storage = newStorage(fileName);
         List<Node> expected = List.of(
