@@ -72,21 +72,31 @@ public class TreeNodeStorage extends SmallDataStorage<TreeNode> {
         dataMap.put(replacement.getId(), replacement);
     }
 
-    synchronized void insertNode(Node parentNode, Node newNode) {
+    synchronized boolean insertNode(Node parentNode, Node newNode) {
         if (newNode == null) {
-            return;
+            return false;
         }
         List<Node> nodes = getNodes();
         List<Node> updatedNodes = nodes == null ? new ArrayList<>() : copyNodes(nodes);
         if (findNode(updatedNodes, newNode) != null) {
-            return;
+            return true;
         }
         if (parentNode == null) {
             updatedNodes.add(newNode);
         } else if (!addNode(updatedNodes, parentNode, newNode, 2)) {
-            return;
+            return false;
         }
         createTree(updatedNodes);
+        return true;
+    }
+
+    synchronized List<Node> snapshotNodes() {
+        List<Node> nodes = getNodes();
+        return nodes == null ? new ArrayList<>() : copyNodes(nodes);
+    }
+
+    synchronized void restoreNodes(List<Node> nodes) {
+        createTree(nodes == null ? new ArrayList<>() : nodes);
     }
 
 

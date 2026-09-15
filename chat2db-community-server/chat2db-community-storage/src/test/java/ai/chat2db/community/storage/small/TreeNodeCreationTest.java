@@ -67,6 +67,18 @@ class TreeNodeCreationTest {
         assertEquals(NodeTypeEnum.DATA_SOURCE.name(), parent.getChildren().get(0).getType());
     }
 
+    @Test
+    void childCreationFailsAndRollsBackWhenParentDoesNotExist() {
+        Namespace child = new Namespace();
+        child.setName("missing parent");
+        child.setParentId(999999L);
+
+        assertThrows(RuntimeException.class, () -> storage.createNamespace(child));
+        assertTrue(storage.getTree().isEmpty());
+        assertTrue(storage.getNamespaceDataSources().getNamespaces().stream()
+                .noneMatch(namespace -> "missing parent".equals(namespace.getName())));
+    }
+
     private long rootGroup() {
         Namespace parent = new Namespace();
         parent.setName("review parent");
