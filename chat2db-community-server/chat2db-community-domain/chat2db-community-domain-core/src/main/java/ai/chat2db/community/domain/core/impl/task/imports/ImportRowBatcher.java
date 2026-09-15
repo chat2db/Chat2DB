@@ -1,26 +1,16 @@
 package ai.chat2db.community.domain.core.impl.task.imports;
 
-import ai.chat2db.community.domain.api.model.metadata.DataType;
-import ai.chat2db.community.domain.api.model.metadata.TableColumn;
-import ai.chat2db.community.domain.api.model.task.CsvOptions;
-import ai.chat2db.community.domain.api.model.task.ImportTaskSpec;
 import ai.chat2db.community.domain.api.model.task.TaskCancelledException;
 import ai.chat2db.community.domain.api.model.task.TaskErrorCode;
 import ai.chat2db.community.domain.api.model.task.TaskExecutionException;
 import ai.chat2db.community.domain.api.model.task.TaskStage;
 import ai.chat2db.community.tools.model.Context;
 import ai.chat2db.community.tools.util.ContextUtils;
-import ai.chat2db.community.domain.api.model.value.SQLDataValue;
 import ai.chat2db.community.domain.api.service.task.TaskExecutionContext;
 import ai.chat2db.community.domain.core.impl.task.AdaptiveBatchSizer;
 import ai.chat2db.community.domain.core.impl.task.AdaptiveConcurrencyGate;
-import ai.chat2db.community.domain.core.impl.task.imports.ImportColumnResolver.Resolution;
-import ai.chat2db.community.domain.core.impl.task.imports.excel.CsvImportValueNormalizer;
-import ai.chat2db.spi.ISqlBuilder;
 import ai.chat2db.spi.DefaultSQLExecutor;
-import ai.chat2db.spi.IValueProcessor;
 import ai.chat2db.spi.model.datasource.ConnectInfo;
-import ai.chat2db.spi.model.request.SingleInsertSqlRequest;
 import ai.chat2db.spi.sql.Chat2DBContext;
 import ai.chat2db.spi.sql.ConnectionPool;
 import lombok.extern.slf4j.Slf4j;
@@ -61,17 +51,7 @@ public final class ImportRowBatcher implements AutoCloseable {
     /** Contract baseline fan-out of the fast mode; the adaptive gate grows it further on demand. */
     private static final int BASE_WORKERS = 4;
 
-    private final ImportTaskSpec spec;
-
     private final TaskExecutionContext context;
-
-    private final Resolution resolution;
-
-    private final CsvOptions csvOptions;
-
-    private final IValueProcessor valueProcessor;
-
-    private final ISqlBuilder sqlBuilder;
 
     private final ConnectInfo connectInfo;
 
@@ -122,14 +102,8 @@ public final class ImportRowBatcher implements AutoCloseable {
 
     private volatile long totalImportNanos;
 
-    public ImportRowBatcher(ImportTaskSpec spec, TaskExecutionContext context, Resolution resolution,
-            IValueProcessor valueProcessor) {
-        this.spec = spec;
+    public ImportRowBatcher(TaskExecutionContext context) {
         this.context = context;
-        this.resolution = resolution;
-        this.csvOptions = spec.getCsvOptions() == null ? null : spec.getCsvOptions().validate();
-        this.valueProcessor = valueProcessor;
-        this.sqlBuilder = Chat2DBContext.getSqlBuilder();
         this.connectInfo = Chat2DBContext.getConnectInfo();
         this.requestContext = ContextUtils.queryContext();
         this.statementGuard = Chat2DBContext.captureStatementGuard();
@@ -176,19 +150,18 @@ public final class ImportRowBatcher implements AutoCloseable {
         }
     }
 
-    public void accept(long fileRowNumber, List<String> fileValues) {
+    public void accept(long fileRowNumber, String sql) {
         try {
-            acceptRow(fileRowNumber, fileValues);
+            acceptRow(fileRowNumber, sql);
         } catch (RuntimeException taskFailure) {
             recordFailure(taskFailure);
             throw taskFailure;
         }
     }
 
-    private void acceptRow(long fileRowNumber, List<String> fileValues) {
+    private void acceptRow(long fileRowNumber, String sql) {
         context.checkCancelled();
         throwIfFailed();
-        String sql = buildInsert(fileRowNumber, fileValues);
         if (!bufferedSqls.isEmpty() && bufferedChars + sql.length() > MAX_BATCH_CHARS) {
             flushBufferedBatch();
         }
@@ -477,43 +450,6 @@ public final class ImportRowBatcher implements AutoCloseable {
             new PendingBatch(List.of(), -1L, Long.MAX_VALUE);
 
     private record PendingBatch(List<String> sqls, long seq, long firstRowNumber) {
-    }
-
-    private String buildInsert(long fileRowNumber, List<String> fileValues) {
-        List<String> tableColumnNames = new ArrayList<>(resolution.tableColumns().size());
-        List<String> values = new ArrayList<>(resolution.tableColumns().size());
-        for (int index = 0; index < resolution.tableColumns().size(); index++) {
-            TableColumn column = resolution.tableColumns().get(index);
-            Integer sourceIndex = resolution.fileIndexes().get(index);
-            String raw = sourceIndex != null && sourceIndex < fileValues.size()
-                    ? fileValues.get(sourceIndex) : null;
-            tableColumnNames.add(column.getName());
-            values.add(toSqlLiteral(column, raw, fileRowNumber));
-        }
-        return sqlBuilder.dml().buildInsert(SingleInsertSqlRequest.builder()
-                .databaseName(connectInfo.getDatabaseName())
-                .schemaName(connectInfo.getSchemaName())
-                .tableName(spec.getTarget().getTableName())
-                .columnList(tableColumnNames)
-                .valueList(values)
-                .build());
-    }
-
-    private String toSqlLiteral(TableColumn column, String raw, long fileRowNumber) {
-        if (raw == null) {
-            return null;
-        }
-        if (csvOptions != null) {
-            raw = CsvImportValueNormalizer.normalize(raw, column, csvOptions, fileRowNumber);
-        }
-        DataType dataType = new DataType();
-        dataType.setDataTypeName(column.getColumnType());
-        dataType.setScale(column.getDecimalDigits());
-        dataType.setPrecision(column.getColumnSize());
-        SQLDataValue sqlDataValue = new SQLDataValue();
-        sqlDataValue.setDataType(dataType);
-        sqlDataValue.setValue(raw);
-        return valueProcessor.getSqlValueString(sqlDataValue);
     }
 
     /** Stops pending writes when the source parser fails outside the batch executor. */

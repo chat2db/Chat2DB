@@ -8,7 +8,7 @@ import ai.chat2db.community.domain.core.impl.db.CsvParser;
 import ai.chat2db.community.domain.core.impl.task.imports.BaseImporter;
 import ai.chat2db.community.domain.core.impl.task.imports.ImportColumnResolver;
 import ai.chat2db.community.domain.core.impl.task.imports.ImportRowBatcher;
-import ai.chat2db.spi.sql.Chat2DBContext;
+import ai.chat2db.community.domain.core.impl.task.imports.ImportRowSqlBuilder;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,12 +24,13 @@ final class ParallelCSVImporter extends BaseImporter {
         CsvOptions options = (spec.getCsvOptions() == null ? CsvOptions.defaults() : spec.getCsvOptions()).validate();
         spec.setCsvOptions(options);
         ImportRowBatcher[] batcher = {null};
+        ImportRowSqlBuilder rowSqlBuilder = new ImportRowSqlBuilder(spec, columns);
         int[] sourceRow = {0};
         try {
             new CsvParser(options).forEachRow(Path.of(spec.getSourceFile()), row -> {
                 int rowNumber = ++sourceRow[0];
                 if (Boolean.TRUE.equals(options.getHasHeader()) && rowNumber == options.getHeaderRow()) {
-                    batcher[0] = createBatcher(spec, context, columns, values(row));
+                    batcher[0] = createBatcher(spec, context, columns, row, rowSqlBuilder);
                     return;
                 }
                 if (rowNumber < options.getDataStartRow()
@@ -38,9 +39,9 @@ final class ParallelCSVImporter extends BaseImporter {
                 }
                 if (batcher[0] == null) {
                     int width = Math.max(row.size(), CSVImporter.mappedSourceColumnCount(spec));
-                    batcher[0] = createBatcher(spec, context, columns, values(CSVImporter.syntheticHeader(width)));
+                    batcher[0] = createBatcher(spec, context, columns, CSVImporter.syntheticHeader(width), rowSqlBuilder);
                 }
-                batcher[0].accept(rowNumber, values(row));
+                batcher[0].accept(rowNumber, rowSqlBuilder.build(row, rowNumber));
             }, context::checkCancelled);
             if (batcher[0] != null) {
                 batcher[0].flush();
@@ -60,12 +61,12 @@ final class ParallelCSVImporter extends BaseImporter {
     }
 
     private ImportRowBatcher createBatcher(ImportTaskSpec spec, TaskExecutionContext context,
-            List<TableColumn> columns, List<String> headers) {
-        ImportColumnResolver.Resolution resolution = ImportColumnResolver.resolveForSpec(columns, headers, spec);
+            List<TableColumn> columns, Map<Integer, String> headers, ImportRowSqlBuilder rowSqlBuilder) {
+        ImportColumnResolver.Resolution resolution = ImportColumnResolver.resolveForSpec(columns, values(headers), spec);
 
         ImportColumnResolver.validateForImport(columns, resolution, spec);
-        return new ImportRowBatcher(spec, context, resolution,
-                Chat2DBContext.getDbMetaData().getValueProcessor());
+        rowSqlBuilder.acceptHead(headers);
+        return new ImportRowBatcher(context);
     }
 
     private static List<String> values(Map<Integer, String> row) {
