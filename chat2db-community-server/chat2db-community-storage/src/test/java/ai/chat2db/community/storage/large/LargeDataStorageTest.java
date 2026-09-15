@@ -94,6 +94,7 @@ class LargeDataStorageTest {
     static class FailingDeleteStorage extends TestStorage {
         private boolean failIndexWrites;
         private boolean failCandidateIndexWrites;
+        private boolean failDetailRestores;
         private boolean candidateDetailExistedAtFailure;
         private Long failedDetailDeleteId;
 
@@ -126,6 +127,14 @@ class LargeDataStorageTest {
                 throw new IllegalStateException("simulated detail delete failure");
             }
             super.deleteDetailData(id);
+        }
+
+        @Override
+        protected void saveDetailData(Long id, Item data) {
+            if (failDetailRestores && dataMap.containsKey(id)) {
+                throw new IllegalStateException("simulated detail restore failure");
+            }
+            super.saveDetailData(id, data);
         }
     }
 
@@ -316,6 +325,7 @@ class LargeDataStorageTest {
         String originalIndex = FileUtil.readUtf8String(indexFile());
         String originalDetail = FileUtil.readUtf8String(detailFile(1L));
         storage.failedDetailDeleteId = 1L;
+        storage.failDetailRestores = true;
 
         assertThrows(RuntimeException.class, () -> storage.delete(1L));
 

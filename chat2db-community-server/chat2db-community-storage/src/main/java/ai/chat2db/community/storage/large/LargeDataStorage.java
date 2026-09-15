@@ -284,8 +284,12 @@ public class LargeDataStorage<T> implements IWorkspaceLocalStorage<T> {
         } catch (Exception e) {
             dataMap.put(id, removed);
             try {
-                saveDetailData(id, removed);
                 saveDataListOrThrow();
+            } catch (RuntimeException rollbackFailure) {
+                e.addSuppressed(rollbackFailure);
+            }
+            try {
+                saveDetailData(id, removed);
             } catch (RuntimeException rollbackFailure) {
                 e.addSuppressed(rollbackFailure);
             }
