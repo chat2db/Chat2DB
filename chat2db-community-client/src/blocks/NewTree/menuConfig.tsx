@@ -165,6 +165,8 @@ export const dropMenuConfig = {
       OperationColumn.Divider,
       OperationColumn.RemoveDataSource,
     ],
+    [TreeNodeType.MONITOR]: [],
+    [TreeNodeType.ACTIVE_TRANSACTIONS]: [OperationColumn.ActiveTransactions],
     [TreeNodeType.DATABASE_ACCOUNTS]: [OperationColumn.CreateAccount, OperationColumn.Refresh],
     [TreeNodeType.DATABASE_ACCOUNT]: [OperationColumn.OpenAccountPrivileges],
     [TreeNodeType.SCHEMAS]: [],

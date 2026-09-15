@@ -11,13 +11,14 @@ import { FolderOpenOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Collapse, Form, Input, Select, Table, Tooltip } from 'antd';
 import classnames from 'classnames';
 import { CircleHelp } from 'lucide-react';
-import React, { ForwardedRef, Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import React, { ForwardedRef, Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import Driver from './components/Driver';
 import { dataSourceFormConfigs } from './config/dataSource';
 import { InputType } from './config/enum';
 import { IConnectionConfig, IFormItem, ILocalizedConnectionText, ISelect } from './config/types';
 import { applyConnectionIdentityColorUpdate } from './identityColorUpdate';
 import styles from './index.less';
+import { SubmissionGuard } from './submissionGuard';
 import { formatJdbcHostForUrl, normalizeJdbcHostFromUrl, shouldSyncJdbcUrlForField } from './utils/jdbcUrl';
 
 // ----- store -----
@@ -35,6 +36,14 @@ const OSCAR_JDBC_URL_PREFIX = 'jdbc:oscar://';
 const OSCAR_DRIVER_CLASS = 'com.oscar.Driver';
 
 const connectionFormTranslations: Partial<Record<LangType, Record<string, string>>> = {
+  [LangType.ZH_CN]: {
+    'User&Password': '用户名和密码',
+    NONE: '无',
+  },
+  [LangType.JA_JP]: {
+    'User&Password': 'ユーザー名とパスワード',
+    NONE: 'なし',
+  },
   [LangType.ES_ES]: {
     'USE SSH': 'Usar SSH',
     'SSH Hostname': 'Host SSH',
@@ -67,6 +76,7 @@ const connectionFormTranslations: Partial<Record<LangType, Record<string, string
     Datatset: 'Conjunto de datos',
     'Google Service Account': 'Cuenta de servicio de Google',
     'User&Password': 'Usuario y contraseña',
+    NONE: 'Ninguno',
     LocalFile: 'Archivo local',
     Service: 'Servicio',
   },
@@ -102,6 +112,7 @@ const connectionFormTranslations: Partial<Record<LangType, Record<string, string
     Datatset: '데이터 세트',
     'Google Service Account': 'Google 서비스 계정',
     'User&Password': '사용자 및 비밀번호',
+    NONE: '없음',
     LocalFile: '로컬 파일',
     Service: '서비스',
   },
@@ -388,6 +399,7 @@ const ConnectionEdit = forwardRef((props: IProps, ref: ForwardedRef<ICreateConne
     testButton: false,
     sshTestLoading: false,
   });
+  const submissionGuardRef = useRef(new SubmissionGuard());
   const { curOrg } = useOrgStore((s) => ({ curOrg: s.curOrg }));
 
   const dataSourceFormConfigPropsMemo = useMemo<IConnectionConfig>(() => {
@@ -520,7 +532,11 @@ const ConnectionEdit = forwardRef((props: IProps, ref: ForwardedRef<ICreateConne
     }));
 
     if ((type === submitType.SAVE || type === submitType.UPDATE) && submit) {
-      Promise.resolve(submit(p, type))
+      const request = submissionGuardRef.current.run(() => submit(p, type));
+      if (!request) {
+        return;
+      }
+      request
         .catch((error: any) => {
           staticMessage.error(getConnectionErrorMessage(error));
         })
@@ -533,7 +549,13 @@ const ConnectionEdit = forwardRef((props: IProps, ref: ForwardedRef<ICreateConne
       return;
     }
 
-    const api: any = connectionService[type](p);
+    const api: any =
+      type === submitType.SAVE || type === submitType.UPDATE
+        ? submissionGuardRef.current.run(() => connectionService[type](p))
+        : connectionService[type](p);
+    if (!api) {
+      return;
+    }
     if (type === submitType.TEST) {
       api
         .then((res: any) => {
@@ -607,6 +629,13 @@ const ConnectionEdit = forwardRef((props: IProps, ref: ForwardedRef<ICreateConne
       .testSSH(p)
       .then(() => {
         staticMessage.success(i18n('connection.message.testConnectResult', i18n('common.text.successful')));
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error) {
+          staticMessage.error(getConnectionErrorMessage(error));
+        } else if (typeof error === 'string' && error.startsWith('timeout_error:')) {
+          staticMessage.error(i18n('connection.message.testSshTimeout'));
+        }
       })
       .finally(() => {
         setLoading({

@@ -1,4 +1,5 @@
 export default {
+  'connection.message.testSshTimeout': 'SSH 连接测试超时，请检查主机和网络后重试',
   'connection.title': '数据源',
   'connection.title.connections': '连接',
   'connection.title.createConnection': '创建数据源',

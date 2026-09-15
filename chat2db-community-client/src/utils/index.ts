@@ -7,6 +7,7 @@ import queryString from 'query-string';
 import React from 'react';
 import { v4 as uuid } from 'uuid';
 import { isDesktop } from './env';
+import { normalizeClipboardText } from './clipboardText';
 import { clearInternalClipboard } from './internalClipboard';
 import { findNode } from './treeNodeLookup';
 
@@ -321,7 +322,7 @@ export function copyToClipboard(
       _copyToClipboard(' ', { format: 'text/plain' });
       return _copyToClipboard('', { format: 'text/plain' });
     }
-    return _copyToClipboard(text, { format: 'text/plain' });
+    return _copyToClipboard(normalizeClipboardText(text, navigator.userAgent), { format: 'text/plain' });
 
     // staticMessage.success('Copied to clipboard');
   } catch {

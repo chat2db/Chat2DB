@@ -7,7 +7,7 @@ import { setFocusedContent, getFocusedContent } from '@/store/common/copyFocused
 import { switchIcon, treeConfig } from '../../treeConfig';
 import LoadingGracile from '@/components/Loading/LoadingGracile';
 import { type ThemeAppearance } from 'antd-style';
-import { ChevronRight, User, Users } from 'lucide-react';
+import { Activity, ChevronRight, SquareActivity, User, Users } from 'lucide-react';
 import { ContextMenuRef } from '@/components/ContextMenu';
 import Filtration from '../Filtration';
 import { splitSearchHighlight } from './highlightSearchText';
@@ -158,6 +158,14 @@ const TitleRender = (props: IProps) => {
 
     if (nodeData.treeNodeType === TreeNodeType.DATABASE_ACCOUNT) {
       return <User className={cx(styles.customizeIconIsLeaf, styles.customizeIcon)} size={19} />;
+    }
+
+    if (nodeData.treeNodeType === TreeNodeType.MONITOR) {
+      return <SquareActivity className={styles.customizeIcon} size={19} />;
+    }
+
+    if (nodeData.treeNodeType === TreeNodeType.ACTIVE_TRANSACTIONS) {
+      return <Activity className={cx(styles.customizeIconIsLeaf, styles.customizeIcon)} size={19} />;
     }
 
     if (isExpanded && switchIcon[nodeData.treeNodeType]!.unfoldIcon) {
