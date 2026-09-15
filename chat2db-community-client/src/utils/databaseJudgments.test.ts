@@ -70,6 +70,19 @@ assertCapability(DatabaseTypeCode.OSCAR, DatabaseCapability.SCHEMA_CREATE, false
 assertCapability(DatabaseTypeCode.POSTGRESQL, DatabaseCapability.SCHEMA_CREATE, true);
 assertCapability('oscar_db', DatabaseCapability.SCHEMA_CREATE, true);
 
+for (const databaseType of Object.values(DatabaseTypeCode)) {
+  assertCapability(
+    databaseType,
+    DatabaseCapability.DATABASE_CREATE_COMMENT,
+    databaseType !== DatabaseTypeCode.MYSQL && databaseType !== DatabaseTypeCode.REDSHIFT,
+  );
+  assertCapability(
+    databaseType,
+    DatabaseCapability.SCHEMA_CREATE_COMMENT,
+    databaseType !== DatabaseTypeCode.MYSQL,
+  );
+}
+
 for (const databaseType of [
   DatabaseTypeCode.REDIS,
   DatabaseTypeCode.H2,

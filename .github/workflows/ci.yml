@@ -143,6 +143,28 @@ jobs:
       - name: Package backend
         run: mvn -B package -DskipTests -Dmaven.test.skip=false -Dchat2db.finalName=chat2db-community -f chat2db-community-server/pom.xml -pl chat2db-community-start -am
 
+  updater:
+    name: Desktop updater tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Test updater and desktop integration
+        shell: bash
+        run: |
+          mvn -B -f chat2db-community-server/pom.xml -pl :chat2db-community-jcef -am \
+            -Dmaven.test.skip=false -DskipTests=false \
+            '-Dtest=FullPackage*Test,Update*Test,NativePackageInstallerTest,SemanticVersionTest,InstalledAppVersionReaderTest,TrustedUpdateKeysTest,GitHubReleaseDesktopUpdaterTest,DesktopUpdaterRegistryTest,RestartAppHandlerTest' \
+            -Dsurefire.failIfNoSpecifiedTests=false -Dmaven.test.failure.ignore=false test
+
   repository:
     name: Repository and documentation checks
     runs-on: ubuntu-latest

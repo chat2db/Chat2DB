@@ -1,3 +1,4 @@
+import UpdateDetection from '@/blocks/UpdateDetection';
 import DeleteModal from '@/components/DeleteModal';
 import Modal from '@/components/Modal/BaseModal';
 import SystemErrorMessage from '@/components/SystemErrorMessage';
@@ -10,6 +11,7 @@ const GlobalComponentCommunity = () => {
       <UnifiedConfirmationModal />
       <Modal />
       <DeleteModal />
+      <UpdateDetection />
     </>
   );
 };

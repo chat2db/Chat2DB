@@ -6,7 +6,6 @@ import java.util.Objects;
 
 public final class DesktopUpdaterRegistry {
 
-    private static final IDesktopUpdater LEGACY_COMMUNITY_UPDATER = new LegacyDesktopUpdater();
     private static final IDesktopUpdater NO_OP_UPDATER = new NoOpDesktopUpdater();
 
     private static volatile IDesktopUpdater registeredUpdater;
@@ -19,10 +18,16 @@ public final class DesktopUpdaterRegistry {
         if (updater != null) {
             return updater;
         }
-        if (ConfigUtils.isCommunity() && ConfigUtils.isDesktop() && ConfigUtils.isShowGUI()) {
-            return LEGACY_COMMUNITY_UPDATER;
+        if (ConfigUtils.isCommunity() && ConfigUtils.isDesktop() && ConfigUtils.isShowGUI()
+                && ConfigUtils.isRelease() && !Boolean.getBoolean("chat2db.cli.runtime")
+                && !Boolean.getBoolean("chat2db.update.trial")) {
+            return CommunityUpdaterHolder.INSTANCE;
         }
         return NO_OP_UPDATER;
+    }
+
+    private static final class CommunityUpdaterHolder {
+        private static final IDesktopUpdater INSTANCE = GitHubReleaseDesktopUpdater.createDefault();
     }
 
     public static void register(IDesktopUpdater updater) {
