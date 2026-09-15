@@ -56,8 +56,6 @@ class ImportRowBatcherParallelTest {
 
     private static final String DB_TYPE = "PARALLEL_IMPORT_TEST";
 
-    private static final String PARALLELISM_PROPERTY = "chat2db.task.import.parallelism";
-
     private static final String H2_DRIVER_NAME = "parallel-import-test-h2.jar";
 
     private static String previousUserHome;
@@ -68,7 +66,6 @@ class ImportRowBatcherParallelTest {
     private java.sql.Connection connection;
     private IPlugin previousPlugin;
     private InMemoryTaskStorage storage;
-    private String previousParallelism;
 
     @BeforeAll
     static void isolateHomeAndSeedDriver() throws Exception {
@@ -92,7 +89,6 @@ class ImportRowBatcherParallelTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        previousParallelism = System.clearProperty(PARALLELISM_PROPERTY);
         DBConfig config = new DBConfig();
         config.setDbType(DB_TYPE);
         config.setDefaultDriverConfig(new DriverConfig());
@@ -129,11 +125,6 @@ class ImportRowBatcherParallelTest {
             Chat2DBContext.PLUGIN_MAP.remove(DB_TYPE);
         } else {
             Chat2DBContext.PLUGIN_MAP.put(DB_TYPE, previousPlugin);
-        }
-        if (previousParallelism == null) {
-            System.clearProperty(PARALLELISM_PROPERTY);
-        } else {
-            System.setProperty(PARALLELISM_PROPERTY, previousParallelism);
         }
         connection.close();
     }
@@ -190,7 +181,6 @@ class ImportRowBatcherParallelTest {
 
     @Test
     void parallelWorkersInsertEveryRowExactlyOnce() throws Exception {
-        System.setProperty(PARALLELISM_PROPERTY, "4");
         // Enough rows that even the contract baseline batch (20000 rows) splits into many batches,
         // so the assertion below observes real overlap instead of a single-batch edge case.
         int rows = 200_000;
@@ -211,15 +201,12 @@ class ImportRowBatcherParallelTest {
         assertTrue(tuning.batches() > 1, "the import must be split into several batches");
         assertTrue(tuning.peakInFlightBatches() > 1,
                 "the producer must have more than one submitted batch in flight");
-        assertTrue(tuning.gatePermits() <= 4,
-                "an explicit parallelism pin must cap the adaptive fan-out, got " + tuning.gatePermits());
         assertTrue(tuning.gatePermits() <= Runtime.getRuntime().availableProcessors(),
                 "the fan-out must never exceed the machine's available parallelism");
     }
 
     @Test
     void parallelImportUsesParsedRowsWithQuotedNewlines() throws Exception {
-        System.setProperty(PARALLELISM_PROPERTY, "2");
         ImportTaskSpec spec = csvSpec(writeCsv("1,\"Alice\nCooper\"", "2,Bob"));
 
         new CSVImporter().run(spec, contextFor(spec));
@@ -230,13 +217,12 @@ class ImportRowBatcherParallelTest {
             assertTrue(rows.next());
             assertEquals("Alice\nCooper", rows.getString(1));
         }
-        assertEquals(Math.min(2, Runtime.getRuntime().availableProcessors()),
+        assertEquals(Math.min(4, Runtime.getRuntime().availableProcessors()),
                 ImportRowBatcher.lastTuningSnapshot().workers());
     }
 
     @Test
     void excelPreservesSequentialFailureEvenWithAFastModeField() throws Exception {
-        System.setProperty(PARALLELISM_PROPERTY, "2");
         Path workbook = tempDirectory.resolve("bulk.xlsx");
         com.alibaba.excel.EasyExcel.write(workbook.toFile())
                 .head(List.of(List.of("ID"), List.of("NAME")))
@@ -252,7 +238,6 @@ class ImportRowBatcherParallelTest {
 
     @Test
     void failedFinalBatchPropagatesWorkerFailureAndKeepsCommittedRows() throws Exception {
-        System.setProperty(PARALLELISM_PROPERTY, "2");
         ImportTaskSpec spec = csvSpec(writeCsv("1,ok", "1,duplicate", "2,ok"));
         TaskExecutionContextImpl context = contextFor(spec);
 
@@ -266,7 +251,6 @@ class ImportRowBatcherParallelTest {
 
     @Test
     void failedParallelBatchesReportFailureWithPartialWrites() throws Exception {
-        System.setProperty(PARALLELISM_PROPERTY, "2");
         String[] lines = new String[80_000];
         for (int index = 0; index < lines.length; index++) {
             // Every batch contains constraint violations, so the task must report failure.

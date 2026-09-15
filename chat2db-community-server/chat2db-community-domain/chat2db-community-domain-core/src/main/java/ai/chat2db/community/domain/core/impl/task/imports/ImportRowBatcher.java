@@ -145,14 +145,7 @@ public final class ImportRowBatcher implements AutoCloseable {
                 for (int index = 0; index < requestedWorkers; index++) {
                     builtQueues.add(new ArrayBlockingQueue<>(QUEUE_CAPACITY));
                 }
-                // The fan-out may grow, but never past the machine's available parallelism: the
-                // The adaptive gate stays inside [1, machineThreadCeiling()], and an explicit
-                // chat2db.task.import.parallelism pin is bounded by the same ceiling.
-                int gateCeiling = parallelismPinned()
-                        ? Math.min(requestedWorkers, machineThreadCeiling())
-                        : machineThreadCeiling();
-                builtGate = AdaptiveConcurrencyGate.create(Math.min(BASE_WORKERS, requestedWorkers),
-                        gateCeiling);
+                builtGate = AdaptiveConcurrencyGate.create(requestedWorkers, machineThreadCeiling());
                 builtPool = Executors.newCachedThreadPool(runnable -> {
                     Thread thread = new Thread(runnable, "chat2db-import-" + context.taskId());
                     thread.setDaemon(true);
@@ -329,21 +322,9 @@ public final class ImportRowBatcher implements AutoCloseable {
         return Math.max(1, Runtime.getRuntime().availableProcessors());
     }
 
-    /** Whether {@code chat2db.task.import.parallelism} pins the fan-out explicitly. */
-    private static boolean parallelismPinned() {
-        return Integer.getInteger("chat2db.task.import.parallelism", 0) > 1;
-    }
-
     private static int effectiveWorkerCount(ConnectInfo connectInfo) {
         if (StringUtils.isBlank(connectInfo.getUrl())) {
             return 1;
-        }
-        int configured = Integer.getInteger("chat2db.task.import.parallelism", 0);
-        if (configured == 1) {
-            return 1;
-        }
-        if (configured > 1) {
-            return Math.min(configured, machineThreadCeiling());
         }
         return Math.min(BASE_WORKERS, machineThreadCeiling());
     }

@@ -48,7 +48,6 @@ class ParallelImportLifecycleTest {
     private ConnectInfo connectInfo;
     private Context requestContext;
     private IPlugin previousPlugin;
-    private String previousParallelism;
     private final List<Connection> opened = new CopyOnWriteArrayList<>();
     private final List<TaskProgress> progress = new CopyOnWriteArrayList<>();
     private final List<Long> batchChars = new CopyOnWriteArrayList<>();
@@ -64,7 +63,6 @@ class ParallelImportLifecycleTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        previousParallelism = System.setProperty("chat2db.task.import.parallelism", "2");
         String url = "jdbc:h2:mem:parallel_lifecycle_" + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
         observer = DriverManager.getConnection(url);
         try (Statement statement = observer.createStatement()) {
@@ -118,8 +116,6 @@ class ParallelImportLifecycleTest {
         ConnectionPool.removeConnection(DATASOURCE_ID);
         if (previousPlugin == null) Chat2DBContext.PLUGIN_MAP.remove(TYPE);
         else Chat2DBContext.PLUGIN_MAP.put(TYPE, previousPlugin);
-        if (previousParallelism == null) System.clearProperty("chat2db.task.import.parallelism");
-        else System.setProperty("chat2db.task.import.parallelism", previousParallelism);
     }
 
     @Test
